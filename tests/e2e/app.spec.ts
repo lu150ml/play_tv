@@ -94,6 +94,35 @@ test("connects to catalog and opens a title", async ({ page }) => {
   await expect(page.getByText("Now Playing")).toBeVisible();
 });
 
+test("uses connected Xtream catalog on dedicated navigation pages", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+
+  await page.goto("/catalog/movies");
+
+  await expect(page.getByText("Xtream server catalog")).toBeVisible();
+  await expect(page.getByText("Server Movie 4K").first()).toBeVisible();
+  await expect(page.getByText("Neon Genesis: The Awakening").first()).not.toBeVisible();
+});
+
+test("reloads Xtream series episodes from remembered server connection", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+
+  await expect(page.getByText("Pilot")).toBeVisible();
+  await page.reload();
+
+  await expect(page.getByText("Pilot")).toBeVisible();
+  await expect(page.getByText("Volte ao login")).not.toBeVisible();
+});
+
 test("filters catalog results", async ({ page }) => {
   await page.goto("/catalog?search=open");
   await page.locator('input[aria-label="Search catalog"]').fill("sports");

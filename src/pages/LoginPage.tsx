@@ -28,7 +28,7 @@ export function LoginPage() {
       const session = await connectServerSession({ serverUrl, username, password, remember });
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
-      setConnection({ serverUrl, username, password });
+      setConnection(remember ? { serverUrl, username, password } : undefined);
       setCatalog(session.catalog, session.source);
       void navigate("/catalog");
     } catch (connectionError) {

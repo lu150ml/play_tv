@@ -22,7 +22,7 @@ interface LibraryState {
   isFavorite: (contentId: string) => boolean;
   saveProgress: (state: PlaybackState) => void;
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
-  setConnection: (connection: XtreamConnection) => void;
+  setConnection: (connection?: XtreamConnection) => void;
   setSessionName: (name: string) => void;
   setServerUrl: (serverUrl: string) => void;
 }
@@ -61,6 +61,7 @@ export const useLibraryStore = create<LibraryState>()(
       partialize: (state) => ({
         catalog: state.catalog,
         catalogSource: state.catalogSource,
+        connection: state.connection,
         favorites: state.favorites,
         playback: state.playback,
         sessionName: state.sessionName,
