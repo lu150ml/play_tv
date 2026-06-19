@@ -16,10 +16,10 @@ import { useLibraryStore } from "../stores/libraryStore";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
-  { label: "Todos", path: "/catalog?type=all", icon: MonitorPlay },
-  { label: "TV", path: "/catalog?type=channel", icon: Tv },
-  { label: "Filmes", path: "/catalog?type=movie", icon: Film },
-  { label: "Séries", path: "/catalog?type=series", icon: Clapperboard },
+  { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
+  { label: "TV", path: "/catalog/tv", icon: Tv },
+  { label: "Filmes", path: "/catalog/movies", icon: Film },
+  { label: "Séries", path: "/catalog/series", icon: Clapperboard },
   { label: "Search", path: "/catalog?search=open", icon: Search },
   { label: "Downloads", path: "/catalog", icon: Download },
   { label: "Profile", path: "/catalog", icon: UserRound }
@@ -47,22 +47,27 @@ export function AppShell() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.label}
-              to={item.path}
-              data-focusable="true"
-              className={[
-                "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
-                isNavItemActive(item.path, currentPath)
-                  ? "border-primary-container/40 bg-primary-container/10 text-primary"
-                  : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
-              ].join(" ")}
-            >
-              <item.icon aria-hidden="true" size={20} />
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = isNavItemActive(item.path, currentPath);
+
+            return (
+              <Link
+                key={item.label}
+                to={item.path}
+                data-focusable="true"
+                aria-current={isActive ? "page" : undefined}
+                className={[
+                  "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
+                  isActive
+                    ? "border-primary-container/40 bg-primary-container/10 text-primary"
+                    : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
+                ].join(" ")}
+              >
+                <item.icon aria-hidden="true" size={20} />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="rounded-xl border border-white/10 bg-surface-container/70 p-4">
@@ -88,22 +93,27 @@ export function AppShell() {
       </main>
 
       <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
-        {navItems.slice(0, 5).map((item) => (
-          <Link
-            key={item.label}
-            to={item.path}
-            data-focusable="true"
-            className={[
-              "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
-              isNavItemActive(item.path, currentPath)
-                ? "border-secondary-container bg-secondary-container/40 text-primary"
-                : "border-transparent text-on-surface-variant"
-            ].join(" ")}
-          >
-            <item.icon aria-hidden="true" size={19} />
-            {item.label}
-          </Link>
-        ))}
+        {navItems.slice(0, 5).map((item) => {
+          const isActive = isNavItemActive(item.path, currentPath);
+
+          return (
+            <Link
+              key={item.label}
+              to={item.path}
+              data-focusable="true"
+              aria-current={isActive ? "page" : undefined}
+              className={[
+                "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
+                isActive
+                  ? "border-secondary-container bg-secondary-container/40 text-primary"
+                  : "border-transparent text-on-surface-variant"
+              ].join(" ")}
+            >
+              <item.icon aria-hidden="true" size={19} />
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );
@@ -114,5 +124,5 @@ function isNavItemActive(path: string, currentPath: string): boolean {
     return currentPath === path;
   }
 
-  return currentPath === path || (path === "/catalog" && currentPath === "/catalog");
+  return currentPath === path || (path !== "/catalog" && currentPath.startsWith(`${path}/`));
 }

@@ -6,27 +6,31 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
 import { getContentById } from "../services/catalogService";
-import { savePlaybackProgress } from "../services/playbackService";
+import {
+  getProgressRatio,
+  getRemainingSeconds,
+  savePlaybackProgress
+} from "../services/playbackService";
 import { loadXtreamSeriesEpisodes } from "../services/xtreamService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
-import { formatDuration } from "../utils/format";
+import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function PlayerPage() {
   const { contentId } = useParams();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const item = contentId ? getContentById(contentId, catalog) : undefined;
-  const existingProgress = useLibraryStore((state) =>
-    contentId ? state.playback[contentId] : undefined
-  );
+  const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) => (contentId ? state.isFavorite(contentId) : false));
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaDuration, setMediaDuration] = useState<number | undefined>();
   const [mediaError, setMediaError] = useState<string | undefined>();
+  const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [episodeError, setEpisodeError] = useState<string | undefined>();
+  const [lastInteractionAt, setLastInteractionAt] = useState(Date.now());
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [seriesEpisodes, setSeriesEpisodes] = useState<Episode[]>([]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | undefined>();
@@ -39,8 +43,28 @@ export function PlayerPage() {
   const activeStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
-  const [positionSeconds, setPositionSeconds] = useState(existingProgress?.positionSeconds ?? 84);
+  const activePlaybackId = selectedEpisode?.id ?? contentId;
+  const activePlayback = activePlaybackId ? playback[activePlaybackId] : undefined;
+  const [positionSeconds, setPositionSeconds] = useState(0);
   const canSeek = durationSeconds > 0;
+  const remainingLabel = formatRemainingTime(
+    getRemainingSeconds(
+      durationSeconds > 0
+        ? {
+            contentId: activePlaybackId ?? "active",
+            positionSeconds,
+            durationSeconds,
+            updatedAt: new Date().toISOString()
+          }
+        : undefined
+    )
+  );
+  const currentEpisodeIndex = selectedEpisode
+    ? seriesEpisodes.findIndex((episode) => episode.id === selectedEpisode.id)
+    : -1;
+  const nextEpisode =
+    currentEpisodeIndex >= 0 ? seriesEpisodes[currentEpisodeIndex + 1] : undefined;
+  const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
 
   const related = useMemo(
     () =>
@@ -163,6 +187,15 @@ export function PlayerPage() {
   }, [activeStreamUrl, item?.type]);
 
   useEffect(() => {
+    const nextPosition = activePlayback?.positionSeconds ?? 0;
+    setPositionSeconds(nextPosition);
+
+    if (videoRef.current && canSeek) {
+      videoRef.current.currentTime = nextPosition;
+    }
+  }, [activePlayback?.positionSeconds, activePlaybackId, canSeek]);
+
+  useEffect(() => {
     const video = videoRef.current;
 
     if (!video) {
@@ -178,6 +211,19 @@ export function PlayerPage() {
 
     video.pause();
   }, [isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying || mediaError) {
+      setAreControlsVisible(true);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAreControlsVisible(false);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isPlaying, lastInteractionAt, mediaError]);
 
   if (!item) {
     return <Navigate to="/catalog" replace />;
@@ -196,6 +242,16 @@ export function PlayerPage() {
       durationSeconds: durationSeconds || content.durationSeconds || 0
     });
     storeProgress(progress);
+
+    if (selectedEpisode) {
+      storeProgress(
+        savePlaybackProgress({
+          contentId: content.id,
+          positionSeconds: nextPosition,
+          durationSeconds: durationSeconds || selectedEpisode.durationSeconds || 0
+        })
+      );
+    }
   }
 
   function handleTimeUpdate() {
@@ -217,6 +273,17 @@ export function PlayerPage() {
             durationSeconds || selectedEpisode?.durationSeconds || content.durationSeconds || 0
         })
       );
+
+      if (selectedEpisode) {
+        storeProgress(
+          savePlaybackProgress({
+            contentId: content.id,
+            positionSeconds: nextPosition,
+            durationSeconds:
+              durationSeconds || selectedEpisode.durationSeconds || content.durationSeconds || 0
+          })
+        );
+      }
     }
   }
 
@@ -229,9 +296,35 @@ export function PlayerPage() {
 
     setMediaDuration(Math.floor(video.duration));
 
-    if (existingProgress?.positionSeconds) {
-      video.currentTime = existingProgress.positionSeconds;
+    if (activePlayback?.positionSeconds) {
+      video.currentTime = activePlayback.positionSeconds;
     }
+  }
+
+  function handleNextEpisode() {
+    if (!nextEpisode) {
+      return;
+    }
+
+    const nextProgress = playback[nextEpisode.id];
+    setSelectedEpisodeId(nextEpisode.id);
+    setPositionSeconds(nextProgress?.positionSeconds ?? 0);
+    setIsPlaying(true);
+    revealControls();
+  }
+
+  function handleEnded() {
+    if (nextEpisode) {
+      handleNextEpisode();
+      return;
+    }
+
+    setIsPlaying(false);
+  }
+
+  function revealControls() {
+    setAreControlsVisible(true);
+    setLastInteractionAt(Date.now());
   }
 
   async function handleFullscreen() {
@@ -266,6 +359,14 @@ export function PlayerPage() {
 
       <section
         ref={playerShellRef}
+        onClick={revealControls}
+        onFocusCapture={() => {
+          revealControls();
+        }}
+        onKeyDown={revealControls}
+        onMouseMove={revealControls}
+        onPointerMove={revealControls}
+        onTouchStart={revealControls}
         className="relative mb-8 aspect-video min-h-72 overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl"
       >
         {!activeStreamUrl ? (
@@ -281,6 +382,7 @@ export function PlayerPage() {
             onTimeUpdate={handleTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
+            onEnded={handleEnded}
             onError={() =>
               setMediaError(
                 "Nao foi possivel iniciar esta midia. Confira se o link do servidor esta ativo e se o formato e aceito no navegador."
@@ -301,7 +403,12 @@ export function PlayerPage() {
         {!activeStreamUrl ? (
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.15),transparent_22%),linear-gradient(180deg,transparent,rgba(0,0,0,0.76))]" />
         ) : null}
-        <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-surface-container/70 px-3 py-1 font-mono text-xs uppercase">
+        <div
+          className={[
+            "absolute left-4 top-4 rounded-full border border-white/10 bg-surface-container/70 px-3 py-1 font-mono text-xs uppercase transition-opacity duration-300",
+            shouldShowControls ? "opacity-100" : "opacity-0"
+          ].join(" ")}
+        >
           {activeStreamUrl ? "Now Playing" : "Preview"}
         </div>
         {mediaError ? (
@@ -311,9 +418,13 @@ export function PlayerPage() {
         ) : null}
         <PlayerControls
           isPlaying={isPlaying}
+          isVisible={shouldShowControls}
           positionSeconds={positionSeconds}
           durationSeconds={durationSeconds}
+          hasNextEpisode={Boolean(nextEpisode)}
           isLive={!canSeek && content.type === "channel"}
+          remainingLabel={content.type === "channel" ? undefined : remainingLabel}
+          onNextEpisode={handleNextEpisode}
           onTogglePlay={() => setIsPlaying((current) => !current)}
           onSeek={handleSeek}
           onFullscreen={() => {
@@ -385,13 +496,14 @@ export function PlayerPage() {
                       key={episode.id}
                       type="button"
                       data-focusable="true"
+                      aria-pressed={selectedEpisode?.id === episode.id}
                       onClick={() => {
                         setSelectedEpisodeId(episode.id);
                         setPositionSeconds(0);
                         setIsPlaying(false);
                       }}
                       className={[
-                        "focus-card rounded-xl border p-4 text-left",
+                        "focus-card relative overflow-hidden rounded-xl border p-4 text-left",
                         selectedEpisode?.id === episode.id
                           ? "border-primary-container bg-primary-container/15 text-primary shadow-glow"
                           : "border-white/10 bg-surface-container/70 text-on-surface"
@@ -406,6 +518,12 @@ export function PlayerPage() {
                       <span className="mt-2 line-clamp-2 block text-sm leading-6 text-on-surface-variant">
                         {episode.description}
                       </span>
+                      <EpisodeProgress
+                        positionSeconds={playback[episode.id]?.positionSeconds}
+                        durationSeconds={
+                          playback[episode.id]?.durationSeconds || episode.durationSeconds
+                        }
+                      />
                     </button>
                   ))}
                 </div>
@@ -451,5 +569,39 @@ function InfoTile({ label, value }: { label: string; value: string }) {
       <dt className="font-mono text-xs uppercase text-on-surface-variant">{label}</dt>
       <dd className="mt-1 font-display text-lg font-semibold text-on-surface">{value}</dd>
     </div>
+  );
+}
+
+function EpisodeProgress({
+  positionSeconds,
+  durationSeconds
+}: {
+  positionSeconds?: number;
+  durationSeconds?: number;
+}) {
+  if (!positionSeconds || !durationSeconds) {
+    return null;
+  }
+
+  const progress = getProgressRatio({
+    contentId: "episode",
+    positionSeconds,
+    durationSeconds,
+    updatedAt: new Date().toISOString()
+  });
+  const remainingLabel = formatRemainingTime(durationSeconds - positionSeconds);
+
+  return (
+    <>
+      <span className="mt-3 block font-mono text-xs uppercase text-primary-container">
+        {remainingLabel}
+      </span>
+      <span className="absolute bottom-0 left-0 h-1 w-full bg-white/15">
+        <span
+          className="block h-full bg-primary-container"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </span>
+    </>
   );
 }

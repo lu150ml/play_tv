@@ -12,6 +12,8 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<AppShell />}>
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/catalog/:section" element={<CatalogPage />} />
+        <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
         <Route path="/watch/:contentId" element={<PlayerPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/catalog" replace />} />

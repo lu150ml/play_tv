@@ -1,10 +1,14 @@
 import { Heart, Play, Tv } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { getProgressRatio } from "../services/playbackService";
+import {
+  getProgressRatio,
+  getRemainingSeconds,
+  shouldShowPlaybackProgress
+} from "../services/playbackService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { ContentItem } from "../types/catalog";
-import { formatDuration } from "../utils/format";
+import { formatDuration, formatRemainingTime } from "../utils/format";
 
 interface ContentCardProps {
   item: ContentItem;
@@ -14,7 +18,11 @@ interface ContentCardProps {
 export function ContentCard({ item, compact = false }: ContentCardProps) {
   const playback = useLibraryStore((state) => state.playback[item.id]);
   const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
-  const progress = getProgressRatio(playback);
+  const showProgress = shouldShowPlaybackProgress(item.type);
+  const progress = showProgress ? getProgressRatio(playback) : 0;
+  const remainingLabel = showProgress
+    ? formatRemainingTime(getRemainingSeconds(playback))
+    : undefined;
 
   return (
     <Link
@@ -78,6 +86,11 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
         <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">
           {item.description}
         </p>
+        {remainingLabel ? (
+          <p className="mt-3 font-mono text-xs uppercase text-primary-container">
+            {remainingLabel}
+          </p>
+        ) : null}
       </div>
     </Link>
   );

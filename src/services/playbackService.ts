@@ -49,6 +49,18 @@ export function getProgressRatio(state?: PlaybackState): number {
   return clamp(state.positionSeconds / state.durationSeconds, 0, 1);
 }
 
+export function getRemainingSeconds(state?: PlaybackState): number | undefined {
+  if (!state || state.durationSeconds <= 0) {
+    return undefined;
+  }
+
+  return Math.max(state.durationSeconds - state.positionSeconds, 0);
+}
+
+export function shouldShowPlaybackProgress(type: "movie" | "series" | "episode" | "channel") {
+  return type !== "channel";
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }

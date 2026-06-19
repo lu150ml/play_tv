@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getPlaybackProgress, getProgressRatio, savePlaybackProgress } from "./playbackService";
+import {
+  getPlaybackProgress,
+  getProgressRatio,
+  getRemainingSeconds,
+  savePlaybackProgress,
+  shouldShowPlaybackProgress
+} from "./playbackService";
 
 describe("playbackService", () => {
   beforeEach(() => {
@@ -36,5 +42,22 @@ describe("playbackService", () => {
         updatedAt: new Date().toISOString()
       })
     ).toBe(0.25);
+  });
+
+  it("calculates remaining seconds", () => {
+    expect(
+      getRemainingSeconds({
+        contentId: "episode-1",
+        positionSeconds: 120,
+        durationSeconds: 1800,
+        updatedAt: new Date().toISOString()
+      })
+    ).toBe(1680);
+  });
+
+  it("does not show playback progress for live channels", () => {
+    expect(shouldShowPlaybackProgress("movie")).toBe(true);
+    expect(shouldShowPlaybackProgress("episode")).toBe(true);
+    expect(shouldShowPlaybackProgress("channel")).toBe(false);
   });
 });

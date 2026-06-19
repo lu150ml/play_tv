@@ -61,6 +61,16 @@ test.beforeEach(async ({ page }) => {
                 duration_secs: 1800,
                 plot: "The first episode returned by the Xtream server."
               }
+            },
+            {
+              id: 3002,
+              episode_num: 2,
+              title: "Second Signal",
+              container_extension: "mp4",
+              info: {
+                duration_secs: 1800,
+                plot: "The second episode returned by the Xtream server."
+              }
             }
           ]
         }
@@ -85,31 +95,42 @@ test("connects to catalog and opens a title", async ({ page }) => {
 });
 
 test("filters catalog results", async ({ page }) => {
-  await page.goto("/catalog");
+  await page.goto("/catalog?search=open");
   await page.locator('input[aria-label="Search catalog"]').fill("sports");
 
-  await expect(page.getByRole("heading", { name: "All Results" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resultados da busca" })).toBeVisible();
   await expect(page.getByText("Sports Grid").first()).toBeVisible();
   await expect(page.getByText("Machine Heart").first()).not.toBeVisible();
 });
 
 test("navigates catalog by content type shortcuts", async ({ page }) => {
-  await page.goto("/catalog?type=movie");
+  await page.goto("/catalog/movies");
 
-  await expect(page.getByRole("button", { name: /Filmes/ })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  await expect(page).toHaveURL(/\/catalog\/movies$/);
+  await expect(page.getByRole("link", { name: "Filmes", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
   await expect(page.getByText("Orbital Decay").first()).toBeVisible();
   await expect(page.getByText("Sports Grid").first()).not.toBeVisible();
 
-  await page.getByRole("link", { name: "TV" }).click();
+  await page.getByRole("link", { name: "TV", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: /TV ao vivo/ })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  await expect(page).toHaveURL(/\/catalog\/tv$/);
+  await expect(page.getByRole("link", { name: "TV", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
   await expect(page.getByText("Sports Grid").first()).toBeVisible();
+});
+
+test("opens a dedicated category page from view all", async ({ page }) => {
+  await page.goto("/catalog/series");
+
+  await page.getByRole("link", { name: "View all" }).first().click();
+
+  await expect(page).toHaveURL(/\/catalog\/series\/.+/);
+  await expect(page.getByRole("link", { name: /Voltar para Series/ })).toBeVisible();
 });
 
 test("supports keyboard style navigation", async ({ page }) => {
@@ -133,4 +154,84 @@ test("loads episodes for an Xtream series", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Episodios" })).toBeVisible();
   await expect(page.getByText("S1 E1")).toBeVisible();
   await expect(page.getByText("Pilot")).toBeVisible();
+});
+
+test("jumps to the next episode from player controls", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Next episode" }).click();
+
+  await expect(page.getByRole("button", { name: /S1 E2/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("hides player controls after inactivity and shows them on interaction", async ({ page }) => {
+  await page.route("http://xtream.test/**", () => new Promise(() => undefined));
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+
+  const controls = page.getByTestId("player-controls");
+  const video = page.locator("video");
+
+  await video.evaluate((element) => {
+    Object.defineProperty(element, "play", {
+      configurable: true,
+      value: () => Promise.resolve()
+    });
+  });
+  await expect(controls).toHaveCSS("opacity", "1");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+
+  await expect(controls).toHaveCSS("opacity", "0", { timeout: 6500 });
+
+  await page.mouse.move(500, 300);
+  await expect(controls).toHaveCSS("opacity", "1");
+});
+
+test("shows saved movie progress but not live tv progress", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "server-xtreme-library",
+      JSON.stringify({
+        state: {
+          playback: {
+            "neon-genesis-awakening": {
+              contentId: "neon-genesis-awakening",
+              positionSeconds: 1200,
+              durationSeconds: 8100,
+              updatedAt: new Date().toISOString()
+            },
+            "sports-grid": {
+              contentId: "sports-grid",
+              positionSeconds: 1200,
+              durationSeconds: 7200,
+              updatedAt: new Date().toISOString()
+            }
+          },
+          favorites: [],
+          sessionName: "Editor Pro"
+        },
+        version: 0
+      })
+    );
+  });
+
+  await page.goto("/catalog");
+
+  await expect(page.getByText("1h 55min restantes").first()).toBeVisible();
+  const sportsCards = page.getByRole("link", { name: "Sports Grid channel" });
+  await expect(sportsCards).toHaveCount(3);
+  await Promise.all(
+    [0, 1, 2].map((index) => expect(sportsCards.nth(index)).not.toContainText("restantes"))
+  );
 });

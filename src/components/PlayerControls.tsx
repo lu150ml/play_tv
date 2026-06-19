@@ -13,27 +13,41 @@ import { formatPlaybackTime } from "../utils/format";
 
 interface PlayerControlsProps {
   isPlaying: boolean;
+  isVisible: boolean;
   positionSeconds: number;
   durationSeconds: number;
   isLive?: boolean;
+  hasNextEpisode?: boolean;
+  remainingLabel?: string;
   onTogglePlay: () => void;
+  onNextEpisode?: () => void;
   onSeek: (positionSeconds: number) => void;
   onFullscreen: () => void;
 }
 
 export function PlayerControls({
   isPlaying,
+  isVisible,
   positionSeconds,
   durationSeconds,
   isLive = false,
+  hasNextEpisode = false,
+  remainingLabel,
   onTogglePlay,
+  onNextEpisode,
   onSeek,
   onFullscreen
 }: PlayerControlsProps) {
   const progress = durationSeconds > 0 ? (positionSeconds / durationSeconds) * 100 : 0;
 
   return (
-    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-4 lg:p-8">
+    <div
+      data-testid="player-controls"
+      className={[
+        "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-4 transition-opacity duration-300 lg:p-8",
+        isVisible ? "opacity-100" : "pointer-events-none opacity-0"
+      ].join(" ")}
+    >
       <div className="mb-4 flex items-center gap-4">
         <span className="w-12 text-right font-mono text-xs text-on-surface-variant">
           {formatPlaybackTime(positionSeconds)}
@@ -53,6 +67,11 @@ export function PlayerControls({
           {isLive ? "LIVE" : formatPlaybackTime(durationSeconds)}
         </span>
       </div>
+      {remainingLabel ? (
+        <p className="-mt-2 mb-3 text-right font-mono text-xs uppercase text-on-surface-variant">
+          {remainingLabel}
+        </p>
+      ) : null}
 
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -66,12 +85,11 @@ export function PlayerControls({
           <IconButton label="Restart" onClick={() => onSeek(0)}>
             <RotateCcw aria-hidden="true" size={20} />
           </IconButton>
-          <IconButton
-            label="Next"
-            onClick={() => onSeek(Math.min(positionSeconds + 60, durationSeconds))}
-          >
-            <SkipForward aria-hidden="true" size={20} />
-          </IconButton>
+          {hasNextEpisode && onNextEpisode ? (
+            <IconButton label="Next episode" onClick={onNextEpisode}>
+              <SkipForward aria-hidden="true" size={20} />
+            </IconButton>
+          ) : null}
           <IconButton label="Volume" onClick={() => undefined}>
             <Volume2 aria-hidden="true" size={20} />
           </IconButton>
