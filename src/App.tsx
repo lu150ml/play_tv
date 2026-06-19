@@ -1,0 +1,20 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+
+import { AppShell } from "./components/AppShell";
+import { CatalogPage } from "./pages/CatalogPage";
+import { LoginPage } from "./pages/LoginPage";
+import { PlayerPage } from "./pages/PlayerPage";
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<AppShell />}>
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/watch/:contentId" element={<PlayerPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/catalog" replace />} />
+    </Routes>
+  );
+}

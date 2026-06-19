@@ -1,0 +1,89 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #0b1326;
+  color: #dae2fd;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100dvh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(0, 219, 233, 0.14), transparent 30%),
+    linear-gradient(180deg, #060e20 0%, #0b1326 38%, #060e20 100%);
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.42);
+}
+
+::selection {
+  background: #00f0ff;
+  color: #00363a;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1326;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d3449;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00dbe9;
+}
+
+@layer components {
+  .glass-panel {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(23, 31, 51, 0.72);
+    backdrop-filter: blur(24px);
+  }
+
+  .focus-card {
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .focus-card:hover,
+  .focus-card:focus-visible {
+    border-color: rgba(0, 240, 255, 0.72);
+    box-shadow: 0 0 24px rgba(0, 219, 233, 0.22);
+    transform: translateY(-2px);
+  }
+
+  .media-poster {
+    background:
+      linear-gradient(135deg, rgba(0, 219, 233, 0.22), transparent 38%),
+      linear-gradient(160deg, rgba(208, 188, 255, 0.18), transparent 52%), #131b2e;
+  }
+}
