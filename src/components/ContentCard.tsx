@@ -23,10 +23,11 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
   const remainingLabel = showProgress
     ? formatRemainingTime(getRemainingSeconds(playback))
     : undefined;
+  const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
 
   return (
     <Link
-      to={`/watch/${item.id}`}
+      to={href}
       data-focusable="true"
       aria-label={`${item.title} ${item.type}`}
       className={[

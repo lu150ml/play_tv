@@ -72,6 +72,18 @@ test.beforeEach(async ({ page }) => {
                 plot: "The second episode returned by the Xtream server."
               }
             }
+          ],
+          "2": [
+            {
+              id: 3003,
+              episode_num: 1,
+              title: "Second Season Premiere",
+              container_extension: "mp4",
+              info: {
+                duration_secs: 1800,
+                plot: "The first episode from the second season."
+              }
+            }
           ]
         }
       }
@@ -171,7 +183,7 @@ test("supports keyboard style navigation", async ({ page }) => {
   await expect(page).toHaveURL(/\/watch\//);
 });
 
-test("loads episodes for an Xtream series", async ({ page }) => {
+test("opens a dedicated series page with seasons and episodes", async ({ page }) => {
   await page.goto("/login");
   await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
   await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
@@ -180,9 +192,13 @@ test("loads episodes for an Xtream series", async ({ page }) => {
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
-  await expect(page.getByRole("heading", { name: "Episodios" })).toBeVisible();
+  await expect(page).toHaveURL(/\/series\/xtream-series-30$/);
+  await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Temporadas" })).toBeVisible();
   await expect(page.getByText("S1 E1")).toBeVisible();
   await expect(page.getByText("Pilot")).toBeVisible();
+  await page.getByRole("button", { name: "Temporada 2" }).click();
+  await expect(page.getByText("Second Season Premiere")).toBeVisible();
 });
 
 test("jumps to the next episode from player controls", async ({ page }) => {
@@ -193,11 +209,30 @@ test("jumps to the next episode from player controls", async ({ page }) => {
   await page.getByRole("button", { name: "Connect" }).click();
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("link", { name: /S1 E1 Pilot/ }).click();
   await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "Next episode" }).click();
 
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3002$/);
   await expect(page.getByRole("button", { name: /S1 E2/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("shows only current season episodes while watching a series", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("button", { name: "Temporada 2" }).click();
+  await page.getByRole("link", { name: /S2 E1 Second Season Premiere/ }).click();
+
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3003$/);
+  await expect(page.getByRole("heading", { name: "Temporada 2" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /S2 E1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /S1 E1/ })).not.toBeVisible();
 });
 
 test("hides player controls after inactivity and shows them on interaction", async ({ page }) => {
@@ -208,6 +243,7 @@ test("hides player controls after inactivity and shows them on interaction", asy
   await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
   await page.getByRole("button", { name: "Connect" }).click();
   await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("link", { name: /S1 E1 Pilot/ }).click();
 
   const controls = page.getByTestId("player-controls");
   const video = page.locator("video");

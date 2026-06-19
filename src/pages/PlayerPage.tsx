@@ -1,7 +1,7 @@
 import type Hls from "hls.js";
 import { ArrowLeft, Heart, Plus, Share2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
@@ -11,20 +11,25 @@ import {
   getRemainingSeconds,
   savePlaybackProgress
 } from "../services/playbackService";
-import { loadXtreamSeriesEpisodes } from "../services/xtreamService";
+import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function PlayerPage() {
-  const { contentId } = useParams();
+  const { contentId, episodeId, seriesId } = useParams();
+  const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
-  const item = contentId ? getContentById(contentId, catalog) : undefined;
+  const routeContentId = seriesId ?? contentId;
+  const item = routeContentId ? getContentById(routeContentId, catalog) : undefined;
+  const series = isSeries(item) ? item : undefined;
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
-  const isFavorite = useLibraryStore((state) => (contentId ? state.isFavorite(contentId) : false));
+  const isFavorite = useLibraryStore((state) =>
+    routeContentId ? state.isFavorite(routeContentId) : false
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaDuration, setMediaDuration] = useState<number | undefined>();
   const [mediaError, setMediaError] = useState<string | undefined>();
@@ -37,8 +42,8 @@ export function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const selectedEpisode = useMemo(
-    () => seriesEpisodes.find((episode) => episode.id === selectedEpisodeId),
-    [selectedEpisodeId, seriesEpisodes]
+    () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
+    [episodeId, selectedEpisodeId, seriesEpisodes]
   );
   const activeStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
   const durationSeconds =
@@ -59,11 +64,10 @@ export function PlayerPage() {
         : undefined
     )
   );
-  const currentEpisodeIndex = selectedEpisode
-    ? seriesEpisodes.findIndex((episode) => episode.id === selectedEpisode.id)
-    : -1;
-  const nextEpisode =
-    currentEpisodeIndex >= 0 ? seriesEpisodes[currentEpisodeIndex + 1] : undefined;
+  const nextEpisode = getNextEpisode(seriesEpisodes, selectedEpisode?.id);
+  const seasonEpisodes = selectedEpisode
+    ? seriesEpisodes.filter((episode) => episode.season === selectedEpisode.season)
+    : seriesEpisodes;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
 
   const related = useMemo(
@@ -80,33 +84,24 @@ export function PlayerPage() {
   useEffect(() => {
     let isCancelled = false;
 
-    if (item?.type !== "series") {
+    if (!series) {
       setSeriesEpisodes([]);
       setSelectedEpisodeId(undefined);
       setEpisodeError(undefined);
       return undefined;
     }
 
-    if (item.source !== "xtream" || !item.providerId) {
-      return undefined;
-    }
-
-    if (!connection) {
-      setEpisodeError("Volte ao login para recarregar a conexao antes de abrir episodios.");
-      return undefined;
-    }
-
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
 
-    void loadXtreamSeriesEpisodes(connection, item.providerId)
+    void loadSeriesEpisodes(series, connection)
       .then((episodes) => {
         if (isCancelled) {
           return;
         }
 
         setSeriesEpisodes(episodes);
-        setSelectedEpisodeId(episodes[0]?.id);
+        setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
 
         if (episodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
@@ -130,7 +125,13 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, item]);
+  }, [connection, episodeId, series]);
+
+  useEffect(() => {
+    if (episodeId) {
+      setSelectedEpisodeId(episodeId);
+    }
+  }, [episodeId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -228,6 +229,11 @@ export function PlayerPage() {
   if (!item) {
     return <Navigate to="/catalog" replace />;
   }
+
+  if (episodeId && !series) {
+    return <Navigate to="/catalog/series" replace />;
+  }
+
   const content = item;
 
   function handleSeek(nextPosition: number) {
@@ -311,6 +317,10 @@ export function PlayerPage() {
     setPositionSeconds(nextProgress?.positionSeconds ?? 0);
     setIsPlaying(true);
     revealControls();
+
+    if (series) {
+      void navigate(`/watch/${series.id}/${nextEpisode.id}`);
+    }
   }
 
   function handleEnded() {
@@ -349,12 +359,12 @@ export function PlayerPage() {
   return (
     <div className="mx-auto max-w-canvas">
       <Link
-        to="/catalog"
+        to={series ? `/series/${series.id}` : "/catalog"}
         data-focusable="true"
         className="focus-card mb-4 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
       >
         <ArrowLeft aria-hidden="true" size={18} />
-        Catalog
+        {series ? "Serie" : "Catalog"}
       </Link>
 
       <section
@@ -477,7 +487,9 @@ export function PlayerPage() {
           {content.type === "series" ? (
             <section className="mt-8">
               <div className="mb-3 flex items-center justify-between gap-4">
-                <h2 className="font-display text-2xl font-bold text-on-surface">Episodios</h2>
+                <h2 className="font-display text-2xl font-bold text-on-surface">
+                  Temporada {selectedEpisode?.season ?? 1}
+                </h2>
                 {isLoadingEpisodes ? (
                   <span className="font-mono text-xs uppercase text-on-surface-variant">
                     Carregando...
@@ -489,9 +501,9 @@ export function PlayerPage() {
                   {episodeError}
                 </div>
               ) : null}
-              {seriesEpisodes.length > 0 ? (
+              {seasonEpisodes.length > 0 ? (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {seriesEpisodes.map((episode) => (
+                  {seasonEpisodes.map((episode) => (
                     <button
                       key={episode.id}
                       type="button"
@@ -501,6 +513,7 @@ export function PlayerPage() {
                         setSelectedEpisodeId(episode.id);
                         setPositionSeconds(0);
                         setIsPlaying(false);
+                        void navigate(`/watch/${content.id}/${episode.id}`);
                       }}
                       className={[
                         "focus-card relative overflow-hidden rounded-xl border p-4 text-left",

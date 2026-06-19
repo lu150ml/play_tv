@@ -4,6 +4,7 @@ import { AppShell } from "./components/AppShell";
 import { CatalogPage } from "./pages/CatalogPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
+import { SeriesPage } from "./pages/SeriesPage";
 
 export function App() {
   return (
@@ -14,6 +15,8 @@ export function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/catalog/:section" element={<CatalogPage />} />
         <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
+        <Route path="/series/:seriesId" element={<SeriesPage />} />
+        <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />
         <Route path="/watch/:contentId" element={<PlayerPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/catalog" replace />} />
