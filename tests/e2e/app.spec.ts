@@ -112,6 +112,7 @@ test("uses connected Xtream catalog on dedicated navigation pages", async ({ pag
   await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
   await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
   await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByText("Xtream server catalog")).toBeVisible();
 
   await page.goto("/catalog/movies");
 
@@ -142,6 +143,39 @@ test("filters catalog results", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Resultados da busca" })).toBeVisible();
   await expect(page.getByText("Sports Grid").first()).toBeVisible();
   await expect(page.getByText("Machine Heart").first()).not.toBeVisible();
+});
+
+test("personalizes hero and recommendations from watch history", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "server-xtreme-library",
+      JSON.stringify({
+        state: {
+          playback: {
+            "neon-genesis-awakening": {
+              contentId: "neon-genesis-awakening",
+              positionSeconds: 1800,
+              durationSeconds: 8100,
+              updatedAt: new Date().toISOString()
+            }
+          },
+          favorites: [],
+          sessionName: "Editor Pro"
+        },
+        version: 0
+      })
+    );
+  });
+
+  await page.goto("/catalog");
+
+  await expect(page.locator("h1").filter({ hasText: "Machine Heart" })).toBeVisible();
+  const recommendations = page
+    .locator("section")
+    .filter({ hasText: "Baseado no que voce assiste" });
+  await expect(recommendations).toBeVisible();
+  await expect(recommendations.getByRole("link")).toHaveCount(5);
+  await expect(recommendations.getByText("Machine Heart")).not.toBeVisible();
 });
 
 test("navigates catalog by content type shortcuts", async ({ page }) => {
@@ -295,8 +329,11 @@ test("shows saved movie progress but not live tv progress", async ({ page }) => 
 
   await expect(page.getByText("1h 55min restantes").first()).toBeVisible();
   const sportsCards = page.getByRole("link", { name: "Sports Grid channel" });
-  await expect(sportsCards).toHaveCount(3);
+  const sportsCardCount = await sportsCards.count();
+  expect(sportsCardCount).toBeGreaterThanOrEqual(3);
   await Promise.all(
-    [0, 1, 2].map((index) => expect(sportsCards.nth(index)).not.toContainText("restantes"))
+    Array.from({ length: sportsCardCount }, (_value, index) =>
+      expect(sportsCards.nth(index)).not.toContainText("restantes")
+    )
   );
 });

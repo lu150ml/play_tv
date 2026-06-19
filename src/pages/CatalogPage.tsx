@@ -5,7 +5,11 @@ import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
 import { SearchOverlay } from "../components/SearchOverlay";
-import { getFeaturedContent, searchCatalog } from "../services/catalogService";
+import { searchCatalog } from "../services/catalogService";
+import {
+  getPersonalizedRecommendations,
+  getRecommendedHero
+} from "../services/recommendationService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { CatalogFilter, ContentItem, ContentType } from "../types/catalog";
 
@@ -62,8 +66,18 @@ export function CatalogPage() {
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
-  const featured = getFeaturedContent(catalog);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  const recommendedHero = useMemo(
+    () => getRecommendedHero(catalog, playback, favorites),
+    [catalog, favorites, playback]
+  );
+  const recommendations = useMemo(
+    () =>
+      getPersonalizedRecommendations(catalog, playback, favorites, 6).filter(
+        (item) => item.id !== recommendedHero?.id
+      ),
+    [catalog, favorites, playback, recommendedHero?.id]
+  );
   const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
   const categoryGroups = useMemo(
     () => groupByDisplayCategory(sectionItems, sectionConfig.broadCategories),
@@ -124,7 +138,7 @@ export function CatalogPage() {
 
   return (
     <div className="mx-auto max-w-canvas">
-      {!selectedCategory && featured ? <FeaturedHero item={featured} /> : null}
+      {!selectedCategory && recommendedHero ? <FeaturedHero item={recommendedHero} /> : null}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
@@ -207,6 +221,9 @@ export function CatalogPage() {
         </section>
       ) : (
         <>
+          {recommendations.length > 0 ? (
+            <CatalogRail title="Baseado no que voce assiste" items={recommendations.slice(0, 5)} />
+          ) : null}
           <CatalogRail title="Continue Watching" items={continueWatching.slice(0, RAIL_LIMIT)} />
           <CatalogRail title="Favorites" items={favoritesList.slice(0, RAIL_LIMIT)} />
 
