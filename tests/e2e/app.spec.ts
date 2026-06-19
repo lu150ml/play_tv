@@ -93,6 +93,25 @@ test("filters catalog results", async ({ page }) => {
   await expect(page.getByText("Machine Heart").first()).not.toBeVisible();
 });
 
+test("navigates catalog by content type shortcuts", async ({ page }) => {
+  await page.goto("/catalog?type=movie");
+
+  await expect(page.getByRole("button", { name: /Filmes/ })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByText("Orbital Decay").first()).toBeVisible();
+  await expect(page.getByText("Sports Grid").first()).not.toBeVisible();
+
+  await page.getByRole("link", { name: "TV" }).click();
+
+  await expect(page.getByRole("button", { name: /TV ao vivo/ })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByText("Sports Grid").first()).toBeVisible();
+});
+
 test("supports keyboard style navigation", async ({ page }) => {
   await page.goto("/catalog");
 

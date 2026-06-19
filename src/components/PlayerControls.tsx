@@ -18,6 +18,7 @@ interface PlayerControlsProps {
   isLive?: boolean;
   onTogglePlay: () => void;
   onSeek: (positionSeconds: number) => void;
+  onFullscreen: () => void;
 }
 
 export function PlayerControls({
@@ -26,7 +27,8 @@ export function PlayerControls({
   durationSeconds,
   isLive = false,
   onTogglePlay,
-  onSeek
+  onSeek,
+  onFullscreen
 }: PlayerControlsProps) {
   const progress = durationSeconds > 0 ? (positionSeconds / durationSeconds) * 100 : 0;
 
@@ -89,7 +91,7 @@ export function PlayerControls({
           <IconButton label="Player settings" onClick={() => undefined}>
             <Settings aria-hidden="true" size={20} />
           </IconButton>
-          <IconButton label="Fullscreen" onClick={() => undefined}>
+          <IconButton label="Fullscreen" onClick={onFullscreen}>
             <Expand aria-hidden="true" size={20} />
           </IconButton>
         </div>

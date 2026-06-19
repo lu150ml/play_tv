@@ -1,12 +1,25 @@
-import { Download, Home, MonitorPlay, Search, Settings, UserRound } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import {
+  Clapperboard,
+  Download,
+  Film,
+  Home,
+  MonitorPlay,
+  Search,
+  Settings,
+  Tv,
+  UserRound
+} from "lucide-react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { useLibraryStore } from "../stores/libraryStore";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
-  { label: "Catalog", path: "/catalog", icon: MonitorPlay },
+  { label: "Todos", path: "/catalog?type=all", icon: MonitorPlay },
+  { label: "TV", path: "/catalog?type=channel", icon: Tv },
+  { label: "Filmes", path: "/catalog?type=movie", icon: Film },
+  { label: "Séries", path: "/catalog?type=series", icon: Clapperboard },
   { label: "Search", path: "/catalog?search=open", icon: Search },
   { label: "Downloads", path: "/catalog", icon: Download },
   { label: "Profile", path: "/catalog", icon: UserRound }
@@ -14,7 +27,9 @@ const navItems = [
 
 export function AppShell() {
   const sessionName = useLibraryStore((state) => state.sessionName);
+  const location = useLocation();
   useRemoteNavigation();
+  const currentPath = `${location.pathname}${location.search}`;
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
@@ -33,22 +48,20 @@ export function AppShell() {
 
         <nav className="flex flex-1 flex-col gap-2">
           {navItems.map((item) => (
-            <NavLink
+            <Link
               key={item.label}
               to={item.path}
               data-focusable="true"
-              className={({ isActive }) =>
-                [
-                  "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
-                  isActive
-                    ? "border-primary-container/40 bg-primary-container/10 text-primary"
-                    : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
-                ].join(" ")
-              }
+              className={[
+                "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
+                isNavItemActive(item.path, currentPath)
+                  ? "border-primary-container/40 bg-primary-container/10 text-primary"
+                  : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
+              ].join(" ")}
             >
               <item.icon aria-hidden="true" size={20} />
               {item.label}
-            </NavLink>
+            </Link>
           ))}
         </nav>
 
@@ -75,25 +88,31 @@ export function AppShell() {
       </main>
 
       <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
-        {navItems.map((item) => (
-          <NavLink
+        {navItems.slice(0, 5).map((item) => (
+          <Link
             key={item.label}
             to={item.path}
             data-focusable="true"
-            className={({ isActive }) =>
-              [
-                "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
-                isActive
-                  ? "border-secondary-container bg-secondary-container/40 text-primary"
-                  : "border-transparent text-on-surface-variant"
-              ].join(" ")
-            }
+            className={[
+              "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
+              isNavItemActive(item.path, currentPath)
+                ? "border-secondary-container bg-secondary-container/40 text-primary"
+                : "border-transparent text-on-surface-variant"
+            ].join(" ")}
           >
             <item.icon aria-hidden="true" size={19} />
             {item.label}
-          </NavLink>
+          </Link>
         ))}
       </nav>
     </div>
   );
+}
+
+function isNavItemActive(path: string, currentPath: string): boolean {
+  if (path.includes("?")) {
+    return currentPath === path;
+  }
+
+  return currentPath === path || (path === "/catalog" && currentPath === "/catalog");
 }

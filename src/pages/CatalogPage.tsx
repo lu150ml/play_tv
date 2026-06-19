@@ -1,5 +1,6 @@
 import { Clapperboard, Film, Grid2x2, Search, Tv } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
@@ -9,6 +10,7 @@ import { useLibraryStore } from "../stores/libraryStore";
 import type { CatalogFilter, ContentItem } from "../types/catalog";
 
 export function CatalogPage() {
+  const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilter>({ type: "all", sort: "featured" });
   const catalog = useLibraryStore((state) => state.catalog);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
@@ -38,6 +40,23 @@ export function CatalogPage() {
     }),
     [catalog]
   );
+  const selectedType = searchParams.get("type");
+
+  useEffect(() => {
+    if (!selectedType) {
+      setFilters((current) => ({ ...current, type: "all" }));
+      return;
+    }
+
+    if (selectedType === "channel" || selectedType === "movie" || selectedType === "series") {
+      setFilters((current) => ({ ...current, type: selectedType }));
+      return;
+    }
+
+    if (selectedType === "all") {
+      setFilters((current) => ({ ...current, type: "all" }));
+    }
+  }, [selectedType]);
 
   return (
     <div className="mx-auto max-w-canvas">
@@ -78,10 +97,8 @@ export function CatalogPage() {
         </span>
       </div>
 
-      <SearchOverlay filters={filters} catalog={catalog} onChange={setFilters} />
-
       <section className="mb-8">
-        <h2 className="mb-4 font-display text-2xl font-bold text-on-surface">Browse</h2>
+        <h2 className="mb-4 font-display text-2xl font-bold text-on-surface">Navegar por tipo</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <TypeButton
             label="Todos"
@@ -113,6 +130,8 @@ export function CatalogPage() {
           />
         </div>
       </section>
+
+      <SearchOverlay filters={filters} catalog={catalog} onChange={setFilters} />
 
       <CatalogRail title="Continue Watching" items={continueWatching} />
       <CatalogRail title="Live TV" items={liveTv} />

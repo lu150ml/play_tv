@@ -31,6 +31,7 @@ export function PlayerPage() {
   const [seriesEpisodes, setSeriesEpisodes] = useState<Episode[]>([]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | undefined>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerShellRef = useRef<HTMLElement | null>(null);
   const selectedEpisode = useMemo(
     () => seriesEpisodes.find((episode) => episode.id === selectedEpisodeId),
     [selectedEpisodeId, seriesEpisodes]
@@ -233,6 +234,25 @@ export function PlayerPage() {
     }
   }
 
+  async function handleFullscreen() {
+    const element = playerShellRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await element.requestFullscreen();
+    } catch {
+      setMediaError("Nao foi possivel ativar tela cheia neste navegador.");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-canvas">
       <Link
@@ -244,8 +264,13 @@ export function PlayerPage() {
         Catalog
       </Link>
 
-      <section className="relative mb-8 aspect-video min-h-72 overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl">
-        <div className={["absolute inset-0 bg-gradient-to-br", content.backdropTone].join(" ")} />
+      <section
+        ref={playerShellRef}
+        className="relative mb-8 aspect-video min-h-72 overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl"
+      >
+        {!activeStreamUrl ? (
+          <div className={["absolute inset-0 bg-gradient-to-br", content.backdropTone].join(" ")} />
+        ) : null}
         {activeStreamUrl ? (
           <video
             ref={videoRef}
@@ -269,11 +294,13 @@ export function PlayerPage() {
             alt=""
             className={[
               "absolute inset-0 h-full w-full object-cover opacity-50",
-              activeStreamUrl ? "pointer-events-none opacity-0" : ""
+              activeStreamUrl ? "hidden" : ""
             ].join(" ")}
           />
         ) : null}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.15),transparent_22%),linear-gradient(180deg,transparent,rgba(0,0,0,0.76))]" />
+        {!activeStreamUrl ? (
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.15),transparent_22%),linear-gradient(180deg,transparent,rgba(0,0,0,0.76))]" />
+        ) : null}
         <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-surface-container/70 px-3 py-1 font-mono text-xs uppercase">
           {activeStreamUrl ? "Now Playing" : "Preview"}
         </div>
@@ -289,6 +316,9 @@ export function PlayerPage() {
           isLive={!canSeek && content.type === "channel"}
           onTogglePlay={() => setIsPlaying((current) => !current)}
           onSeek={handleSeek}
+          onFullscreen={() => {
+            void handleFullscreen();
+          }}
         />
       </section>
 
