@@ -5,6 +5,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
+import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
 import {
   getProgressRatio,
@@ -36,6 +37,8 @@ export function PlayerPage() {
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [episodeError, setEpisodeError] = useState<string | undefined>();
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now());
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [bufferedAheadSeconds, setBufferedAheadSeconds] = useState(0);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [seriesEpisodes, setSeriesEpisodes] = useState<Episode[]>([]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | undefined>();
@@ -68,7 +71,8 @@ export function PlayerPage() {
   const seasonEpisodes = selectedEpisode
     ? seriesEpisodes.filter((episode) => episode.season === selectedEpisode.season)
     : seriesEpisodes;
-  const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+  const minimumStartupBufferSeconds = item?.type === "channel" ? 4 : 8;
+  const shouldShowControls = !isPlaying || Boolean(mediaError) || isBuffering || areControlsVisible;
 
   const related = useMemo(
     () =>
@@ -142,13 +146,17 @@ export function PlayerPage() {
 
     setMediaError(undefined);
     setMediaDuration(undefined);
+    setIsBuffering(false);
+    setBufferedAheadSeconds(0);
 
     let hls: Hls | undefined;
     let isDisposed = false;
     const isHlsStream = activeStreamUrl.includes(".m3u8");
+    const isLiveContent = item?.type === "channel";
 
     if (isHlsStream && video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = activeStreamUrl;
+      video.load();
     } else if (isHlsStream) {
       void import("hls.js").then(({ default: HlsPlayer }) => {
         if (isDisposed) {
@@ -162,7 +170,12 @@ export function PlayerPage() {
 
         hls = new HlsPlayer({
           enableWorker: true,
-          lowLatencyMode: item?.type === "channel"
+          lowLatencyMode: false,
+          startFragPrefetch: true,
+          maxBufferLength: isLiveContent ? 45 : 90,
+          maxMaxBufferLength: isLiveContent ? 90 : 180,
+          maxBufferSize: isLiveContent ? 60 * 1000 * 1000 : 120 * 1000 * 1000,
+          backBufferLength: isLiveContent ? 15 : 30
         });
         hls.loadSource(activeStreamUrl);
         hls.attachMedia(video);
@@ -177,6 +190,7 @@ export function PlayerPage() {
       });
     } else {
       video.src = activeStreamUrl;
+      video.load();
     }
 
     return () => {
@@ -307,6 +321,47 @@ export function PlayerPage() {
     }
   }
 
+  function updateBufferedState() {
+    const video = videoRef.current;
+
+    if (!video) {
+      return 0;
+    }
+
+    const nextBufferedAhead = getBufferedAheadSeconds(video.buffered, video.currentTime);
+    setBufferedAheadSeconds(nextBufferedAhead);
+
+    return nextBufferedAhead;
+  }
+
+  function handleBufferingStart() {
+    updateBufferedState();
+    setIsBuffering(true);
+    revealControls();
+  }
+
+  function handleBufferingProgress() {
+    const video = videoRef.current;
+    const nextBufferedAhead = updateBufferedState();
+
+    if (
+      video &&
+      hasEnoughStartupBuffer(video.buffered, video.currentTime, minimumStartupBufferSeconds)
+    ) {
+      setIsBuffering(false);
+      return;
+    }
+
+    if (nextBufferedAhead > 0 && !isPlaying) {
+      setIsBuffering(false);
+    }
+  }
+
+  function handleBufferingEnd() {
+    updateBufferedState();
+    setIsBuffering(false);
+  }
+
   function handleNextEpisode() {
     if (!nextEpisode) {
       return;
@@ -387,9 +442,16 @@ export function PlayerPage() {
             ref={videoRef}
             className="absolute inset-0 h-full w-full bg-black object-contain"
             poster={content.imageUrl}
+            preload="auto"
             playsInline
+            onCanPlay={handleBufferingEnd}
+            onCanPlayThrough={handleBufferingEnd}
             onLoadedMetadata={handleLoadedMetadata}
+            onPlaying={handleBufferingEnd}
+            onProgress={handleBufferingProgress}
+            onStalled={handleBufferingStart}
             onTimeUpdate={handleTimeUpdate}
+            onWaiting={handleBufferingStart}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onEnded={handleEnded}
@@ -424,6 +486,15 @@ export function PlayerPage() {
         {mediaError ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-error/40 bg-error-container/70 p-4 text-sm leading-6 text-error backdrop-blur-xl">
             {mediaError}
+          </div>
+        ) : null}
+        {isBuffering && !mediaError ? (
+          <div
+            data-testid="buffering-indicator"
+            className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/80 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl"
+          >
+            Carregando buffer...
+            {bufferedAheadSeconds > 0 ? ` ${Math.floor(bufferedAheadSeconds)}s prontos` : null}
           </div>
         ) : null}
         <PlayerControls

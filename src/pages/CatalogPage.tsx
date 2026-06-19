@@ -67,18 +67,21 @@ export function CatalogPage() {
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
   const recommendedHero = useMemo(
-    () => getRecommendedHero(catalog, playback, favorites),
-    [catalog, favorites, playback]
+    () =>
+      getRecommendedHero(sectionItems, playback, favorites, {
+        allowChannels: sectionKey === "tv"
+      }),
+    [favorites, playback, sectionItems, sectionKey]
   );
   const recommendations = useMemo(
     () =>
-      getPersonalizedRecommendations(catalog, playback, favorites, 6).filter(
+      getPersonalizedRecommendations(sectionItems, playback, favorites, 6).filter(
         (item) => item.id !== recommendedHero?.id
       ),
-    [catalog, favorites, playback, recommendedHero?.id]
+    [favorites, playback, recommendedHero?.id, sectionItems]
   );
-  const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
   const categoryGroups = useMemo(
     () => groupByDisplayCategory(sectionItems, sectionConfig.broadCategories),
     [sectionConfig.broadCategories, sectionItems]
@@ -248,9 +251,12 @@ export function CatalogPage() {
 
 function FeaturedHero({ item }: { item: ContentItem }) {
   return (
-    <section
+    <Link
+      to={getContentHref(item)}
+      data-focusable="true"
+      aria-label={`Abrir ${item.title}`}
       className={[
-        "mb-8 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl lg:p-8",
+        "focus-card group mb-8 block overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl transition duration-200 hover:border-primary-container/45 lg:p-8",
         item.backdropTone
       ].join(" ")}
     >
@@ -272,8 +278,12 @@ function FeaturedHero({ item }: { item: ContentItem }) {
           {item.description}
         </p>
       </div>
-    </section>
+    </Link>
   );
+}
+
+function getContentHref(item: ContentItem): string {
+  return item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
 }
 
 function HomeRails({ catalog }: { catalog: ContentItem[] }) {

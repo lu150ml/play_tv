@@ -169,13 +169,52 @@ test("personalizes hero and recommendations from watch history", async ({ page }
 
   await page.goto("/catalog");
 
-  await expect(page.locator("h1").filter({ hasText: "Machine Heart" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir Machine Heart" })).toBeVisible();
   const recommendations = page
     .locator("section")
     .filter({ hasText: "Baseado no que voce assiste" });
   await expect(recommendations).toBeVisible();
   await expect(recommendations.getByRole("link")).toHaveCount(5);
   await expect(recommendations.getByText("Machine Heart")).not.toBeVisible();
+});
+
+test("opens the clickable catalog hero using card routing rules", async ({ page }) => {
+  await page.goto("/catalog");
+
+  await page.getByRole("link", { name: "Abrir Neon Genesis: The Awakening" }).click();
+
+  await expect(page).toHaveURL(/\/watch\/neon-genesis-awakening$/);
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "server-xtreme-library",
+      JSON.stringify({
+        state: {
+          playback: {
+            "neon-genesis-awakening": {
+              contentId: "neon-genesis-awakening",
+              positionSeconds: 1800,
+              durationSeconds: 8100,
+              updatedAt: new Date().toISOString()
+            }
+          },
+          favorites: [],
+          sessionName: "Editor Pro"
+        },
+        version: 0
+      })
+    );
+  });
+
+  await page.goto("/catalog");
+  await page.getByRole("link", { name: "Abrir Machine Heart" }).click();
+
+  await expect(page).toHaveURL(/\/series\/machine-heart$/);
+
+  await page.goto("/catalog/tv");
+  await page.getByRole("link", { name: "Abrir Cine Max Live" }).click();
+
+  await expect(page).toHaveURL(/\/watch\/cine-max-live$/);
 });
 
 test("navigates catalog by content type shortcuts", async ({ page }) => {
@@ -270,24 +309,10 @@ test("shows only current season episodes while watching a series", async ({ page
 });
 
 test("hides player controls after inactivity and shows them on interaction", async ({ page }) => {
-  await page.route("http://xtream.test/**", () => new Promise(() => undefined));
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
-  await page.getByRole("link", { name: "Server Series series" }).first().click();
-  await page.getByRole("link", { name: /S1 E1 Pilot/ }).click();
+  await page.goto("/watch/neon-genesis-awakening");
 
   const controls = page.getByTestId("player-controls");
-  const video = page.locator("video");
 
-  await video.evaluate((element) => {
-    Object.defineProperty(element, "play", {
-      configurable: true,
-      value: () => Promise.resolve()
-    });
-  });
   await expect(controls).toHaveCSS("opacity", "1");
   await page.getByRole("button", { name: "Play", exact: true }).click();
 
@@ -295,6 +320,33 @@ test("hides player controls after inactivity and shows them on interaction", asy
 
   await page.mouse.move(500, 300);
   await expect(controls).toHaveCSS("opacity", "1");
+});
+
+test("preloads video and keeps controls visible while buffering", async ({ page }) => {
+  await page.route("http://xtream.test/**", () => new Promise(() => undefined));
+  await page.goto("/login");
+  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
+  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
+  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+
+  const video = page.locator("video");
+  const controls = page.getByTestId("player-controls");
+
+  await expect(video).toHaveAttribute("preload", "auto");
+  await video.evaluate((element) => {
+    element.dispatchEvent(new Event("waiting", { bubbles: true }));
+  });
+
+  await expect(page.getByTestId("buffering-indicator")).toContainText("Carregando buffer");
+  await expect(controls).toHaveCSS("opacity", "1");
+
+  await video.evaluate((element) => {
+    element.dispatchEvent(new Event("playing", { bubbles: true }));
+  });
+
+  await expect(page.getByTestId("buffering-indicator")).not.toBeVisible();
 });
 
 test("shows saved movie progress but not live tv progress", async ({ page }) => {

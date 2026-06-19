@@ -18,6 +18,10 @@ interface TopicProfile {
   hasSignals: boolean;
 }
 
+interface RecommendedHeroOptions {
+  allowChannels?: boolean;
+}
+
 export function getUserTopicProfile(
   catalog: ContentItem[],
   playback: Record<string, PlaybackState>,
@@ -85,10 +89,20 @@ export function getPersonalizedRecommendations(
 export function getRecommendedHero(
   catalog: ContentItem[],
   playback: Record<string, PlaybackState>,
-  favorites: ReadonlySet<string> = new Set()
+  favorites: ReadonlySet<string> = new Set(),
+  options: RecommendedHeroOptions = {}
 ): ContentItem | undefined {
-  const recommendation = getPersonalizedRecommendations(catalog, playback, favorites, 1)[0];
-  return recommendation ?? getFeaturedContent(catalog);
+  const preferredCatalog = options.allowChannels
+    ? catalog
+    : catalog.filter((item) => item.type !== "channel");
+  const recommendation = getPersonalizedRecommendations(
+    preferredCatalog,
+    playback,
+    favorites,
+    1
+  )[0];
+
+  return recommendation ?? getFeaturedContent(preferredCatalog) ?? getFeaturedContent(catalog);
 }
 
 function scoreItem(

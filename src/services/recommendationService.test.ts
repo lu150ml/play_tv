@@ -62,6 +62,31 @@ describe("recommendationService", () => {
     expect(getPersonalizedRecommendations(mockCatalog, {}, new Set(), 5)).toEqual([]);
     expect(getRecommendedHero(mockCatalog, {}, new Set())?.id).toBe("neon-genesis-awakening");
   });
+
+  it("does not choose a live channel as home hero when movies or series exist", () => {
+    const channelFirstCatalog = [
+      { ...mockCatalog.find((item) => item.id === "sports-grid")!, isFeatured: true },
+      ...mockCatalog.filter((item) => item.id !== "sports-grid")
+    ];
+
+    expect(
+      getRecommendedHero(
+        channelFirstCatalog,
+        {
+          "sports-grid": playback("sports-grid", 1200, 7200)
+        },
+        new Set()
+      )?.type
+    ).not.toBe("channel");
+  });
+
+  it("allows a live channel hero on the tv screen", () => {
+    const tvCatalog = mockCatalog.filter((item) => item.type === "channel");
+
+    expect(getRecommendedHero(tvCatalog, {}, new Set(), { allowChannels: true })?.id).toBe(
+      "cine-max-live"
+    );
+  });
 });
 
 function playback(
