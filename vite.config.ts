@@ -6,7 +6,6 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react(), xtreamProxyPlugin(), subtitleProxyPlugin()],
-  cacheDir: "/tmp/vite-play-tv",
   build: {
     chunkSizeWarningLimit: 850
   },
