@@ -6,8 +6,8 @@
 
 :root {
   color-scheme: dark;
-  background: #0b1326;
-  color: #dae2fd;
+  background: #141414;
+  color: #f5f5f5;
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -19,9 +19,7 @@ body {
   min-width: 320px;
   min-height: 100dvh;
   margin: 0;
-  background:
-    radial-gradient(circle at 18% 8%, rgba(0, 219, 233, 0.14), transparent 30%),
-    linear-gradient(180deg, #060e20 0%, #0b1326 38%, #060e20 100%);
+  background: #141414;
 }
 
 button,
@@ -33,12 +31,12 @@ select {
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.42);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
 }
 
 ::selection {
-  background: #00f0ff;
-  color: #00363a;
+  background: #e50914;
+  color: #ffffff;
 }
 
 ::-webkit-scrollbar {
@@ -47,43 +45,50 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b1326;
+  background: #141414;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2d3449;
+  background: #333333;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #00dbe9;
+  background: #4d4d4d;
 }
 
 @layer components {
   .glass-panel {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(23, 31, 51, 0.72);
-    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(20, 20, 20, 0.92);
+    backdrop-filter: blur(20px);
   }
 
   .focus-card {
     transition:
-      border-color 160ms ease,
-      box-shadow 160ms ease,
-      transform 160ms ease,
-      background-color 160ms ease;
+      transform 200ms cubic-bezier(0.2, 0, 0.2, 1),
+      box-shadow 200ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease;
   }
 
   .focus-card:hover,
   .focus-card:focus-visible {
-    border-color: rgba(0, 240, 255, 0.72);
-    box-shadow: 0 0 24px rgba(0, 219, 233, 0.22);
-    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Cards de pôster: leve zoom no hover, estilo Netflix/Prime. */
+  .poster-card {
+    transition: transform 220ms cubic-bezier(0.2, 0, 0.2, 1);
+  }
+
+  .poster-card:hover,
+  .poster-card:focus-visible {
+    transform: scale(1.06);
+    z-index: 10;
   }
 
   .media-poster {
-    background:
-      linear-gradient(135deg, rgba(0, 219, 233, 0.22), transparent 38%),
-      linear-gradient(160deg, rgba(208, 188, 255, 0.18), transparent 52%), #131b2e;
+    background: linear-gradient(160deg, #2a2a2a, #141414);
   }
 }

@@ -1,4 +1,4 @@
-import { Heart, Play, Tv, X } from "lucide-react";
+import { Play, Tv, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import {
@@ -8,7 +8,7 @@ import {
 } from "../services/playbackService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { ContentItem } from "../types/catalog";
-import { formatDuration, formatRemainingTime } from "../utils/format";
+import { formatRemainingTime } from "../utils/format";
 
 interface ContentCardProps {
   item: ContentItem;
@@ -19,13 +19,13 @@ interface ContentCardProps {
 
 export function ContentCard({ item, compact = false, onRemove, removeLabel }: ContentCardProps) {
   const playback = useLibraryStore((state) => state.playback[item.id]);
-  const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
   const showProgress = shouldShowPlaybackProgress(item.type);
   const progress = showProgress ? getProgressRatio(playback) : 0;
   const remainingLabel = showProgress
     ? formatRemainingTime(getRemainingSeconds(playback))
     : undefined;
   const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  const isChannel = item.type === "channel";
 
   return (
     <Link
@@ -33,13 +33,14 @@ export function ContentCard({ item, compact = false, onRemove, removeLabel }: Co
       data-focusable="true"
       aria-label={`${item.title} ${item.type}`}
       className={[
-        "focus-card group block overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 text-left",
-        compact ? "w-72 shrink-0" : "min-h-full"
+        "poster-card group block text-left",
+        compact ? "w-36 shrink-0 sm:w-40 lg:w-44" : "w-full"
       ].join(" ")}
     >
       <div
         className={[
-          "media-poster relative aspect-video overflow-hidden bg-gradient-to-br",
+          "media-poster relative overflow-hidden rounded-md bg-gradient-to-br shadow-lg",
+          isChannel ? "aspect-video" : "aspect-[2/3]",
           item.posterTone
         ].join(" ")}
       >
@@ -48,18 +49,31 @@ export function ContentCard({ item, compact = false, onRemove, removeLabel }: Co
             src={item.imageUrl}
             alt=""
             loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover opacity-75"
+            className={[
+              "absolute inset-0 h-full w-full",
+              isChannel ? "object-contain p-4" : "object-cover"
+            ].join(" ")}
           />
-        ) : null}
-        <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.12),transparent)] opacity-0 transition-opacity group-hover:opacity-100" />
-        <div className="absolute left-3 top-3 flex gap-2">
-          <span className="rounded-md border border-white/10 bg-black/35 px-2 py-1 font-mono text-[11px] uppercase text-on-surface">
-            {item.type}
-          </span>
-          <span className="rounded-md border border-white/10 bg-black/35 px-2 py-1 font-mono text-[11px] uppercase text-on-surface">
-            {item.quality[0]}
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
+            <span className="line-clamp-3 font-display text-sm font-semibold text-on-surface/80">
+              {item.title}
+            </span>
+          </div>
+        )}
+
+        {/* Escurece no hover e revela o play */}
+        <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/40" />
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-black shadow-xl">
+            {isChannel ? (
+              <Tv aria-hidden="true" size={22} />
+            ) : (
+              <Play aria-hidden="true" size={22} className="ml-0.5 fill-black" />
+            )}
           </span>
         </div>
+
         {onRemove ? (
           <button
             type="button"
@@ -70,45 +84,32 @@ export function ContentCard({ item, compact = false, onRemove, removeLabel }: Co
               event.stopPropagation();
               onRemove();
             }}
-            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/60 text-on-surface transition hover:border-error/50 hover:text-error"
+            className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition hover:bg-error focus:opacity-100 group-hover:opacity-100"
           >
             <X aria-hidden="true" size={15} />
           </button>
         ) : null}
-        <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/40 px-2 py-1 font-mono text-xs">
-          {item.type === "channel" ? (
-            <Tv aria-hidden="true" size={14} />
-          ) : (
-            <Play aria-hidden="true" size={14} />
-          )}
-          {formatDuration(item.durationSeconds)}
-        </div>
+
+        {isChannel ? (
+          <span className="absolute left-2 top-2 rounded bg-error px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+            Live
+          </span>
+        ) : null}
+
         {progress > 0 ? (
-          <div className="absolute bottom-0 left-0 h-1 w-full bg-white/20">
-            <div className="h-full bg-primary-container" style={{ width: `${progress * 100}%` }} />
+          <div className="absolute bottom-0 left-0 h-1 w-full bg-white/25">
+            <div className="h-full bg-primary" style={{ width: `${progress * 100}%` }} />
           </div>
         ) : null}
       </div>
 
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 font-display text-lg font-semibold text-on-surface">
-            {item.title}
-          </h3>
-          <Heart
-            aria-hidden="true"
-            className={isFavorite ? "fill-error text-error" : "text-on-surface-variant"}
-            size={18}
-          />
-        </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">
-          {item.description}
+      <div className="mt-2 px-0.5">
+        <h3 className="line-clamp-1 text-sm font-semibold text-on-surface group-hover:text-white">
+          {item.title}
+        </h3>
+        <p className="mt-0.5 line-clamp-1 text-xs text-on-surface-variant">
+          {remainingLabel ?? item.genres[0] ?? item.quality[0]}
         </p>
-        {remainingLabel ? (
-          <p className="mt-3 font-mono text-xs uppercase text-primary-container">
-            {remainingLabel}
-          </p>
-        ) : null}
       </div>
     </Link>
   );

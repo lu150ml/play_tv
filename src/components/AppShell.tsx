@@ -78,15 +78,12 @@ export function AppShell() {
     <div className="min-h-screen bg-background text-on-surface">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
         <div className="mb-8 flex items-center gap-4 px-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary-container/50 bg-primary-container/10 text-primary shadow-glow">
-            <MonitorPlay aria-hidden="true" size={28} />
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-white">
+            <MonitorPlay aria-hidden="true" size={24} />
           </div>
-          <div>
-            <p className="font-display text-xl font-bold tracking-normal text-primary">
-              Server Xtreme
-            </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.1.0</p>
-          </div>
+          <p className="font-display text-xl font-extrabold tracking-tight text-primary">
+            Server Xtreme
+          </p>
         </div>
 
         <nav className="flex flex-1 flex-col gap-2">
@@ -115,8 +112,10 @@ export function AppShell() {
 
         {/* Profile card */}
         <div className="rounded-xl border border-white/10 bg-surface-container/70 p-4">
-          <p className="font-mono text-xs uppercase text-on-surface-variant">Connected as</p>
-          <p className="mt-1 font-display text-lg font-semibold text-on-surface">{sessionName}</p>
+          <p className="text-xs text-on-surface-variant">Conectado como</p>
+          <p className="mt-1 truncate font-display text-base font-semibold text-on-surface">
+            {sessionName}
+          </p>
 
           {activeProfile ? (
             <button
@@ -134,9 +133,7 @@ export function AppShell() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-on-surface">{activeProfile.name}</p>
-                <p className="font-mono text-[10px] uppercase text-primary-container">
-                  Trocar perfil
-                </p>
+                <p className="text-[11px] text-primary-container">Trocar perfil</p>
               </div>
               <UserRound size={16} className="shrink-0 text-on-surface-variant" />
             </button>
