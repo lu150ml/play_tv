@@ -78,6 +78,28 @@ npm run test:e2e     # Testes E2E (Playwright)
 
 ---
 
+## App desktop para Windows (.exe)
+
+O app é empacotado com **Electron**: ele sobe um servidor local embutido que
+serve o frontend **e** os mesmos proxies (`/api/xtream`, `/api/subtitles`), então
+o `.exe` funciona igual ao ambiente de dev, sem configurar nada.
+
+```bash
+npm install
+npm run dist:win      # gera os .exe em release/
+```
+
+Saída em `release/`:
+
+- `Server Xtreme-Setup-<versão>.exe` — instalador (atalho no menu, escolhe pasta)
+- `Server Xtreme-<versão>-portable.exe` — portátil, roda sem instalar
+
+Para testar a janela Electron localmente sem empacotar: `npm run electron:dev`.
+
+> Observação: gerar o `.exe` a partir de macOS/Linux usa o Wine embutido do
+> electron-builder (baixado automaticamente). Para o build mais confiável,
+> rode `npm run dist:win` numa máquina Windows.
+
 ## Arquitetura do proxy
 
 O Vite dev server inclui um plugin (`xtreamProxyPlugin`) que intercepta `/api/xtream?*` e repassa para `player_api.php` no servidor configurado. Isso evita erros de CORS durante o desenvolvimento. Em produção, o mesmo proxy precisa ser configurado no servidor web (nginx, Caddy, etc.).
