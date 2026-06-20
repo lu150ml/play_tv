@@ -78,33 +78,6 @@ export interface XtreamCatalogResult {
   catalog: ContentItem[];
 }
 
-// Limite por categoria (não por tipo). Um corte plano em N itens do início da
-// lista descartava categorias inteiras que o servidor retorna no fim (ex.:
-// Comédia, Netflix). Capando por categoria, toda categoria fica representada.
-const MAX_ITEMS_PER_CATEGORY = 600;
-
-function capPerCategory<T extends { category_id?: string | number }>(
-  streams: T[],
-  max: number
-): T[] {
-  const counts = new Map<string, number>();
-  const result: T[] = [];
-
-  for (const stream of streams) {
-    const key = String(stream.category_id ?? "uncategorized");
-    const count = counts.get(key) ?? 0;
-
-    if (count >= max) {
-      continue;
-    }
-
-    counts.set(key, count + 1);
-    result.push(stream);
-  }
-
-  return result;
-}
-
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
@@ -129,13 +102,12 @@ export async function loadXtreamCatalog(
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
-  const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  // Carrega o catálogo completo do servidor (sem limite por categoria).
+  const liveItems = liveStreams.map((stream) =>
     mapLiveStream(stream, liveCategoryMap, credentials)
   );
-  const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapVodStream(stream, vodCategoryMap, credentials)
-  );
-  const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const vodItems = vodStreams.map((stream) => mapVodStream(stream, vodCategoryMap, credentials));
+  const seriesItems = seriesStreams.map((stream) =>
     mapSeriesStream(stream, seriesCategoryMap)
   );
 
