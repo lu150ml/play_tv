@@ -322,7 +322,17 @@ test("hides player controls after inactivity and shows them on interaction", asy
   await expect(controls).toHaveCSS("opacity", "1");
 });
 
-test("preloads video and keeps controls visible while buffering", async ({ page }) => {
+test("preloads video without revealing hidden controls while buffering", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: () => Promise.resolve()
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value: () => undefined
+    });
+  });
   await page.route("http://xtream.test/**", () => new Promise(() => undefined));
   await page.goto("/login");
   await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
@@ -335,12 +345,15 @@ test("preloads video and keeps controls visible while buffering", async ({ page 
   const controls = page.getByTestId("player-controls");
 
   await expect(video).toHaveAttribute("preload", "auto");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(controls).toHaveCSS("opacity", "0", { timeout: 6500 });
+
   await video.evaluate((element) => {
     element.dispatchEvent(new Event("waiting", { bubbles: true }));
   });
 
   await expect(page.getByTestId("buffering-indicator")).toContainText("Carregando buffer");
-  await expect(controls).toHaveCSS("opacity", "1");
+  await expect(controls).toHaveCSS("opacity", "0");
 
   await video.evaluate((element) => {
     element.dispatchEvent(new Event("playing", { bubbles: true }));
