@@ -78,7 +78,32 @@ export interface XtreamCatalogResult {
   catalog: ContentItem[];
 }
 
-const MAX_ITEMS_PER_TYPE = 800;
+// Limite por categoria (não por tipo). Um corte plano em N itens do início da
+// lista descartava categorias inteiras que o servidor retorna no fim (ex.:
+// Comédia, Netflix). Capando por categoria, toda categoria fica representada.
+const MAX_ITEMS_PER_CATEGORY = 600;
+
+function capPerCategory<T extends { category_id?: string | number }>(
+  streams: T[],
+  max: number
+): T[] {
+  const counts = new Map<string, number>();
+  const result: T[] = [];
+
+  for (const stream of streams) {
+    const key = String(stream.category_id ?? "uncategorized");
+    const count = counts.get(key) ?? 0;
+
+    if (count >= max) {
+      continue;
+    }
+
+    counts.set(key, count + 1);
+    result.push(stream);
+  }
+
+  return result;
+}
 
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
@@ -104,15 +129,15 @@ export async function loadXtreamCatalog(
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
-  const liveItems = liveStreams
-    .slice(0, MAX_ITEMS_PER_TYPE)
-    .map((stream) => mapLiveStream(stream, liveCategoryMap, credentials));
-  const vodItems = vodStreams
-    .slice(0, MAX_ITEMS_PER_TYPE)
-    .map((stream) => mapVodStream(stream, vodCategoryMap, credentials));
-  const seriesItems = seriesStreams
-    .slice(0, MAX_ITEMS_PER_TYPE)
-    .map((stream) => mapSeriesStream(stream, seriesCategoryMap));
+  const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+    mapLiveStream(stream, liveCategoryMap, credentials)
+  );
+  const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+    mapVodStream(stream, vodCategoryMap, credentials)
+  );
+  const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+    mapSeriesStream(stream, seriesCategoryMap)
+  );
 
   const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
 
@@ -183,6 +208,32 @@ async function requestXtream<T>(
   return (await response.json()) as T;
 }
 
+// "FILMES | DRAMA" → "Drama", "CANAIS | ESPN" → "ESPN", "SÉRIES | NETFLIX" → "Netflix"
+function normalizeCategory(raw: string): string {
+  const parts = raw.split("|");
+  const label = (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim();
+  if (!label) return raw;
+
+  // Capitaliza cada palavra usando split por espaço (funciona com acentos)
+  const titleCase = label
+    .toLowerCase()
+    .split(" ")
+    .map((word) => (word.length > 0 ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(" ");
+
+  // Siglas e marcas conhecidas em caixa alta
+  return titleCase
+    .replace(/\bTv\b/g, "TV")
+    .replace(/\bHbo\b/g, "HBO")
+    .replace(/\bEspn\b/g, "ESPN")
+    .replace(/\bSbt\b/g, "SBT")
+    .replace(/\bUfc\b/g, "UFC")
+    .replace(/\bUhd\b/g, "UHD")
+    .replace(/\b4k\b/gi, "4K")
+    .replace(/\bHdr\b/gi, "HDR")
+    .replace(/\b24h\b/gi, "24h");
+}
+
 function mapCategories(categories: XtreamCategory[]): Map<string, string> {
   const entries = categories
     .map((category): [string, string] => [
@@ -200,7 +251,8 @@ function mapLiveStream(
   credentials: XtreamCredentials
 ): ContentItem {
   const providerId = String(stream.stream_id ?? stream.name ?? crypto.randomUUID());
-  const categoryName = categories.get(String(stream.category_id ?? "")) ?? "Live TV";
+  const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Live TV";
+  const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Channel ${providerId}`;
 
   return {
@@ -232,7 +284,8 @@ function mapVodStream(
   credentials: XtreamCredentials
 ): ContentItem {
   const providerId = String(stream.stream_id ?? stream.name ?? crypto.randomUUID());
-  const categoryName = categories.get(String(stream.category_id ?? "")) ?? "Movies";
+  const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Movies";
+  const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Movie ${providerId}`;
   const extension = stream.container_extension || "mp4";
 
@@ -262,7 +315,8 @@ function mapVodStream(
 
 function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>): ContentItem {
   const providerId = String(stream.series_id ?? stream.name ?? crypto.randomUUID());
-  const categoryName = categories.get(String(stream.category_id ?? "")) ?? "Series";
+  const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Series";
+  const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Series ${providerId}`;
 
   return {
