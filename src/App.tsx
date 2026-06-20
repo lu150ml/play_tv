@@ -4,6 +4,7 @@ import { AppShell } from "./components/AppShell";
 import { CatalogPage } from "./pages/CatalogPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
+import { ProfilesPage } from "./pages/ProfilesPage";
 import { SeriesPage } from "./pages/SeriesPage";
 
 export function App() {
@@ -11,6 +12,7 @@ export function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/profiles" element={<ProfilesPage />} />
       <Route element={<AppShell />}>
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/catalog/:section" element={<CatalogPage />} />

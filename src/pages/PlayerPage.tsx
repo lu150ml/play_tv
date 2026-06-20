@@ -1,6 +1,6 @@
 import type Hls from "hls.js";
 import { ArrowLeft, Heart, Plus, Share2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
@@ -13,8 +13,9 @@ import {
   savePlaybackProgress
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
+import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
 import { useLibraryStore } from "../stores/libraryStore";
-import type { Episode } from "../types/catalog";
+import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function PlayerPage() {
@@ -42,8 +43,18 @@ export function PlayerPage() {
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [seriesEpisodes, setSeriesEpisodes] = useState<Episode[]>([]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | undefined>();
+  const [isSubtitlePickerOpen, setIsSubtitlePickerOpen] = useState(false);
+  const [subtitles, setSubtitles] = useState<SubtitleResult[]>([]);
+  const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
+  const [subtitleError, setSubtitleError] = useState<string | undefined>();
+  const [subtitleUrl, setSubtitleUrl] = useState<string | undefined>();
+  const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
+  const hlsRef = useRef<Hls | undefined>(undefined);
+  const bufferRecoveryTimeoutRef = useRef<number | undefined>(undefined);
+  const playbackIntentRef = useRef(isPlaying);
+  const mediaErrorRef = useRef(mediaError);
   const selectedEpisode = useMemo(
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
@@ -71,8 +82,76 @@ export function PlayerPage() {
   const seasonEpisodes = selectedEpisode
     ? seriesEpisodes.filter((episode) => episode.season === selectedEpisode.season)
     : seriesEpisodes;
-  const minimumStartupBufferSeconds = item?.type === "channel" ? 4 : 8;
-  const shouldShowControls = !isPlaying || Boolean(mediaError) || isBuffering || areControlsVisible;
+  const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
+  const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+
+  const clearBufferRecovery = useCallback(() => {
+    if (bufferRecoveryTimeoutRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(bufferRecoveryTimeoutRef.current);
+    bufferRecoveryTimeoutRef.current = undefined;
+  }, []);
+
+  const scheduleBufferRecovery = useCallback(() => {
+    clearBufferRecovery();
+
+    if (!playbackIntentRef.current) {
+      return;
+    }
+
+    bufferRecoveryTimeoutRef.current = window.setTimeout(() => {
+      const video = videoRef.current;
+
+      if (!video || !playbackIntentRef.current || mediaErrorRef.current || video.paused) {
+        return;
+      }
+
+      if (video.readyState >= 3) {
+        return;
+      }
+
+      if (hlsRef.current) {
+        // startLoad() reativa o download de fragmentos após um stall de rede.
+        // NÃO chamar recoverMediaError() aqui — esse método reinicializa o
+        // decoder de mídia e só deve ser usado em erros fatais de MEDIA_ERROR,
+        // não em stalls normais de buffer (causa o engasgo/flash na imagem).
+        hlsRef.current.startLoad(video.currentTime);
+        return;
+      }
+
+      // Para streams nativos (MP4/MKV), NÃO chamar video.load() — isso reseta
+      // o vídeo para o início. Basta tentar retomar o play; o browser já está
+      // fazendo a range request para a posição atual e vai continuar sozinho.
+      void video.play().catch(() => {
+        setIsPlaying(false);
+      });
+    }, 6000);
+  }, [clearBufferRecovery]);
+
+  // Revoga o Blob URL da legenda anterior para não vazar memória.
+  useEffect(() => {
+    return () => {
+      if (subtitleUrl) {
+        URL.revokeObjectURL(subtitleUrl);
+      }
+    };
+  }, [subtitleUrl]);
+
+  // Ativa a faixa de legenda assim que o <track> é anexado ao vídeo.
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || !subtitleUrl) {
+      return;
+    }
+
+    const tracks = video.textTracks;
+    if (tracks.length > 0) {
+      tracks[0].mode = "showing";
+    }
+  }, [subtitleUrl]);
 
   const related = useMemo(
     () =>
@@ -138,6 +217,24 @@ export function PlayerPage() {
   }, [episodeId]);
 
   useEffect(() => {
+    playbackIntentRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    mediaErrorRef.current = mediaError;
+  }, [mediaError]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      clearBufferRecovery();
+    }
+  }, [clearBufferRecovery, isPlaying]);
+
+  useEffect(() => {
+    return () => clearBufferRecovery();
+  }, [clearBufferRecovery]);
+
+  useEffect(() => {
     const video = videoRef.current;
 
     if (!video || !activeStreamUrl) {
@@ -171,20 +268,45 @@ export function PlayerPage() {
         hls = new HlsPlayer({
           enableWorker: true,
           lowLatencyMode: false,
-          startFragPrefetch: true,
-          maxBufferLength: isLiveContent ? 45 : 90,
-          maxMaxBufferLength: isLiveContent ? 90 : 180,
-          maxBufferSize: isLiveContent ? 60 * 1000 * 1000 : 120 * 1000 * 1000,
-          backBufferLength: isLiveContent ? 15 : 30
+          startFragPrefetch: false,
+          maxBufferLength: isLiveContent ? 10 : 20,
+          maxMaxBufferLength: isLiveContent ? 20 : 40,
+          maxBufferSize: isLiveContent ? 15 * 1000 * 1000 : 30 * 1000 * 1000,
+          backBufferLength: isLiveContent ? 5 : 10,
+          fragLoadingTimeOut: 20_000,
+          manifestLoadingTimeOut: 20_000,
+          levelLoadingTimeOut: 20_000,
+          fragLoadingMaxRetry: 6,
+          manifestLoadingMaxRetry: 4,
+          levelLoadingMaxRetry: 4
         });
+        hlsRef.current = hls;
         hls.loadSource(activeStreamUrl);
         hls.attachMedia(video);
         hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
           if (data.fatal) {
+            if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
+              hls?.startLoad(video.currentTime);
+              scheduleBufferRecovery();
+              return;
+            }
+
+            if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
+              hls?.recoverMediaError();
+              scheduleBufferRecovery();
+              return;
+            }
+
             setMediaError(
               "O navegador nao conseguiu carregar este HLS. Em IPTV isso geralmente acontece por CORS, stream offline ou URL expirada."
             );
             hls?.destroy();
+            hlsRef.current = undefined;
+            return;
+          }
+
+          if (data.details === HlsPlayer.ErrorDetails.BUFFER_STALLED_ERROR) {
+            scheduleBufferRecovery();
           }
         });
       });
@@ -195,20 +317,29 @@ export function PlayerPage() {
 
     return () => {
       isDisposed = true;
+      clearBufferRecovery();
       hls?.destroy();
+      hlsRef.current = undefined;
       video.removeAttribute("src");
       video.load();
     };
-  }, [activeStreamUrl, item?.type]);
+  }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery]);
+
+  const activePlaybackRef = useRef(activePlayback);
+  useEffect(() => {
+    activePlaybackRef.current = activePlayback;
+  }, [activePlayback]);
 
   useEffect(() => {
-    const nextPosition = activePlayback?.positionSeconds ?? 0;
+    const nextPosition = activePlaybackRef.current?.positionSeconds ?? 0;
     setPositionSeconds(nextPosition);
 
     if (videoRef.current && canSeek) {
       videoRef.current.currentTime = nextPosition;
     }
-  }, [activePlayback?.positionSeconds, activePlaybackId, canSeek]);
+    // Só restaura posição ao trocar de conteúdo — não reagir a saves de progresso
+    // durante reprodução (activePlayback?.positionSeconds causava seek a cada 5s)
+  }, [activePlaybackId, canSeek]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -337,7 +468,7 @@ export function PlayerPage() {
   function handleBufferingStart() {
     updateBufferedState();
     setIsBuffering(true);
-    revealControls();
+    scheduleBufferRecovery();
   }
 
   function handleBufferingProgress() {
@@ -348,7 +479,14 @@ export function PlayerPage() {
       video &&
       hasEnoughStartupBuffer(video.buffered, video.currentTime, minimumStartupBufferSeconds)
     ) {
+      clearBufferRecovery();
       setIsBuffering(false);
+      // Se o vídeo parou por stall e já há buffer suficiente, retoma o play
+      if (playbackIntentRef.current && video.paused && !video.ended) {
+        void video.play().catch(() => {
+          setIsPlaying(false);
+        });
+      }
       return;
     }
 
@@ -358,6 +496,7 @@ export function PlayerPage() {
   }
 
   function handleBufferingEnd() {
+    clearBufferRecovery();
     updateBufferedState();
     setIsBuffering(false);
   }
@@ -390,6 +529,58 @@ export function PlayerPage() {
   function revealControls() {
     setAreControlsVisible(true);
     setLastInteractionAt(Date.now());
+  }
+
+  async function handleToggleCaptions() {
+    // Já há legenda ativa: alterna visibilidade no próprio vídeo.
+    if (subtitleUrl) {
+      const tracks = videoRef.current?.textTracks;
+      if (tracks && tracks.length > 0) {
+        const isShowing = tracks[0].mode === "showing";
+        tracks[0].mode = isShowing ? "hidden" : "showing";
+        setActiveSubtitleId(isShowing ? undefined : activeSubtitleId);
+      }
+      return;
+    }
+
+    setIsSubtitlePickerOpen(true);
+    setIsLoadingSubtitles(true);
+    setSubtitleError(undefined);
+    revealControls();
+
+    try {
+      const results = await searchSubtitles(content, selectedEpisode);
+      setSubtitles(results);
+
+      if (results.length === 0) {
+        setSubtitleError("Nenhuma legenda encontrada para este titulo.");
+      }
+    } catch (error) {
+      setSubtitleError(
+        error instanceof Error ? error.message : "Nao foi possivel buscar legendas."
+      );
+    } finally {
+      setIsLoadingSubtitles(false);
+    }
+  }
+
+  async function handleSelectSubtitle(result: SubtitleResult) {
+    setSubtitleError(undefined);
+
+    try {
+      if (subtitleUrl) {
+        URL.revokeObjectURL(subtitleUrl);
+      }
+
+      const url = await getSubtitleTrackUrl(result.fileId);
+      setSubtitleUrl(url);
+      setActiveSubtitleId(result.fileId);
+      setIsSubtitlePickerOpen(false);
+    } catch (error) {
+      setSubtitleError(
+        error instanceof Error ? error.message : "Nao foi possivel carregar a legenda."
+      );
+    }
   }
 
   async function handleFullscreen() {
@@ -460,7 +651,11 @@ export function PlayerPage() {
                 "Nao foi possivel iniciar esta midia. Confira se o link do servidor esta ativo e se o formato e aceito no navegador."
               )
             }
-          />
+          >
+            {subtitleUrl ? (
+              <track kind="subtitles" src={subtitleUrl} srcLang="pt" label="Português" default />
+            ) : null}
+          </video>
         ) : null}
         {content.imageUrl ? (
           <img
@@ -505,13 +700,73 @@ export function PlayerPage() {
           hasNextEpisode={Boolean(nextEpisode)}
           isLive={!canSeek && content.type === "channel"}
           remainingLabel={content.type === "channel" ? undefined : remainingLabel}
+          captionsActive={Boolean(activeSubtitleId)}
           onNextEpisode={handleNextEpisode}
           onTogglePlay={() => setIsPlaying((current) => !current)}
           onSeek={handleSeek}
           onFullscreen={() => {
             void handleFullscreen();
           }}
+          onToggleCaptions={() => {
+            void handleToggleCaptions();
+          }}
         />
+        {isSubtitlePickerOpen ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-container p-5 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold text-on-surface">Legendas</h3>
+                <button
+                  type="button"
+                  data-focusable="true"
+                  onClick={() => setIsSubtitlePickerOpen(false)}
+                  className="focus-card rounded-lg border border-white/10 px-3 py-1 text-sm text-on-surface-variant"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              {isLoadingSubtitles ? (
+                <p className="py-6 text-center font-mono text-xs uppercase text-on-surface-variant">
+                  Buscando legendas...
+                </p>
+              ) : null}
+
+              {subtitleError ? (
+                <div className="rounded-lg border border-error/40 bg-error-container/30 p-3 text-sm leading-6 text-error">
+                  {subtitleError}
+                </div>
+              ) : null}
+
+              {!isLoadingSubtitles && subtitles.length > 0 ? (
+                <ul className="max-h-72 space-y-2 overflow-y-auto">
+                  {subtitles.map((subtitle) => (
+                    <li key={subtitle.fileId}>
+                      <button
+                        type="button"
+                        data-focusable="true"
+                        onClick={() => {
+                          void handleSelectSubtitle(subtitle);
+                        }}
+                        className={[
+                          "focus-card flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left",
+                          activeSubtitleId === subtitle.fileId
+                            ? "border-primary-container bg-primary-container/15 text-primary"
+                            : "border-white/10 bg-surface-container-high/60 text-on-surface"
+                        ].join(" ")}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm">{subtitle.release}</span>
+                        <span className="shrink-0 font-mono text-[10px] uppercase text-on-surface-variant">
+                          {subtitle.language} · {subtitle.downloads}↓
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="mb-8 grid gap-8 xl:grid-cols-[1fr_360px]">

@@ -30,7 +30,7 @@ export function LoginPage() {
       setServerUrlInStore(session.serverUrl);
       setConnection(remember ? { serverUrl, username, password } : undefined);
       setCatalog(session.catalog, session.source);
-      void navigate("/catalog");
+      void navigate("/profiles");
     } catch (connectionError) {
       setError(
         connectionError instanceof Error
