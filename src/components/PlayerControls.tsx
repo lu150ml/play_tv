@@ -19,10 +19,12 @@ interface PlayerControlsProps {
   isLive?: boolean;
   hasNextEpisode?: boolean;
   remainingLabel?: string;
+  captionsActive?: boolean;
   onTogglePlay: () => void;
   onNextEpisode?: () => void;
   onSeek: (positionSeconds: number) => void;
   onFullscreen: () => void;
+  onToggleCaptions?: () => void;
 }
 
 export function PlayerControls({
@@ -33,10 +35,12 @@ export function PlayerControls({
   isLive = false,
   hasNextEpisode = false,
   remainingLabel,
+  captionsActive = false,
   onTogglePlay,
   onNextEpisode,
   onSeek,
-  onFullscreen
+  onFullscreen,
+  onToggleCaptions
 }: PlayerControlsProps) {
   const progress = durationSeconds > 0 ? (positionSeconds / durationSeconds) * 100 : 0;
 
@@ -103,7 +107,11 @@ export function PlayerControls({
           >
             4K
           </button>
-          <IconButton label="Captions" onClick={() => undefined}>
+          <IconButton
+            label="Captions"
+            active={captionsActive}
+            onClick={onToggleCaptions ?? (() => undefined)}
+          >
             <Captions aria-hidden="true" size={20} />
           </IconButton>
           <IconButton label="Player settings" onClick={() => undefined}>
@@ -129,15 +137,22 @@ interface IconButtonProps {
   label: string;
   onClick: () => void;
   children: React.ReactNode;
+  active?: boolean;
 }
 
-function IconButton({ label, onClick, children }: IconButtonProps) {
+function IconButton({ label, onClick, children, active = false }: IconButtonProps) {
   return (
     <button
       type="button"
       data-focusable="true"
       onClick={onClick}
-      className="focus-card flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-on-surface"
+      aria-pressed={active}
+      className={[
+        "focus-card flex h-10 w-10 items-center justify-center rounded-lg border text-on-surface",
+        active
+          ? "border-primary-container/60 bg-primary-container/20 text-primary"
+          : "border-white/10 bg-black/25"
+      ].join(" ")}
       aria-label={label}
       title={label}
     >

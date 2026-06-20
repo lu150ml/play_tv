@@ -41,6 +41,13 @@ export interface Episode {
   streamUrl?: string;
 }
 
+export interface SubtitleResult {
+  fileId: string;
+  language: string;
+  release: string;
+  downloads: number;
+}
+
 export interface Series extends BaseContent {
   type: "series";
   seasons: number;
@@ -61,6 +68,13 @@ export interface PlaybackState {
   positionSeconds: number;
   durationSeconds: number;
   updatedAt: string;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  avatarColor: string;
+  createdAt: string;
 }
 
 export interface CatalogFilter {
