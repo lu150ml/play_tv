@@ -7,9 +7,11 @@ interface CatalogRailProps {
   title: string;
   items: ContentItem[];
   viewAllTo?: string;
+  onRemoveItem?: (contentId: string) => void;
+  removeLabel?: string;
 }
 
-export function CatalogRail({ title, items, viewAllTo }: CatalogRailProps) {
+export function CatalogRail({ title, items, viewAllTo, onRemoveItem, removeLabel }: CatalogRailProps) {
   if (items.length === 0) {
     return null;
   }
@@ -30,7 +32,13 @@ export function CatalogRail({ title, items, viewAllTo }: CatalogRailProps) {
       </div>
       <div className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-3 lg:mx-0 lg:px-0">
         {items.map((item) => (
-          <ContentCard key={item.id} item={item} compact />
+          <ContentCard
+            key={item.id}
+            item={item}
+            compact
+            onRemove={onRemoveItem ? () => onRemoveItem(item.id) : undefined}
+            removeLabel={removeLabel}
+          />
         ))}
       </div>
     </section>

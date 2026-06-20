@@ -66,6 +66,7 @@ export function CatalogPage() {
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
+  const removeProgress = useLibraryStore((state) => state.removeProgress);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
   const recommendedHero = useMemo(
@@ -227,7 +228,12 @@ export function CatalogPage() {
           {recommendations.length > 0 ? (
             <CatalogRail title="Baseado no que voce assiste" items={recommendations.slice(0, 5)} />
           ) : null}
-          <CatalogRail title="Continue Watching" items={continueWatching.slice(0, RAIL_LIMIT)} />
+          <CatalogRail
+            title="Continue Watching"
+            items={continueWatching.slice(0, RAIL_LIMIT)}
+            onRemoveItem={removeProgress}
+            removeLabel="Remover de continuar assistindo"
+          />
           <CatalogRail title="Favorites" items={favoritesList.slice(0, RAIL_LIMIT)} />
 
           {sectionKey === "all" ? (

@@ -101,7 +101,7 @@ export function ProfilesPage() {
                 type="button"
                 aria-label={`Excluir perfil ${profile.name}`}
                 onClick={() => setConfirmDeleteId(profile.id)}
-                className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-surface-container text-on-surface-variant opacity-0 transition hover:text-error focus:opacity-100 group-hover:opacity-100"
+                className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-surface-container text-on-surface-variant transition hover:text-error"
               >
                 <Trash2 size={14} />
               </button>

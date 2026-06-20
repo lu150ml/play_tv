@@ -1,4 +1,4 @@
-import { Heart, Play, Tv } from "lucide-react";
+import { Heart, Play, Tv, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import {
@@ -13,9 +13,11 @@ import { formatDuration, formatRemainingTime } from "../utils/format";
 interface ContentCardProps {
   item: ContentItem;
   compact?: boolean;
+  onRemove?: () => void;
+  removeLabel?: string;
 }
 
-export function ContentCard({ item, compact = false }: ContentCardProps) {
+export function ContentCard({ item, compact = false, onRemove, removeLabel }: ContentCardProps) {
   const playback = useLibraryStore((state) => state.playback[item.id]);
   const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
   const showProgress = shouldShowPlaybackProgress(item.type);
@@ -58,6 +60,21 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
             {item.quality[0]}
           </span>
         </div>
+        {onRemove ? (
+          <button
+            type="button"
+            aria-label={removeLabel ?? "Remover"}
+            title={removeLabel ?? "Remover"}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove();
+            }}
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/60 text-on-surface transition hover:border-error/50 hover:text-error"
+          >
+            <X aria-hidden="true" size={15} />
+          </button>
+        ) : null}
         <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-black/40 px-2 py-1 font-mono text-xs">
           {item.type === "channel" ? (
             <Tv aria-hidden="true" size={14} />
