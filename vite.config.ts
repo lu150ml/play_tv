@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { gunzipSync } from "node:zlib";
 import type { Plugin, ViteDevServer } from "vite";
 import { defineConfig } from "vitest/config";
 
@@ -104,14 +105,24 @@ function sendText(response: ServerResponse, status: number, text: string) {
   response.end(text);
 }
 
-// --- Legendas (OpenSubtitles REST API) -------------------------------------
+// --- Legendas (estilo Stremio: sem API key) --------------------------------
 //
-// Provedores de legenda não liberam CORS, então o download passa por aqui
-// (server-side), igual ao proxy do Xtream. Requer uma API key gratuita do
-// OpenSubtitles em OPENSUBTITLES_API_KEY (https://www.opensubtitles.com/consumers).
+// Provedores não liberam CORS, então tudo passa por aqui (server-side), igual
+// ao proxy do Xtream. Em vez de exigir uma API key do OpenSubtitles, usamos a
+// mesma abordagem do Stremio, com serviços públicos e gratuitos:
+//   1. Cinemeta resolve título+ano -> IMDb ID (tt...)
+//   2. O addon OpenSubtitles v3 lista as legendas por IMDb ID
+//   3. Baixamos o .srt/.gz, descompactamos, convertemos para VTT e corrigimos
+//      o encoding.
+// O catálogo Xtream não tem IMDb ID; por isso o passo 1. Como o Cinemeta é
+// baseado no IMDb, o casamento por título pode falhar em conteúdos nacionais
+// obscuros — mesma limitação do Stremio.
 
-const OPENSUBTITLES_BASE = "https://api.opensubtitles.com/api/v1";
-const OPENSUBTITLES_UA = "ServerXtreme/0.1";
+const CINEMETA_BASE = "https://v3-cinemeta.strem.io";
+const OPENSUBS_ADDON_BASE = "https://opensubtitles-v3.strem.io";
+const SUBTITLE_UA = "ServerXtreme/0.1";
+// Códigos ISO 639-2 de português usados pelo addon.
+const PT_LANGS = new Set(["por", "pob"]);
 
 function subtitleProxyPlugin(): Plugin {
   return {
@@ -136,26 +147,15 @@ async function handleSubtitleRequest(
     return;
   }
 
-  const apiKey = process.env.OPENSUBTITLES_API_KEY;
-
-  if (!apiKey) {
-    sendText(
-      response,
-      503,
-      "Legendas indisponiveis: defina OPENSUBTITLES_API_KEY no ambiente do servidor."
-    );
-    return;
-  }
-
   const requestUrl = new URL(request.url, "http://127.0.0.1");
 
   try {
     if (requestUrl.pathname === "/api/subtitles/file") {
-      await handleSubtitleDownload(requestUrl, response, apiKey);
+      await handleSubtitleDownload(requestUrl, response);
       return;
     }
 
-    await handleSubtitleSearch(requestUrl, response, apiKey);
+    await handleSubtitleSearch(requestUrl, response);
   } catch (error) {
     sendText(
       response,
@@ -165,7 +165,20 @@ async function handleSubtitleRequest(
   }
 }
 
-async function handleSubtitleSearch(requestUrl: URL, response: ServerResponse, apiKey: string) {
+// Resolve um título (e ano opcional) para um IMDb ID via Cinemeta.
+async function resolveImdbId(query: string, kind: "movie" | "series"): Promise<string | undefined> {
+  const target = `${CINEMETA_BASE}/catalog/${kind}/top/search=${encodeURIComponent(query)}.json`;
+  const upstream = await fetch(target, { headers: { "User-Agent": SUBTITLE_UA } });
+
+  if (!upstream.ok) {
+    return undefined;
+  }
+
+  const payload = (await upstream.json()) as { metas?: Array<{ id?: string }> };
+  return payload.metas?.[0]?.id;
+}
+
+async function handleSubtitleSearch(requestUrl: URL, response: ServerResponse) {
   const query = requestUrl.searchParams.get("query");
 
   if (!query) {
@@ -173,21 +186,23 @@ async function handleSubtitleSearch(requestUrl: URL, response: ServerResponse, a
     return;
   }
 
-  const target = new URL(`${OPENSUBTITLES_BASE}/subtitles`);
-  target.searchParams.set("query", query);
-  target.searchParams.set(
-    "languages",
-    requestUrl.searchParams.get("language") ?? "pt-BR,pt"
-  );
-
   const season = requestUrl.searchParams.get("season");
   const episode = requestUrl.searchParams.get("episode");
-  if (season) target.searchParams.set("season_number", season);
-  if (episode) target.searchParams.set("episode_number", episode);
+  const isSeries = Boolean(season && episode);
 
-  const upstream = await fetch(target, {
-    headers: { "Api-Key": apiKey, "User-Agent": OPENSUBTITLES_UA }
-  });
+  const imdbId = await resolveImdbId(query, isSeries ? "series" : "movie");
+
+  if (!imdbId) {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify([]));
+    return;
+  }
+
+  // Para séries o addon usa o formato tt123:temporada:episodio.
+  const videoId = isSeries ? `${imdbId}:${season}:${episode}` : imdbId;
+  const addonUrl = `${OPENSUBS_ADDON_BASE}/subtitles/${isSeries ? "series" : "movie"}/${videoId}.json`;
+  const upstream = await fetch(addonUrl, { headers: { "User-Agent": SUBTITLE_UA } });
 
   if (!upstream.ok) {
     sendText(response, upstream.status, await upstream.text());
@@ -195,31 +210,25 @@ async function handleSubtitleSearch(requestUrl: URL, response: ServerResponse, a
   }
 
   const payload = (await upstream.json()) as {
-    data?: Array<{
-      attributes?: {
-        language?: string;
-        release?: string;
-        download_count?: number;
-        files?: Array<{ file_id?: number }>;
-      };
-    }>;
+    subtitles?: Array<{ id?: string; url?: string; lang?: string; SubFormat?: string }>;
   };
 
-  const results = (payload.data ?? [])
-    .map((entry) => ({
-      fileId: String(entry.attributes?.files?.[0]?.file_id ?? ""),
-      language: entry.attributes?.language ?? "?",
-      release: entry.attributes?.release ?? "Sem nome",
-      downloads: entry.attributes?.download_count ?? 0
-    }))
-    .filter((entry) => entry.fileId.length > 0);
+  const results = (payload.subtitles ?? [])
+    .filter((entry) => entry.url && PT_LANGS.has(entry.lang ?? ""))
+    .map((entry, index) => ({
+      // fileId carrega a própria URL da legenda (codificada) para o download.
+      fileId: Buffer.from(entry.url ?? "").toString("base64url"),
+      language: entry.lang === "pob" ? "Português (BR)" : "Português",
+      release: `Opção ${index + 1}`,
+      downloads: 0
+    }));
 
   response.statusCode = 200;
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(results));
 }
 
-async function handleSubtitleDownload(requestUrl: URL, response: ServerResponse, apiKey: string) {
+async function handleSubtitleDownload(requestUrl: URL, response: ServerResponse) {
   const fileId = requestUrl.searchParams.get("fileId");
 
   if (!fileId) {
@@ -227,31 +236,21 @@ async function handleSubtitleDownload(requestUrl: URL, response: ServerResponse,
     return;
   }
 
-  const linkResponse = await fetch(`${OPENSUBTITLES_BASE}/download`, {
-    method: "POST",
-    headers: {
-      "Api-Key": apiKey,
-      "User-Agent": OPENSUBTITLES_UA,
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify({ file_id: Number(fileId) })
-  });
+  const link = Buffer.from(fileId, "base64url").toString("utf-8");
 
-  if (!linkResponse.ok) {
-    sendText(response, linkResponse.status, await linkResponse.text());
+  if (!/^https?:\/\//.test(link)) {
+    sendText(response, 400, "Invalid subtitle reference.");
     return;
   }
 
-  const { link } = (await linkResponse.json()) as { link?: string };
+  const fileResponse = await fetch(link, { headers: { "User-Agent": SUBTITLE_UA } });
+  let bytes = Buffer.from(await fileResponse.arrayBuffer());
 
-  if (!link) {
-    sendText(response, 502, "Provedor nao retornou link de download.");
-    return;
+  // Alguns links entregam .gz (magic bytes 1f 8b).
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    bytes = Buffer.from(gunzipSync(bytes));
   }
 
-  const fileResponse = await fetch(link, { headers: { "User-Agent": OPENSUBTITLES_UA } });
-  const bytes = Buffer.from(await fileResponse.arrayBuffer());
   const srt = decodeSubtitle(bytes);
 
   response.statusCode = 200;
