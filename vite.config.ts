@@ -41,12 +41,21 @@ async function handleXtreamProxyRequest(
     return;
   }
 
+  if (request.method !== "POST") {
+    sendText(response, 405, "Use POST for /api/xtream.");
+    return;
+  }
+
   try {
-    const requestUrl = new URL(request.url, "http://127.0.0.1");
-    const serverUrl = requestUrl.searchParams.get("serverUrl");
-    const username = requestUrl.searchParams.get("username");
-    const password = requestUrl.searchParams.get("password");
-    const action = requestUrl.searchParams.get("action");
+    const payload = await readJsonBody(request);
+    const serverUrl = typeof payload.serverUrl === "string" ? payload.serverUrl : "";
+    const username = typeof payload.username === "string" ? payload.username : "";
+    const password = typeof payload.password === "string" ? payload.password : "";
+    const action = typeof payload.action === "string" ? payload.action : "";
+    const params =
+      payload.params && typeof payload.params === "object"
+        ? (payload.params as Record<string, unknown>)
+        : {};
 
     if (!serverUrl || !username || !password) {
       sendText(response, 400, "Missing serverUrl, username, or password.");
@@ -61,9 +70,9 @@ async function handleXtreamProxyRequest(
       target.searchParams.set("action", action);
     }
 
-    for (const [key, value] of requestUrl.searchParams.entries()) {
-      if (!["serverUrl", "username", "password", "action"].includes(key)) {
-        target.searchParams.set(key, value);
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        target.searchParams.set(key, String(value));
       }
     }
 
@@ -80,6 +89,29 @@ async function handleXtreamProxyRequest(
       error instanceof Error ? error.message : "Could not connect to the Xtream server."
     );
   }
+}
+
+function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf-8").trim();
+
+      if (!raw) {
+        resolve({});
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        resolve(parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {});
+      } catch {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+    request.on("error", reject);
+  });
 }
 
 function buildXtreamTargetUrl(serverUrl: string): URL {

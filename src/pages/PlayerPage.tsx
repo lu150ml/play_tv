@@ -10,7 +10,7 @@ import { getContentById } from "../services/catalogService";
 import {
   getProgressRatio,
   getRemainingSeconds,
-  savePlaybackProgress
+  normalizePlaybackState
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
@@ -387,16 +387,17 @@ export function PlayerPage() {
     }
 
     setPositionSeconds(nextPosition);
-    const progress = savePlaybackProgress({
-      contentId: selectedEpisode?.id ?? content.id,
-      positionSeconds: nextPosition,
-      durationSeconds: durationSeconds || content.durationSeconds || 0
-    });
-    storeProgress(progress);
+    storeProgress(
+      normalizePlaybackState({
+        contentId: selectedEpisode?.id ?? content.id,
+        positionSeconds: nextPosition,
+        durationSeconds: durationSeconds || content.durationSeconds || 0
+      })
+    );
 
     if (selectedEpisode) {
       storeProgress(
-        savePlaybackProgress({
+        normalizePlaybackState({
           contentId: content.id,
           positionSeconds: nextPosition,
           durationSeconds: durationSeconds || selectedEpisode.durationSeconds || 0
@@ -417,7 +418,7 @@ export function PlayerPage() {
 
     if (nextPosition % 5 === 0) {
       storeProgress(
-        savePlaybackProgress({
+        normalizePlaybackState({
           contentId: selectedEpisode?.id ?? content.id,
           positionSeconds: nextPosition,
           durationSeconds:
@@ -427,7 +428,7 @@ export function PlayerPage() {
 
       if (selectedEpisode) {
         storeProgress(
-          savePlaybackProgress({
+          normalizePlaybackState({
             contentId: content.id,
             positionSeconds: nextPosition,
             durationSeconds:
@@ -447,8 +448,12 @@ export function PlayerPage() {
 
     setMediaDuration(Math.floor(video.duration));
 
-    if (activePlayback?.positionSeconds) {
-      video.currentTime = activePlayback.positionSeconds;
+    // Lê da ref (valor mais recente), não do closure capturado no render —
+    // senão o seek poderia pular para uma posição defasada quando os metadados
+    // chegam tarde (HLS carrega de forma assíncrona).
+    const resumePosition = activePlaybackRef.current?.positionSeconds;
+    if (resumePosition) {
+      video.currentTime = resumePosition;
     }
   }
 

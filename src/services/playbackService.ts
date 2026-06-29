@@ -24,15 +24,25 @@ export function getPlaybackProgress(
   return loadPlaybackStates(storage).find((state) => state.contentId === contentId);
 }
 
-export function savePlaybackProgress(
-  nextState: Omit<PlaybackState, "updatedAt">,
-  storage: Storage = window.localStorage
+// Normaliza (clamp de posição + timestamp) sem tocar em storage. É o que o
+// caminho quente de reprodução usa: o estado de progresso é persistido pelo
+// Zustand (libraryStore), então fazer um read+write O(n) no localStorage a
+// cada tick de 5s seria desperdício e ainda travaria a thread principal.
+export function normalizePlaybackState(
+  nextState: Omit<PlaybackState, "updatedAt">
 ): PlaybackState {
-  const normalizedState: PlaybackState = {
+  return {
     ...nextState,
     positionSeconds: clamp(nextState.positionSeconds, 0, nextState.durationSeconds),
     updatedAt: new Date().toISOString()
   };
+}
+
+export function savePlaybackProgress(
+  nextState: Omit<PlaybackState, "updatedAt">,
+  storage: Storage = window.localStorage
+): PlaybackState {
+  const normalizedState = normalizePlaybackState(nextState);
   const states = loadPlaybackStates(storage).filter(
     (state) => state.contentId !== normalizedState.contentId
   );

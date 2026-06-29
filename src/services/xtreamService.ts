@@ -184,21 +184,19 @@ async function requestXtream<T>(
   action?: string,
   params: Record<string, string> = {}
 ): Promise<T> {
-  const query = new URLSearchParams({
-    serverUrl: credentials.serverUrl,
-    username: credentials.username,
-    password: credentials.password
+  // Credenciais vão no corpo do POST, não na query string: assim não vazam para
+  // a coluna de URL do DevTools, logs de proxy ou histórico baseado em URL.
+  const response = await fetch("/api/xtream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      serverUrl: credentials.serverUrl,
+      username: credentials.username,
+      password: credentials.password,
+      action,
+      params
+    })
   });
-
-  if (action) {
-    query.set("action", action);
-  }
-
-  for (const [key, value] of Object.entries(params)) {
-    query.set(key, value);
-  }
-
-  const response = await fetch(`/api/xtream?${query.toString()}`);
 
   if (!response.ok) {
     const message = await response.text();
