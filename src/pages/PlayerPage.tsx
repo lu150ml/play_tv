@@ -1,5 +1,5 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Heart, Plus, RotateCcw, Share2, SkipForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
@@ -17,6 +17,13 @@ import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleServic
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
+
+// Janela final do episódio em que o aviso de "Próximo episódio" aparece.
+const NEXT_EPISODE_PROMPT_SECONDS = 40;
+
+// Heurística fixa de "Pular abertura": enquanto a posição estiver antes deste
+// ponto, oferecemos o salto direto para cá (fim aproximado da abertura ~30s).
+const INTRO_SKIP_TO_SECONDS = 30;
 
 export function PlayerPage() {
   const { contentId, episodeId, seriesId } = useParams();
@@ -84,6 +91,18 @@ export function PlayerPage() {
     : seriesEpisodes;
   const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+  const remainingSeconds =
+    durationSeconds > 0 ? Math.max(durationSeconds - positionSeconds, 0) : undefined;
+  const shouldPromptNextEpisode =
+    Boolean(nextEpisode) &&
+    remainingSeconds !== undefined &&
+    remainingSeconds > 0 &&
+    remainingSeconds <= NEXT_EPISODE_PROMPT_SECONDS;
+  const shouldOfferSkipIntro =
+    Boolean(activeStreamUrl) &&
+    item?.type !== "channel" &&
+    durationSeconds > INTRO_SKIP_TO_SECONDS &&
+    positionSeconds < INTRO_SKIP_TO_SECONDS;
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -522,6 +541,18 @@ export function PlayerPage() {
     }
   }
 
+  function handleSkipIntro() {
+    const target = Math.min(INTRO_SKIP_TO_SECONDS, Math.max(durationSeconds - 1, 0));
+    handleSeek(target);
+    revealControls();
+  }
+
+  function handleWatchFromStart() {
+    handleSeek(0);
+    setIsPlaying(true);
+    revealControls();
+  }
+
   function handleEnded() {
     if (nextEpisode) {
       handleNextEpisode();
@@ -697,6 +728,40 @@ export function PlayerPage() {
             {bufferedAheadSeconds > 0 ? ` ${Math.floor(bufferedAheadSeconds)}s prontos` : null}
           </div>
         ) : null}
+        {shouldOfferSkipIntro ? (
+          <div className="absolute bottom-28 right-4 z-10 lg:bottom-32">
+            <button
+              type="button"
+              data-focusable="true"
+              onClick={handleSkipIntro}
+              className="focus-card flex items-center gap-2 rounded-lg border border-white/20 bg-black/60 px-4 py-3 font-display text-sm font-semibold text-on-surface backdrop-blur-xl hover:bg-black/80"
+            >
+              <SkipForward aria-hidden="true" size={20} />
+              Pular abertura
+            </button>
+          </div>
+        ) : null}
+        {shouldPromptNextEpisode && nextEpisode ? (
+          <div className="absolute bottom-28 right-4 z-10 flex max-w-xs flex-col items-end gap-2 lg:bottom-32">
+            <span className="rounded-full border border-white/10 bg-surface-container/80 px-3 py-1 font-mono text-[10px] uppercase tracking-wide text-on-surface-variant backdrop-blur-xl">
+              A seguir · {Math.ceil(remainingSeconds ?? 0)}s
+            </span>
+            <button
+              type="button"
+              data-focusable="true"
+              onClick={handleNextEpisode}
+              className="focus-card flex items-center gap-2 rounded-lg border border-primary-container/60 bg-primary-container/20 px-4 py-3 text-left text-primary shadow-glow backdrop-blur-xl"
+            >
+              <SkipForward aria-hidden="true" size={20} />
+              <span className="min-w-0">
+                <span className="block font-display text-sm font-semibold">Próximo episódio</span>
+                <span className="block truncate text-xs text-on-surface-variant">
+                  {nextEpisode.title}
+                </span>
+              </span>
+            </button>
+          </div>
+        ) : null}
         <PlayerControls
           isPlaying={isPlaying}
           isVisible={shouldShowControls}
@@ -794,6 +859,17 @@ export function PlayerPage() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
+            {activeStreamUrl ? (
+              <button
+                type="button"
+                data-focusable="true"
+                onClick={handleWatchFromStart}
+                className="focus-card flex h-12 items-center gap-2 rounded-lg border border-primary-container/60 bg-primary-container/20 px-4 font-semibold text-primary"
+              >
+                <RotateCcw aria-hidden="true" size={20} />
+                Assistir do começo
+              </button>
+            ) : null}
             <ActionButton label="Add to list">
               <Plus aria-hidden="true" size={20} />
             </ActionButton>

@@ -42,8 +42,6 @@ export function PlayerControls({
   onFullscreen,
   onToggleCaptions
 }: PlayerControlsProps) {
-  const progress = durationSeconds > 0 ? (positionSeconds / durationSeconds) * 100 : 0;
-
   return (
     <div
       data-testid="player-controls"
@@ -121,13 +119,6 @@ export function PlayerControls({
             <Expand aria-hidden="true" size={20} />
           </IconButton>
         </div>
-      </div>
-
-      <div className="mt-3 h-1 rounded-full bg-white/20">
-        <div
-          className="h-full rounded-full bg-primary-container"
-          style={{ width: `${isLive ? 100 : progress}%` }}
-        />
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ interface LibraryState {
   toggleFavorite: (contentId: string) => void;
   isFavorite: (contentId: string) => boolean;
   saveProgress: (state: PlaybackState) => void;
+  removeProgress: (contentId: string) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   setConnection: (connection?: XtreamConnection) => void;
@@ -83,6 +84,25 @@ export const useLibraryStore = create<LibraryState>()(
         const { activeProfileId, profileData } = get();
         set((current) => {
           const nextPlayback = { ...current.playback, [state.contentId]: state };
+          return {
+            playback: nextPlayback,
+            profileData: activeProfileId
+              ? syncProfileData(profileData, activeProfileId, current.favorites, nextPlayback)
+              : profileData
+          };
+        });
+      },
+
+      removeProgress: (contentId) => {
+        const { activeProfileId, profileData } = get();
+        set((current) => {
+          if (!current.playback[contentId]) {
+            return current;
+          }
+
+          const nextPlayback = { ...current.playback };
+          delete nextPlayback[contentId];
+
           return {
             playback: nextPlayback,
             profileData: activeProfileId
