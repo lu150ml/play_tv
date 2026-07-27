@@ -1,7 +1,7 @@
 {
   "name": "play-tv-recolhe",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Server Xtreme",
   "type": "module",
@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "vitest run && node --test --test-isolation=none electron/*.test.cjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "electron:dev": "npm run build && electron .",

@@ -1,4 +1,4 @@
-import { ArrowRight, Link as LinkIcon, Lock, Server, UserRound } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, Server, UserRound } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -11,11 +11,12 @@ export function LoginPage() {
   const setSessionName = useLibraryStore((state) => state.setSessionName);
   const setServerUrlInStore = useLibraryStore((state) => state.setServerUrl);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
-  const setConnection = useLibraryStore((state) => state.setConnection);
+  const activateServerAccount = useLibraryStore((state) => state.activateServerAccount);
   const [remember, setRemember] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -26,9 +27,9 @@ export function LoginPage() {
 
     try {
       const session = await connectServerSession({ serverUrl, username, password, remember });
+      activateServerAccount({ serverUrl, username, password }, remember);
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
-      setConnection(remember ? { serverUrl, username, password } : undefined);
       setCatalog(session.catalog, session.source);
       void navigate("/profiles");
     } catch (connectionError) {
@@ -74,12 +75,29 @@ export function LoginPage() {
             icon={<UserRound aria-hidden="true" size={20} />}
           />
           <InputField
+            id="server-password"
             label="Password"
             value={password}
             onChange={setPassword}
-            type="password"
+            type={isPasswordVisible ? "text" : "password"}
             placeholder="Your Xtream password"
             icon={<Lock aria-hidden="true" size={20} />}
+            endAction={
+              <button
+                type="button"
+                data-focusable="true"
+                aria-label={isPasswordVisible ? "Ocultar senha" : "Mostrar senha"}
+                aria-pressed={isPasswordVisible}
+                onClick={() => setIsPasswordVisible((visible) => !visible)}
+                className="focus-card flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
+              >
+                {isPasswordVisible ? (
+                  <EyeOff aria-hidden="true" size={20} />
+                ) : (
+                  <Eye aria-hidden="true" size={20} />
+                )}
+              </button>
+            }
           />
         </div>
 
@@ -118,23 +136,39 @@ export function LoginPage() {
 }
 
 interface InputFieldProps {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   icon: React.ReactNode;
   type?: string;
   placeholder?: string;
+  endAction?: React.ReactNode;
 }
 
-function InputField({ label, value, onChange, icon, type = "text", placeholder }: InputFieldProps) {
+function InputField({
+  id,
+  label,
+  value,
+  onChange,
+  icon,
+  type = "text",
+  placeholder,
+  endAction
+}: InputFieldProps) {
+  const inputId = id ?? `login-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
-    <label className="block">
-      <span className="mb-2 block font-mono text-xs uppercase tracking-normal text-on-surface-variant">
+    <div className="block">
+      <label
+        htmlFor={inputId}
+        className="mb-2 block font-mono text-xs uppercase tracking-normal text-on-surface-variant"
+      >
         {label}
-      </span>
+      </label>
       <span className="focus-card flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 text-on-surface-variant">
         {icon}
         <input
+          id={inputId}
           data-focusable="true"
           type={type}
           value={value}
@@ -142,7 +176,8 @@ function InputField({ label, value, onChange, icon, type = "text", placeholder }
           onChange={(event) => onChange(event.target.value)}
           className="w-full bg-transparent text-on-surface outline-none placeholder:text-on-surface-variant"
         />
+        {endAction}
       </span>
-    </label>
+    </div>
   );
 }

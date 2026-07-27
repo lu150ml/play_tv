@@ -1,7 +1,7 @@
 node_modules/
 dist/
-release/
-release-v2/
+release*/
+.vite-dev.*.log
 coverage/
 playwright-report/
 test-results/

@@ -7,14 +7,17 @@ import {
   Search,
   Settings,
   Tv,
-  UserRound
+  UserRound,
+  LogOut,
+  Users
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { SwitchAccountDialog } from "./SwitchAccountDialog";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
@@ -34,10 +37,13 @@ export function AppShell() {
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const disconnectServerAccount = useLibraryStore((state) => state.disconnectServerAccount);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
   const currentPath = `${location.pathname}${location.search}`;
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSwitchAccountOpen, setIsSwitchAccountOpen] = useState(false);
 
   // O catálogo do xtream não é persistido (ver libraryStore). Após um refresh,
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
@@ -46,12 +52,7 @@ export function AppShell() {
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
 
-    if (
-      catalogSource !== "xtream" ||
-      !connection ||
-      hasXtreamCatalog ||
-      isRefetchingRef.current
-    ) {
+    if (catalogSource !== "xtream" || !connection || hasXtreamCatalog || isRefetchingRef.current) {
       return;
     }
 
@@ -71,7 +72,15 @@ export function AppShell() {
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
   function handleSwitchProfile() {
+    setIsSettingsOpen(false);
     void navigate("/profiles");
+  }
+
+  function handleConfirmSwitchAccount() {
+    disconnectServerAccount();
+    setIsSettingsOpen(false);
+    setIsSwitchAccountOpen(false);
+    void navigate("/login", { replace: true });
   }
 
   return (
@@ -85,7 +94,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Server Xtreme
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.1.0</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.2.1</p>
           </div>
         </div>
 
@@ -173,14 +182,47 @@ export function AppShell() {
               {activeProfile.name}
             </button>
           ) : null}
-          <button
-            type="button"
-            data-focusable="true"
-            className="focus-card flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-surface-container text-on-surface-variant"
-            aria-label="Open settings"
-          >
-            <Settings aria-hidden="true" size={20} />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              data-focusable="true"
+              aria-label="Abrir configurações"
+              aria-haspopup="menu"
+              aria-expanded={isSettingsOpen}
+              onClick={() => setIsSettingsOpen((open) => !open)}
+              className="focus-card flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-surface-container text-on-surface-variant"
+            >
+              <Settings aria-hidden="true" size={20} />
+            </button>
+            {isSettingsOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-12 w-56 overflow-hidden rounded-lg border border-white/10 bg-surface-container-high p-1.5 shadow-2xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleSwitchProfile}
+                  className="focus-card flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-on-surface hover:bg-white/5"
+                >
+                  <Users aria-hidden="true" size={18} />
+                  Trocar perfil
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsSwitchAccountOpen(true);
+                  }}
+                  className="focus-card flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-error hover:bg-error-container/20"
+                >
+                  <LogOut aria-hidden="true" size={18} />
+                  Trocar conta
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -231,6 +273,11 @@ export function AppShell() {
           Perfil
         </button>
       </nav>
+      <SwitchAccountDialog
+        isOpen={isSwitchAccountOpen}
+        onCancel={() => setIsSwitchAccountOpen(false)}
+        onConfirm={handleConfirmSwitchAccount}
+      />
     </div>
   );
 }

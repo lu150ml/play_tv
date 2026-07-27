@@ -1,9 +1,10 @@
-import { MonitorPlay, Plus, Trash2, UserRound, X } from "lucide-react";
+import { LogOut, MonitorPlay, Plus, Trash2, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Profile } from "../types/catalog";
+import { SwitchAccountDialog } from "../components/SwitchAccountDialog";
 
 const AVATAR_COLORS = [
   "bg-violet-500",
@@ -23,11 +24,13 @@ export function ProfilesPage() {
   const createProfile = useLibraryStore((state) => state.createProfile);
   const deleteProfile = useLibraryStore((state) => state.deleteProfile);
   const sessionName = useLibraryStore((state) => state.sessionName);
+  const disconnectServerAccount = useLibraryStore((state) => state.disconnectServerAccount);
 
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [selectedColor, setSelectedColor] = useState(AVATAR_COLORS[0]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isSwitchAccountOpen, setIsSwitchAccountOpen] = useState(false);
 
   function handleSelectProfile(profile: Profile) {
     setActiveProfile(profile.id);
@@ -47,6 +50,12 @@ export function ProfilesPage() {
     setConfirmDeleteId(null);
   }
 
+  function handleConfirmSwitchAccount() {
+    disconnectServerAccount();
+    setIsSwitchAccountOpen(false);
+    void navigate("/login", { replace: true });
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12 text-on-surface">
       {/* Header */}
@@ -57,9 +66,15 @@ export function ProfilesPage() {
         <p className="font-display text-xl font-bold text-primary">Server Xtreme</p>
       </div>
       <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">{sessionName}</p>
-      <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">
-        Quem vai assistir?
-      </h1>
+      <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">Quem vai assistir?</h1>
+      <button
+        type="button"
+        onClick={() => setIsSwitchAccountOpen(true)}
+        className="focus-card mb-8 flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2.5 text-sm text-on-surface-variant hover:border-error/30 hover:text-error"
+      >
+        <LogOut aria-hidden="true" size={18} />
+        Trocar conta do servidor
+      </button>
 
       {/* Profile grid */}
       <div className="mb-8 flex flex-wrap justify-center gap-5">
@@ -174,7 +189,9 @@ export function ProfilesPage() {
 
           {/* Color picker */}
           <div className="mb-5">
-            <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">Cor do avatar</p>
+            <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">
+              Cor do avatar
+            </p>
             <div className="flex flex-wrap gap-2">
               {AVATAR_COLORS.map((color) => (
                 <button
@@ -206,10 +223,13 @@ export function ProfilesPage() {
       ) : null}
 
       {profiles.length === 0 && !isCreating ? (
-        <p className="text-sm text-on-surface-variant">
-          Crie seu primeiro perfil para começar.
-        </p>
+        <p className="text-sm text-on-surface-variant">Crie seu primeiro perfil para começar.</p>
       ) : null}
+      <SwitchAccountDialog
+        isOpen={isSwitchAccountOpen}
+        onCancel={() => setIsSwitchAccountOpen(false)}
+        onConfirm={handleConfirmSwitchAccount}
+      />
     </main>
   );
 }

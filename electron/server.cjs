@@ -6,7 +6,7 @@ const { gunzipSync } = require("node:zlib");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const CINEMETA_BASE = "https://v3-cinemeta.strem.io";
 const OPENSUBS_ADDON_BASE = "https://opensubtitles-v3.strem.io";
-const SUBTITLE_UA = "ServerXtreme/0.2";
+const SUBTITLE_UA = "ServerXtreme/0.2.1";
 const PT_LANGS = new Set(["por", "pob"]);
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -42,18 +42,47 @@ function buildXtreamTargetUrl(serverUrl) {
   return target;
 }
 
-async function handleXtream(requestUrl, res) {
-  const serverUrl = requestUrl.searchParams.get("serverUrl");
-  const username = requestUrl.searchParams.get("username");
-  const password = requestUrl.searchParams.get("password");
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf-8").trim();
+      if (!raw) return resolve({});
+      try {
+        const parsed = JSON.parse(raw);
+        resolve(parsed && typeof parsed === "object" ? parsed : {});
+      } catch {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+async function handleXtream(req, res) {
+  if (req.method !== "POST") {
+    sendText(res, 405, "Use POST for /api/xtream.");
+    return;
+  }
+
+  const payload = await readJsonBody(req);
+  const serverUrl = typeof payload.serverUrl === "string" ? payload.serverUrl : "";
+  const username = typeof payload.username === "string" ? payload.username : "";
+  const password = typeof payload.password === "string" ? payload.password : "";
+  const action = typeof payload.action === "string" ? payload.action : "";
+  const params = payload.params && typeof payload.params === "object" ? payload.params : {};
   if (!serverUrl || !username || !password) {
     sendText(res, 400, "Missing serverUrl, username, or password.");
     return;
   }
 
   const target = buildXtreamTargetUrl(serverUrl);
-  for (const [key, value] of requestUrl.searchParams.entries()) {
-    if (key !== "serverUrl") target.searchParams.set(key, value);
+  target.searchParams.set("username", username);
+  target.searchParams.set("password", password);
+  if (action) target.searchParams.set("action", action);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
   }
   const upstream = await fetch(target);
   const body = await upstream.arrayBuffer();
@@ -127,7 +156,9 @@ function serveStatic(pathname, res) {
   }
   fs.readFile(filePath, (error, data) => {
     if (error) return sendText(res, 404, "Not found.");
-    res.writeHead(200, { "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream" });
+    res.writeHead(200, {
+      "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream"
+    });
     res.end(data);
   });
 }
@@ -136,9 +167,11 @@ function createServer() {
   return http.createServer(async (req, res) => {
     try {
       const requestUrl = new URL(req.url, "http://127.0.0.1");
-      if (requestUrl.pathname === "/api/xtream") return await handleXtream(requestUrl, res);
-      if (requestUrl.pathname === "/api/subtitles/file") return await handleSubtitleDownload(requestUrl, res);
-      if (requestUrl.pathname === "/api/subtitles") return await handleSubtitleSearch(requestUrl, res);
+      if (requestUrl.pathname === "/api/xtream") return await handleXtream(req, res);
+      if (requestUrl.pathname === "/api/subtitles/file")
+        return await handleSubtitleDownload(requestUrl, res);
+      if (requestUrl.pathname === "/api/subtitles")
+        return await handleSubtitleSearch(requestUrl, res);
       serveStatic(requestUrl.pathname, res);
     } catch (error) {
       sendText(res, 502, error instanceof Error ? error.message : "Internal error.");
@@ -156,4 +189,4 @@ function start() {
   });
 }
 
-module.exports = { start };
+module.exports = { createServer, start };

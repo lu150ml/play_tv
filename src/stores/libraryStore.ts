@@ -10,15 +10,26 @@ export interface XtreamConnection {
   password: string;
 }
 
-interface ProfileData {
+export interface ProfileData {
   favorites: string[];
   playback: Record<string, PlaybackState>;
+}
+
+export interface ServerAccountData {
+  favorites: string[];
+  playback: Record<string, PlaybackState>;
+  profiles: Profile[];
+  activeProfileId: string | null;
+  profileData: Record<string, ProfileData>;
 }
 
 interface LibraryState {
   catalog: ContentItem[];
   catalogSource: "mock" | "xtream";
   connection?: XtreamConnection;
+  rememberConnection: boolean;
+  serverAccounts: Record<string, ServerAccountData>;
+  activeAccountKey: string | null;
   // Active profile state (swapped on profile switch)
   favorites: string[];
   playback: Record<string, PlaybackState>;
@@ -35,7 +46,8 @@ interface LibraryState {
   removeProgress: (contentId: string) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
-  setConnection: (connection?: XtreamConnection) => void;
+  activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
+  disconnectServerAccount: () => void;
   setSessionName: (name: string) => void;
   setServerUrl: (serverUrl: string) => void;
   // Profile actions
@@ -53,11 +65,78 @@ function syncProfileData(
   return { ...profileData, [profileId]: { favorites, playback } };
 }
 
+const EMPTY_ACCOUNT: ServerAccountData = {
+  favorites: [],
+  playback: {},
+  profiles: [],
+  activeProfileId: null,
+  profileData: {}
+};
+
+export function getServerAccountKey(connection: Pick<XtreamConnection, "serverUrl" | "username">) {
+  let normalizedUrl = connection.serverUrl.trim().replace(/\/+$/, "");
+  try {
+    const url = new URL(connection.serverUrl.trim());
+    url.hash = "";
+    url.search = "";
+    url.hostname = url.hostname.toLowerCase();
+    normalizedUrl = url.toString().replace(/\/+$/, "");
+  } catch {
+    // Login validation will report malformed URLs; keep a deterministic key meanwhile.
+  }
+  return `${normalizedUrl}\n${connection.username}`;
+}
+
+function accountDataFromState(state: LibraryState): ServerAccountData {
+  return {
+    favorites: state.favorites,
+    playback: state.playback,
+    profiles: state.profiles,
+    activeProfileId: state.activeProfileId,
+    profileData: state.profileData
+  };
+}
+
+function withCurrentAccount(state: LibraryState): Record<string, ServerAccountData> {
+  if (!state.activeAccountKey) return state.serverAccounts;
+  return { ...state.serverAccounts, [state.activeAccountKey]: accountDataFromState(state) };
+}
+
+type PersistedLibraryState = Partial<LibraryState>;
+
+export function migrateLibraryState(persisted: unknown, version: number): PersistedLibraryState {
+  const state = (
+    persisted && typeof persisted === "object" ? persisted : {}
+  ) as PersistedLibraryState;
+  if (version >= 1 || state.serverAccounts) return state;
+  if (!state.connection) {
+    return { ...state, serverAccounts: {}, activeAccountKey: null, rememberConnection: false };
+  }
+
+  const accountKey = getServerAccountKey(state.connection);
+  const account: ServerAccountData = {
+    favorites: state.favorites ?? [],
+    playback: state.playback ?? {},
+    profiles: state.profiles ?? [],
+    activeProfileId: state.activeProfileId ?? null,
+    profileData: state.profileData ?? {}
+  };
+  return {
+    ...state,
+    rememberConnection: true,
+    serverAccounts: { [accountKey]: account },
+    activeAccountKey: accountKey
+  };
+}
+
 export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
       catalog: mockCatalog,
       catalogSource: "mock",
+      rememberConnection: false,
+      serverAccounts: {},
+      activeAccountKey: null,
       favorites: [],
       playback: {},
       profiles: [],
@@ -113,7 +192,41 @@ export const useLibraryStore = create<LibraryState>()(
       },
 
       setCatalog: (catalog, source) => set({ catalog, catalogSource: source }),
-      setConnection: (connection) => set({ connection }),
+      activateServerAccount: (connection, remember) => {
+        const accountKey = getServerAccountKey(connection);
+        set((current) => {
+          const serverAccounts = withCurrentAccount(current);
+          const account = serverAccounts[accountKey] ?? EMPTY_ACCOUNT;
+          return {
+            connection,
+            rememberConnection: remember,
+            serverAccounts,
+            activeAccountKey: accountKey,
+            favorites: account.favorites,
+            playback: account.playback,
+            profiles: account.profiles,
+            activeProfileId: account.activeProfileId,
+            profileData: account.profileData
+          };
+        });
+      },
+      disconnectServerAccount: () => {
+        set((current) => ({
+          serverAccounts: withCurrentAccount(current),
+          activeAccountKey: null,
+          connection: undefined,
+          rememberConnection: false,
+          catalog: mockCatalog,
+          catalogSource: "mock",
+          favorites: [],
+          playback: {},
+          profiles: [],
+          activeProfileId: null,
+          profileData: {},
+          sessionName: "Editor Pro",
+          serverUrl: undefined
+        }));
+      },
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
 
@@ -179,12 +292,17 @@ export const useLibraryStore = create<LibraryState>()(
     }),
     {
       name: "server-xtreme-library",
+      version: 1,
+      migrate: migrateLibraryState,
       // O catálogo NÃO é persistido: pode passar de dezenas de milhares de itens
       // e estourar a cota (~5MB) do localStorage. É recarregado do servidor no
       // boot via AppShell quando há uma conexão salva (catalogSource === "xtream").
       partialize: (state) => ({
         catalogSource: state.catalogSource,
-        connection: state.connection,
+        connection: state.rememberConnection ? state.connection : undefined,
+        rememberConnection: state.rememberConnection,
+        serverAccounts: withCurrentAccount(state),
+        activeAccountKey: state.activeAccountKey,
         favorites: state.favorites,
         playback: state.playback,
         profiles: state.profiles,

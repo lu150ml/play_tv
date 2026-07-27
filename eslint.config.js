@@ -39,5 +39,18 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-floating-promises": "error"
     }
+  },
+  {
+    files: ["electron/**/*.cjs"],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        projectService: false
+      }
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      "@typescript-eslint/no-require-imports": "off"
+    }
   }
 );

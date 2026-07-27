@@ -71,7 +71,7 @@ async function handleXtreamProxyRequest(
     }
 
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) {
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
         target.searchParams.set(key, String(value));
       }
     }
@@ -207,10 +207,7 @@ async function handleSubtitleSearch(requestUrl: URL, response: ServerResponse, a
 
   const target = new URL(`${OPENSUBTITLES_BASE}/subtitles`);
   target.searchParams.set("query", query);
-  target.searchParams.set(
-    "languages",
-    requestUrl.searchParams.get("language") ?? "pt-BR,pt"
-  );
+  target.searchParams.set("languages", requestUrl.searchParams.get("language") ?? "pt-BR,pt");
 
   const season = requestUrl.searchParams.get("season");
   const episode = requestUrl.searchParams.get("episode");
@@ -300,8 +297,6 @@ function decodeSubtitle(bytes: Buffer): string {
 }
 
 function srtToVtt(srt: string): string {
-  const body = srt
-    .replace(/\r+/g, "")
-    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+  const body = srt.replace(/\r+/g, "").replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
   return `WEBVTT\n\n${body}`;
 }
