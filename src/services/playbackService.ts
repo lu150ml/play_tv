@@ -28,14 +28,21 @@ export function getPlaybackProgress(
 // caminho quente de reprodução usa: o estado de progresso é persistido pelo
 // Zustand (libraryStore), então fazer um read+write O(n) no localStorage a
 // cada tick de 5s seria desperdício e ainda travaria a thread principal.
-export function normalizePlaybackState(
-  nextState: Omit<PlaybackState, "updatedAt">
-): PlaybackState {
+export function normalizePlaybackState(nextState: Omit<PlaybackState, "updatedAt">): PlaybackState {
   return {
     ...nextState,
-    positionSeconds: clamp(nextState.positionSeconds, 0, nextState.durationSeconds),
+    positionSeconds:
+      nextState.durationSeconds > 0
+        ? clamp(nextState.positionSeconds, 0, nextState.durationSeconds)
+        : Math.max(nextState.positionSeconds, 0),
     updatedAt: new Date().toISOString()
   };
+}
+
+export function isPlaybackComplete(
+  state: Pick<PlaybackState, "positionSeconds" | "durationSeconds">
+) {
+  return state.durationSeconds > 0 && state.positionSeconds / state.durationSeconds >= 0.95;
 }
 
 export function savePlaybackProgress(

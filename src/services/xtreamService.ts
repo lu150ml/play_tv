@@ -76,6 +76,7 @@ interface XtreamSeriesInfoResponse {
 export interface XtreamCatalogResult {
   profile: XtreamProfileResponse;
   catalog: ContentItem[];
+  warnings: string[];
 }
 
 // Limite por categoria (não por tipo). Um corte plano em N itens do início da
@@ -115,25 +116,50 @@ export async function loadXtreamCatalog(
     throw new Error(profile.user_info?.message ?? "Server rejected the Xtream credentials.");
   }
 
-  const [liveCategories, vodCategories, seriesCategories, liveStreams, vodStreams, seriesStreams] =
-    await Promise.all([
-      requestXtream<XtreamCategory[]>(credentials, "get_live_categories"),
-      requestXtream<XtreamCategory[]>(credentials, "get_vod_categories"),
-      requestXtream<XtreamCategory[]>(credentials, "get_series_categories"),
-      requestXtream<XtreamLiveStream[]>(credentials, "get_live_streams"),
-      requestXtream<XtreamVodStream[]>(credentials, "get_vod_streams"),
-      requestXtream<XtreamSeriesStream[]>(credentials, "get_series")
-    ]);
+  const requests = await Promise.allSettled([
+    requestXtream<XtreamCategory[]>(credentials, "get_live_categories"),
+    requestXtream<XtreamCategory[]>(credentials, "get_vod_categories"),
+    requestXtream<XtreamCategory[]>(credentials, "get_series_categories"),
+    requestXtream<XtreamLiveStream[]>(credentials, "get_live_streams"),
+    requestXtream<XtreamVodStream[]>(credentials, "get_vod_streams"),
+    requestXtream<XtreamSeriesStream[]>(credentials, "get_series")
+  ]);
+  const labels = [
+    "categorias de TV",
+    "categorias de filmes",
+    "categorias de series",
+    "canais",
+    "filmes",
+    "series"
+  ];
+  const warnings = requests.flatMap((result, index) =>
+    result.status === "rejected" ? [`Nao foi possivel carregar ${labels[index]}.`] : []
+  );
+  const value = <T>(index: number): T[] =>
+    requests[index]?.status === "fulfilled" && Array.isArray(requests[index].value)
+      ? (requests[index].value as T[])
+      : [];
+  const liveCategories = value<XtreamCategory>(0);
+  const vodCategories = value<XtreamCategory>(1);
+  const seriesCategories = value<XtreamCategory>(2);
+  const liveStreams = value<XtreamLiveStream>(3);
+  const vodStreams = value<XtreamVodStream>(4);
+  const seriesStreams = value<XtreamSeriesStream>(5);
+
+  const canonicalCredentials = {
+    ...credentials,
+    serverUrl: getCanonicalServerUrl(credentials.serverUrl, profile)
+  };
 
   const liveCategoryMap = mapCategories(liveCategories);
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
   const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapLiveStream(stream, liveCategoryMap, credentials)
+    mapLiveStream(stream, liveCategoryMap, canonicalCredentials)
   );
   const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapVodStream(stream, vodCategoryMap, credentials)
+    mapVodStream(stream, vodCategoryMap, canonicalCredentials)
   );
   const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
     mapSeriesStream(stream, seriesCategoryMap)
@@ -147,7 +173,8 @@ export async function loadXtreamCatalog(
 
   return {
     profile,
-    catalog: catalog.map((item, index) => ({ ...item, isFeatured: index < 6 }))
+    catalog: catalog.map((item, index) => ({ ...item, isFeatured: index < 6 })),
+    warnings
   };
 }
 
@@ -351,12 +378,23 @@ function buildStreamUrl(
   )}/${streamId}.${extension}`;
 }
 
-function normalizeServerUrl(serverUrl: string): string {
+export function normalizeServerUrl(serverUrl: string): string {
   const url = new URL(serverUrl);
-  url.pathname = url.pathname.replace(/\/$/, "");
+  url.pathname = url.pathname.replace(/\/player_api\.php\/?$/i, "").replace(/\/+$/, "");
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function getCanonicalServerUrl(fallback: string, profile: XtreamProfileResponse): string {
+  const info = profile.server_info;
+  if (!info?.url) return normalizeServerUrl(fallback);
+  try {
+    const protocol = info.server_protocol === "https" ? "https" : "http";
+    return normalizeServerUrl(`${protocol}://${info.url}${info.port ? `:${info.port}` : ""}`);
+  } catch {
+    return normalizeServerUrl(fallback);
+  }
 }
 
 function normalizeImage(imageUrl?: string): string | undefined {

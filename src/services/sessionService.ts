@@ -14,6 +14,7 @@ export interface Session {
   connectedAt: string;
   catalog: ContentItem[];
   source: "xtream";
+  warnings: string[];
 }
 
 export async function connectServerSession(request: LoginRequest): Promise<Session> {
@@ -24,6 +25,7 @@ export async function connectServerSession(request: LoginRequest): Promise<Sessi
     serverUrl: request.serverUrl.trim() || "mock://server-xtreme",
     connectedAt: new Date().toISOString(),
     catalog: result.catalog,
-    source: "xtream"
+    source: "xtream",
+    warnings: result.warnings
   };
 }

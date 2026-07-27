@@ -28,15 +28,27 @@ jobs:
       - name: Build Windows installer and portable app
         run: npm run dist:win
 
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Set-Content -Encoding ascii "$($_.FullName).sha256"
+          }
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/*.sha256
           generate_release_notes: true
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: server-xtreme-windows
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.sha256

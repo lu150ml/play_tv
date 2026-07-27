@@ -1,6 +1,5 @@
 import {
   Clapperboard,
-  Download,
   Film,
   Home,
   MonitorPlay,
@@ -16,6 +15,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
+import { clearRememberedPassword, loadRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 
@@ -25,8 +25,7 @@ const navItems = [
   { label: "TV", path: "/catalog/tv", icon: Tv },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search },
-  { label: "Downloads", path: "/catalog", icon: Download }
+  { label: "Search", path: "/catalog?search=open", icon: Search }
 ];
 
 export function AppShell() {
@@ -38,21 +37,53 @@ export function AppShell() {
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
   const disconnectServerAccount = useLibraryStore((state) => state.disconnectServerAccount);
+  const activateServerAccount = useLibraryStore((state) => state.activateServerAccount);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
   const currentPath = `${location.pathname}${location.search}`;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSwitchAccountOpen, setIsSwitchAccountOpen] = useState(false);
+  const [credentialReady, setCredentialReady] = useState(
+    !connection || Boolean(connection.password)
+  );
+  const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
+  const catalogReady = catalogSource !== "xtream" || hasXtreamCatalog;
+
+  useEffect(() => {
+    if (!connection || connection.password) {
+      setCredentialReady(true);
+      return;
+    }
+    let cancelled = false;
+    void loadRememberedPassword().then((password) => {
+      if (cancelled) return;
+      if (!password) {
+        void navigate("/login", {
+          replace: true,
+          state: { error: "A senha lembrada nao esta mais disponivel. Conecte novamente." }
+        });
+        return;
+      }
+      activateServerAccount({ ...connection, password }, true);
+      setCredentialReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activateServerAccount, connection, navigate]);
 
   // O catálogo do xtream não é persistido (ver libraryStore). Após um refresh,
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
   // do servidor uma única vez.
   const isRefetchingRef = useRef(false);
   useEffect(() => {
-    const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
-
-    if (catalogSource !== "xtream" || !connection || hasXtreamCatalog || isRefetchingRef.current) {
+    if (
+      catalogSource !== "xtream" ||
+      !connection?.password ||
+      hasXtreamCatalog ||
+      isRefetchingRef.current
+    ) {
       return;
     }
 
@@ -67,7 +98,7 @@ export function AppShell() {
       .finally(() => {
         isRefetchingRef.current = false;
       });
-  }, [catalog, catalogSource, connection, setCatalog]);
+  }, [catalog, catalogSource, connection, hasXtreamCatalog, setCatalog]);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -77,6 +108,7 @@ export function AppShell() {
   }
 
   function handleConfirmSwitchAccount() {
+    void clearRememberedPassword();
     disconnectServerAccount();
     setIsSettingsOpen(false);
     setIsSwitchAccountOpen(false);
@@ -94,7 +126,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Server Xtreme
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.2.1</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.2.2</p>
           </div>
         </div>
 
@@ -227,7 +259,11 @@ export function AppShell() {
       </header>
 
       <main className="min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
-        <Outlet />
+        {credentialReady && catalogReady ? (
+          <Outlet />
+        ) : (
+          <p className="p-8 text-on-surface-variant">Restaurando sessao...</p>
+        )}
       </main>
 
       <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">

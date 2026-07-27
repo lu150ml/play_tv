@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
-import type { ContentItem, PlaybackState, Profile } from "../types/catalog";
+import type { ContentItem, PlaybackState, Profile, WatchedState } from "../types/catalog";
 
 export interface XtreamConnection {
   serverUrl: string;
@@ -13,6 +13,7 @@ export interface XtreamConnection {
 export interface ProfileData {
   favorites: string[];
   playback: Record<string, PlaybackState>;
+  watched: Record<string, WatchedState>;
 }
 
 export interface ServerAccountData {
@@ -21,6 +22,7 @@ export interface ServerAccountData {
   profiles: Profile[];
   activeProfileId: string | null;
   profileData: Record<string, ProfileData>;
+  watched: Record<string, WatchedState>;
 }
 
 interface LibraryState {
@@ -33,6 +35,7 @@ interface LibraryState {
   // Active profile state (swapped on profile switch)
   favorites: string[];
   playback: Record<string, PlaybackState>;
+  watched: Record<string, WatchedState>;
   // Profile management
   profiles: Profile[];
   activeProfileId: string | null;
@@ -44,6 +47,8 @@ interface LibraryState {
   isFavorite: (contentId: string) => boolean;
   saveProgress: (state: PlaybackState) => void;
   removeProgress: (contentId: string) => void;
+  removeSeriesProgress: (seriesId: string, episodeIds: string[]) => void;
+  markWatched: (contentId: string) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
@@ -60,14 +65,16 @@ function syncProfileData(
   profileData: Record<string, ProfileData>,
   profileId: string,
   favorites: string[],
-  playback: Record<string, PlaybackState>
+  playback: Record<string, PlaybackState>,
+  watched: Record<string, WatchedState>
 ): Record<string, ProfileData> {
-  return { ...profileData, [profileId]: { favorites, playback } };
+  return { ...profileData, [profileId]: { favorites, playback, watched } };
 }
 
 const EMPTY_ACCOUNT: ServerAccountData = {
   favorites: [],
   playback: {},
+  watched: {},
   profiles: [],
   activeProfileId: null,
   profileData: {}
@@ -91,6 +98,7 @@ function accountDataFromState(state: LibraryState): ServerAccountData {
   return {
     favorites: state.favorites,
     playback: state.playback,
+    watched: state.watched,
     profiles: state.profiles,
     activeProfileId: state.activeProfileId,
     profileData: state.profileData
@@ -117,6 +125,7 @@ export function migrateLibraryState(persisted: unknown, version: number): Persis
   const account: ServerAccountData = {
     favorites: state.favorites ?? [],
     playback: state.playback ?? {},
+    watched: state.watched ?? {},
     profiles: state.profiles ?? [],
     activeProfileId: state.activeProfileId ?? null,
     profileData: state.profileData ?? {}
@@ -139,6 +148,7 @@ export const useLibraryStore = create<LibraryState>()(
       activeAccountKey: null,
       favorites: [],
       playback: {},
+      watched: {},
       profiles: [],
       activeProfileId: null,
       profileData: {},
@@ -152,7 +162,7 @@ export const useLibraryStore = create<LibraryState>()(
         set((current) => ({
           favorites: next,
           profileData: activeProfileId
-            ? syncProfileData(profileData, activeProfileId, next, current.playback)
+            ? syncProfileData(profileData, activeProfileId, next, current.playback, current.watched)
             : profileData
         }));
       },
@@ -163,10 +173,19 @@ export const useLibraryStore = create<LibraryState>()(
         const { activeProfileId, profileData } = get();
         set((current) => {
           const nextPlayback = { ...current.playback, [state.contentId]: state };
+          const nextWatched = { ...current.watched };
+          delete nextWatched[state.contentId];
           return {
             playback: nextPlayback,
+            watched: nextWatched,
             profileData: activeProfileId
-              ? syncProfileData(profileData, activeProfileId, current.favorites, nextPlayback)
+              ? syncProfileData(
+                  profileData,
+                  activeProfileId,
+                  current.favorites,
+                  nextPlayback,
+                  nextWatched
+                )
               : profileData
           };
         });
@@ -185,8 +204,63 @@ export const useLibraryStore = create<LibraryState>()(
           return {
             playback: nextPlayback,
             profileData: activeProfileId
-              ? syncProfileData(profileData, activeProfileId, current.favorites, nextPlayback)
+              ? syncProfileData(
+                  profileData,
+                  activeProfileId,
+                  current.favorites,
+                  nextPlayback,
+                  current.watched
+                )
               : profileData
+          };
+        });
+      },
+
+      removeSeriesProgress: (seriesId, episodeIds) => {
+        set((current) => {
+          const ids = new Set([seriesId, ...episodeIds]);
+          const playback = Object.fromEntries(
+            Object.entries(current.playback).filter(([id]) => !ids.has(id))
+          );
+          const watched = Object.fromEntries(
+            Object.entries(current.watched).filter(([id]) => !ids.has(id))
+          );
+          return {
+            playback,
+            watched,
+            profileData: current.activeProfileId
+              ? syncProfileData(
+                  current.profileData,
+                  current.activeProfileId,
+                  current.favorites,
+                  playback,
+                  watched
+                )
+              : current.profileData
+          };
+        });
+      },
+
+      markWatched: (contentId) => {
+        set((current) => {
+          const playback = { ...current.playback };
+          delete playback[contentId];
+          const watched = {
+            ...current.watched,
+            [contentId]: { contentId, watchedAt: new Date().toISOString() }
+          };
+          return {
+            playback,
+            watched,
+            profileData: current.activeProfileId
+              ? syncProfileData(
+                  current.profileData,
+                  current.activeProfileId,
+                  current.favorites,
+                  playback,
+                  watched
+                )
+              : current.profileData
           };
         });
       },
@@ -204,6 +278,7 @@ export const useLibraryStore = create<LibraryState>()(
             activeAccountKey: accountKey,
             favorites: account.favorites,
             playback: account.playback,
+            watched: account.watched ?? {},
             profiles: account.profiles,
             activeProfileId: account.activeProfileId,
             profileData: account.profileData
@@ -220,6 +295,7 @@ export const useLibraryStore = create<LibraryState>()(
           catalogSource: "mock",
           favorites: [],
           playback: {},
+          watched: {},
           profiles: [],
           activeProfileId: null,
           profileData: {},
@@ -241,7 +317,7 @@ export const useLibraryStore = create<LibraryState>()(
           profiles: [...current.profiles, profile],
           profileData: {
             ...current.profileData,
-            [profile.id]: { favorites: [], playback: {} }
+            [profile.id]: { favorites: [], playback: {}, watched: {} }
           }
         }));
         return profile;
@@ -256,55 +332,65 @@ export const useLibraryStore = create<LibraryState>()(
         if (activeProfileId === profileId) {
           const nextActiveId = nextProfiles[0]?.id ?? null;
           const nextData = nextActiveId
-            ? (nextProfileData[nextActiveId] ?? { favorites: [], playback: {} })
-            : { favorites: [], playback: {} };
+            ? (nextProfileData[nextActiveId] ?? { favorites: [], playback: {}, watched: {} })
+            : { favorites: [], playback: {}, watched: {} };
           set({
             profiles: nextProfiles,
             profileData: nextProfileData,
             activeProfileId: nextActiveId,
             favorites: nextData.favorites,
-            playback: nextData.playback
+            playback: nextData.playback,
+            watched: nextData.watched ?? {}
           });
         } else {
           const savedProfileData = activeProfileId
-            ? syncProfileData(nextProfileData, activeProfileId, favorites, playback)
+            ? syncProfileData(nextProfileData, activeProfileId, favorites, playback, get().watched)
             : nextProfileData;
           set({ profiles: nextProfiles, profileData: savedProfileData });
         }
       },
 
       setActiveProfile: (profileId) => {
-        const { activeProfileId, favorites, playback, profileData } = get();
+        const { activeProfileId, favorites, playback, watched, profileData } = get();
 
         // Persist current profile data before switching
         const savedProfileData = activeProfileId
-          ? syncProfileData(profileData, activeProfileId, favorites, playback)
+          ? syncProfileData(profileData, activeProfileId, favorites, playback, watched)
           : profileData;
 
-        const nextData = savedProfileData[profileId] ?? { favorites: [], playback: {} };
+        const nextData = savedProfileData[profileId] ?? {
+          favorites: [],
+          playback: {},
+          watched: {}
+        };
         set({
           activeProfileId: profileId,
           favorites: nextData.favorites,
           playback: nextData.playback,
+          watched: nextData.watched ?? {},
           profileData: savedProfileData
         });
       }
     }),
     {
       name: "server-xtreme-library",
-      version: 1,
+      version: 2,
       migrate: migrateLibraryState,
       // O catálogo NÃO é persistido: pode passar de dezenas de milhares de itens
       // e estourar a cota (~5MB) do localStorage. É recarregado do servidor no
       // boot via AppShell quando há uma conexão salva (catalogSource === "xtream").
       partialize: (state) => ({
         catalogSource: state.catalogSource,
-        connection: state.rememberConnection ? state.connection : undefined,
+        connection:
+          state.rememberConnection && state.connection
+            ? { ...state.connection, password: "" }
+            : undefined,
         rememberConnection: state.rememberConnection,
         serverAccounts: withCurrentAccount(state),
         activeAccountKey: state.activeAccountKey,
         favorites: state.favorites,
         playback: state.playback,
+        watched: state.watched,
         profiles: state.profiles,
         activeProfileId: state.activeProfileId,
         profileData: state.profileData,

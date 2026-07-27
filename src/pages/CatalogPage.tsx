@@ -67,6 +67,7 @@ export function CatalogPage() {
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
   const removeProgress = useLibraryStore((state) => state.removeProgress);
+  const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
   const recommendedHero = useMemo(
@@ -104,7 +105,10 @@ export function CatalogPage() {
     [catalog, effectiveFilters, favorites]
   );
   const continueWatching = useMemo(
-    () => results.filter((item) => playback[item.id]).sort(sortByProgressDate(playback)),
+    () =>
+      results
+        .filter((item) => playback[item.id]?.positionSeconds > 0)
+        .sort(sortByProgressDate(playback)),
     [playback, results]
   );
   const favoritesList = results.filter((item) => favorites.has(item.id));
@@ -231,7 +235,15 @@ export function CatalogPage() {
           <CatalogRail
             title="Continue Watching"
             items={continueWatching.slice(0, RAIL_LIMIT)}
-            onRemoveItem={removeProgress}
+            onRemoveItem={(contentId) => {
+              const content = catalog.find((item) => item.id === contentId);
+              if (content?.type === "series")
+                removeSeriesProgress(
+                  contentId,
+                  content.episodes.map((episode) => episode.id)
+                );
+              else removeProgress(contentId);
+            }}
           />
           <CatalogRail title="Favorites" items={favoritesList.slice(0, RAIL_LIMIT)} />
 

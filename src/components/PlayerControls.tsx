@@ -4,9 +4,9 @@ import {
   Pause,
   Play,
   RotateCcw,
-  Settings,
   SkipForward,
-  Volume2
+  Volume2,
+  VolumeX
 } from "lucide-react";
 
 import { formatPlaybackTime } from "../utils/format";
@@ -25,6 +25,10 @@ interface PlayerControlsProps {
   onSeek: (positionSeconds: number) => void;
   onFullscreen: () => void;
   onToggleCaptions?: () => void;
+  volume: number;
+  muted: boolean;
+  onVolumeChange: (volume: number) => void;
+  onToggleMute: () => void;
 }
 
 export function PlayerControls({
@@ -40,7 +44,11 @@ export function PlayerControls({
   onNextEpisode,
   onSeek,
   onFullscreen,
-  onToggleCaptions
+  onToggleCaptions,
+  volume,
+  muted,
+  onVolumeChange,
+  onToggleMute
 }: PlayerControlsProps) {
   return (
     <div
@@ -92,28 +100,37 @@ export function PlayerControls({
               <SkipForward aria-hidden="true" size={20} />
             </IconButton>
           ) : null}
-          <IconButton label="Volume" onClick={() => undefined}>
-            <Volume2 aria-hidden="true" size={20} />
+          <IconButton label={muted ? "Ativar som" : "Silenciar"} onClick={onToggleMute}>
+            {muted ? (
+              <VolumeX aria-hidden="true" size={20} />
+            ) : (
+              <Volume2 aria-hidden="true" size={20} />
+            )}
           </IconButton>
+          <input
+            data-focusable="true"
+            aria-label="Volume"
+            aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            onChange={(event) => onVolumeChange(Number(event.target.value))}
+            className="h-2 w-28 cursor-pointer accent-primary-container"
+          />
+          <span className="w-9 text-right font-mono text-xs text-on-surface-variant">
+            {Math.round((muted ? 0 : volume) * 100)}
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            data-focusable="true"
-            className="focus-card rounded-lg border border-white/20 bg-black/30 px-3 py-2 font-mono text-xs text-on-surface"
-          >
-            4K
-          </button>
           <IconButton
             label="Captions"
             active={captionsActive}
             onClick={onToggleCaptions ?? (() => undefined)}
           >
             <Captions aria-hidden="true" size={20} />
-          </IconButton>
-          <IconButton label="Player settings" onClick={() => undefined}>
-            <Settings aria-hidden="true" size={20} />
           </IconButton>
           <IconButton label="Fullscreen" onClick={onFullscreen}>
             <Expand aria-hidden="true" size={20} />

@@ -2,11 +2,13 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { gunzipSync } = require("node:zlib");
+const { isIP } = require("node:net");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const CINEMETA_BASE = "https://v3-cinemeta.strem.io";
 const OPENSUBS_ADDON_BASE = "https://opensubtitles-v3.strem.io";
-const SUBTITLE_UA = "ServerXtreme/0.2.1";
+const SUBTITLE_UA = "ServerXtreme/0.2.2";
+const MAX_BODY_BYTES = 1024 * 1024;
 const PT_LANGS = new Set(["por", "pob"]);
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -34,9 +36,7 @@ function buildXtreamTargetUrl(serverUrl) {
   if (!new Set(["http:", "https:"]).has(target.protocol)) {
     throw new Error("Server URL must start with http:// or https://.");
   }
-  if (!target.pathname.endsWith("/player_api.php")) {
-    target.pathname = `${target.pathname.replace(/\/$/, "")}/player_api.php`;
-  }
+  target.pathname = `${target.pathname.replace(/\/player_api\.php\/?$/i, "").replace(/\/+$/, "")}/player_api.php`;
   target.search = "";
   target.hash = "";
   return target;
@@ -45,7 +45,16 @@ function buildXtreamTargetUrl(serverUrl) {
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Request body is too large."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf-8").trim();
       if (!raw) return resolve({});
@@ -137,6 +146,10 @@ async function handleSubtitleDownload(requestUrl, res) {
   if (!fileId) return sendText(res, 400, "Missing fileId.");
   const link = Buffer.from(fileId, "base64url").toString("utf-8");
   if (!/^https?:\/\//.test(link)) return sendText(res, 400, "Invalid subtitle reference.");
+  const subtitleUrl = new URL(link);
+  if (isPrivateHostname(subtitleUrl.hostname)) {
+    return sendText(res, 400, "Private subtitle addresses are not allowed.");
+  }
   const upstream = await fetch(link, { headers: { "User-Agent": SUBTITLE_UA } });
   if (!upstream.ok) return sendText(res, upstream.status, await upstream.text());
   let bytes = Buffer.from(await upstream.arrayBuffer());
@@ -145,6 +158,27 @@ async function handleSubtitleDownload(requestUrl, res) {
   const text = (utf8.match(/�/g) ?? []).length > 3 ? bytes.toString("latin1") : utf8;
   res.writeHead(200, { "content-type": "text/vtt; charset=utf-8" });
   res.end(srtToVtt(text));
+}
+
+function isPrivateHostname(hostname) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
+  if (!isIP(normalized)) return false;
+  if (
+    normalized === "::1" ||
+    normalized.startsWith("fe80:") ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd")
+  )
+    return true;
+  const parts = normalized.split(".").map(Number);
+  return (
+    parts[0] === 10 ||
+    parts[0] === 127 ||
+    (parts[0] === 169 && parts[1] === 254) ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168)
+  );
 }
 
 function serveStatic(pathname, res) {
@@ -189,4 +223,106 @@ function start() {
   });
 }
 
-module.exports = { createServer, start };
+async function handleProtocolRequest(request) {
+  const requestUrl = new URL(request.url);
+  if (requestUrl.pathname === "/api/xtream") {
+    if (request.method !== "POST")
+      return new Response("Use POST for /api/xtream.", { status: 405 });
+    const raw = await request.text();
+    if (Buffer.byteLength(raw) > MAX_BODY_BYTES)
+      return new Response("Request body is too large.", { status: 413 });
+    let payload;
+    try {
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      return new Response("Invalid JSON body.", { status: 400 });
+    }
+    const { serverUrl, username, password, action, params = {} } = payload ?? {};
+    if (![serverUrl, username, password].every((value) => typeof value === "string" && value)) {
+      return new Response("Missing serverUrl, username, or password.", { status: 400 });
+    }
+    const target = buildXtreamTargetUrl(serverUrl);
+    target.searchParams.set("username", username);
+    target.searchParams.set("password", password);
+    if (typeof action === "string" && action) target.searchParams.set("action", action);
+    if (params && typeof params === "object")
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
+      }
+    const upstream = await fetch(target);
+    return new Response(await upstream.arrayBuffer(), {
+      status: upstream.status,
+      headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" }
+    });
+  }
+
+  if (requestUrl.pathname === "/api/subtitles") {
+    const query = requestUrl.searchParams.get("query");
+    if (!query) return new Response("Missing query.", { status: 400 });
+    const season = requestUrl.searchParams.get("season");
+    const episode = requestUrl.searchParams.get("episode");
+    const isSeries = Boolean(season && episode);
+    const imdbId = await resolveImdbId(query, isSeries ? "series" : "movie");
+    if (!imdbId) return Response.json([]);
+    const videoId = isSeries ? `${imdbId}:${season}:${episode}` : imdbId;
+    const target = `${OPENSUBS_ADDON_BASE}/subtitles/${isSeries ? "series" : "movie"}/${videoId}.json`;
+    const upstream = await fetch(target, { headers: { "User-Agent": SUBTITLE_UA } });
+    if (!upstream.ok) return new Response(await upstream.text(), { status: upstream.status });
+    const payload = await upstream.json();
+    return Response.json(
+      (payload.subtitles ?? [])
+        .filter((entry) => entry.url && PT_LANGS.has(entry.lang ?? ""))
+        .map((entry, index) => ({
+          fileId: Buffer.from(entry.url).toString("base64url"),
+          language: entry.lang === "pob" ? "Portugues (BR)" : "Portugues",
+          release: `Opcao ${index + 1}`,
+          downloads: 0
+        }))
+    );
+  }
+
+  if (requestUrl.pathname === "/api/subtitles/file") {
+    const fileId = requestUrl.searchParams.get("fileId");
+    if (!fileId) return new Response("Missing fileId.", { status: 400 });
+    const link = Buffer.from(fileId, "base64url").toString("utf-8");
+    let subtitleUrl;
+    try {
+      subtitleUrl = new URL(link);
+    } catch {
+      return new Response("Invalid subtitle reference.", { status: 400 });
+    }
+    if (
+      !["http:", "https:"].includes(subtitleUrl.protocol) ||
+      isPrivateHostname(subtitleUrl.hostname)
+    )
+      return new Response("Invalid subtitle reference.", { status: 400 });
+    const upstream = await fetch(subtitleUrl, { headers: { "User-Agent": SUBTITLE_UA } });
+    if (!upstream.ok) return new Response(await upstream.text(), { status: upstream.status });
+    let bytes = Buffer.from(await upstream.arrayBuffer());
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes);
+    return new Response(srtToVtt(bytes.toString("utf-8")), {
+      headers: { "content-type": "text/vtt; charset=utf-8" }
+    });
+  }
+
+  const decoded = decodeURIComponent(requestUrl.pathname);
+  const candidate = path.resolve(DIST_DIR, `.${decoded}`);
+  let filePath = candidate.startsWith(`${DIST_DIR}${path.sep}`) ? candidate : "";
+  if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory())
+    filePath = path.join(DIST_DIR, "index.html");
+  try {
+    return new Response(await fs.promises.readFile(filePath), {
+      headers: { "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream" }
+    });
+  } catch {
+    return new Response("Not found.", { status: 404 });
+  }
+}
+
+module.exports = {
+  createServer,
+  start,
+  handleProtocolRequest,
+  buildXtreamTargetUrl,
+  isPrivateHostname
+};

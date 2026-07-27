@@ -1,5 +1,5 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, Plus, RotateCcw, Share2, SkipForward } from "lucide-react";
+import { ArrowLeft, Heart, RotateCcw, SkipForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
@@ -35,11 +35,17 @@ export function PlayerPage() {
   const series = isSeries(item) ? item : undefined;
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
+  const markWatched = useLibraryStore((state) => state.markWatched);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
     routeContentId ? state.isFavorite(routeContentId) : false
   );
   const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(() => {
+    const saved = Number(localStorage.getItem("server-xtreme-volume") ?? 1);
+    return Number.isFinite(saved) ? Math.min(Math.max(saved, 0), 1) : 1;
+  });
+  const [muted, setMuted] = useState(false);
   const [mediaDuration, setMediaDuration] = useState<number | undefined>();
   const [mediaError, setMediaError] = useState<string | undefined>();
   const [areControlsVisible, setAreControlsVisible] = useState(true);
@@ -62,6 +68,7 @@ export function PlayerPage() {
   const bufferRecoveryTimeoutRef = useRef<number | undefined>(undefined);
   const playbackIntentRef = useRef(isPlaying);
   const mediaErrorRef = useRef(mediaError);
+  const lastSavedSecondRef = useRef(-1);
   const selectedEpisode = useMemo(
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
@@ -100,9 +107,16 @@ export function PlayerPage() {
     remainingSeconds <= NEXT_EPISODE_PROMPT_SECONDS;
   const shouldOfferSkipIntro =
     Boolean(activeStreamUrl) &&
-    item?.type !== "channel" &&
+    Boolean(selectedEpisode) &&
     durationSeconds > INTRO_SKIP_TO_SECONDS &&
     positionSeconds < INTRO_SKIP_TO_SECONDS;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = volume;
+    video.muted = muted || volume === 0;
+  }, [activeStreamUrl, muted, volume]);
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -435,7 +449,17 @@ export function PlayerPage() {
     const nextPosition = Math.floor(video.currentTime);
     setPositionSeconds(nextPosition);
 
-    if (nextPosition % 5 === 0) {
+    if (
+      content.type !== "channel" &&
+      durationSeconds > 0 &&
+      nextPosition / durationSeconds >= 0.95
+    ) {
+      markWatched(selectedEpisode?.id ?? content.id);
+      return;
+    }
+
+    if (content.type !== "channel" && nextPosition - lastSavedSecondRef.current >= 5) {
+      lastSavedSecondRef.current = nextPosition;
       storeProgress(
         normalizePlaybackState({
           contentId: selectedEpisode?.id ?? content.id,
@@ -554,6 +578,8 @@ export function PlayerPage() {
   }
 
   function handleEnded() {
+    markWatched(selectedEpisode?.id ?? content.id);
+    if (selectedEpisode && !nextEpisode) markWatched(content.id);
     if (nextEpisode) {
       handleNextEpisode();
       return;
@@ -680,7 +706,11 @@ export function PlayerPage() {
             onTimeUpdate={handleTimeUpdate}
             onWaiting={handleBufferingStart}
             onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
+            onPause={() => {
+              setIsPlaying(false);
+              if (content.type !== "channel")
+                handleSeek(videoRef.current?.currentTime ?? positionSeconds);
+            }}
             onEnded={handleEnded}
             onError={() =>
               setMediaError(
@@ -780,6 +810,17 @@ export function PlayerPage() {
           onToggleCaptions={() => {
             void handleToggleCaptions();
           }}
+          volume={volume}
+          muted={muted}
+          onToggleMute={() => {
+            setMuted((current) => !current);
+          }}
+          onVolumeChange={(next) => {
+            const normalized = Math.min(Math.max(next, 0), 1);
+            setVolume(normalized);
+            setMuted(normalized === 0);
+            localStorage.setItem("server-xtreme-volume", String(normalized));
+          }}
         />
         {isSubtitlePickerOpen ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -859,7 +900,7 @@ export function PlayerPage() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {activeStreamUrl ? (
+            {activeStreamUrl && content.type !== "channel" ? (
               <button
                 type="button"
                 data-focusable="true"
@@ -870,12 +911,6 @@ export function PlayerPage() {
                 Assistir do começo
               </button>
             ) : null}
-            <ActionButton label="Add to list">
-              <Plus aria-hidden="true" size={20} />
-            </ActionButton>
-            <ActionButton label="Share">
-              <Share2 aria-hidden="true" size={20} />
-            </ActionButton>
             <button
               type="button"
               data-focusable="true"
@@ -962,24 +997,6 @@ export function PlayerPage() {
 
       <CatalogRail title="Up Next" items={related} />
     </div>
-  );
-}
-
-interface ActionButtonProps {
-  label: string;
-  children: React.ReactNode;
-}
-
-function ActionButton({ label, children }: ActionButtonProps) {
-  return (
-    <button
-      type="button"
-      data-focusable="true"
-      className="focus-card flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"
-    >
-      {children}
-      {label}
-    </button>
   );
 }
 

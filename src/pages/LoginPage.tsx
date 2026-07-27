@@ -1,13 +1,15 @@
 import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, Server, UserRound } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { connectServerSession } from "../services/sessionService";
+import { clearRememberedPassword, saveRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setSessionName = useLibraryStore((state) => state.setSessionName);
   const setServerUrlInStore = useLibraryStore((state) => state.setServerUrl);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
@@ -17,7 +19,9 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const [error, setError] = useState<string | undefined>(
+    (location.state as { error?: string } | null)?.error
+  );
   const [isConnecting, setIsConnecting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -27,6 +31,8 @@ export function LoginPage() {
 
     try {
       const session = await connectServerSession({ serverUrl, username, password, remember });
+      if (remember) await saveRememberedPassword(password);
+      else await clearRememberedPassword();
       activateServerAccount({ serverUrl, username, password }, remember);
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
@@ -117,9 +123,6 @@ export function LoginPage() {
             />
             Remember Me
           </label>
-          <a className="font-mono text-xs uppercase text-primary" href="mailto:support@example.com">
-            Get Help
-          </a>
         </div>
 
         <button

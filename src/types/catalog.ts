@@ -70,6 +70,11 @@ export interface PlaybackState {
   updatedAt: string;
 }
 
+export interface WatchedState {
+  contentId: string;
+  watchedAt: string;
+}
+
 export interface Profile {
   id: string;
   name: string;

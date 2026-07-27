@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Profile } from "../types/catalog";
 import { SwitchAccountDialog } from "../components/SwitchAccountDialog";
+import { clearRememberedPassword } from "../services/credentialService";
 
 const AVATAR_COLORS = [
   "bg-violet-500",
@@ -51,6 +52,7 @@ export function ProfilesPage() {
   }
 
   function handleConfirmSwitchAccount() {
+    void clearRememberedPassword();
     disconnectServerAccount();
     setIsSwitchAccountOpen(false);
     void navigate("/login", { replace: true });
@@ -79,7 +81,7 @@ export function ProfilesPage() {
       {/* Profile grid */}
       <div className="mb-8 flex flex-wrap justify-center gap-5">
         {profiles.map((profile) => (
-          <div key={profile.id} className="relative">
+          <div key={profile.id} className="group relative">
             <button
               type="button"
               onClick={() => handleSelectProfile(profile)}

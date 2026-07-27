@@ -1,5 +1,9 @@
 # Server Xtreme
 
+## Download para Windows
+
+Baixe o instalador ou a versao portatil na [Release mais recente](https://github.com/lu150ml/play_tv/releases/latest). Os arquivos `.sha256` permitem conferir a integridade do download.
+
 Player IPTV com interface estilo streaming para servidores compatíveis com **Xtream Codes**. Conecta ao seu servidor, baixa o catálogo completo (TV ao vivo, filmes e séries) e oferece navegação por categorias, perfis de usuário e progresso de reprodução persistido localmente.
 
 ---

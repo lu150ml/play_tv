@@ -1,13 +1,19 @@
-const { app, BrowserWindow, shell } = require("electron");
-const { start } = require("./server.cjs");
+const path = require("node:path");
+const { app, BrowserWindow, ipcMain, protocol, safeStorage, shell } = require("electron");
+const { handleProtocolRequest } = require("./server.cjs");
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app",
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
+  }
+]);
 
 let mainWindow = null;
-let localServer = null;
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
 
 async function createWindow() {
-  const started = await start();
-  localServer = started.server;
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -19,7 +25,8 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, "preload.cjs")
     }
   });
 
@@ -29,17 +36,55 @@ async function createWindow() {
     }
     return { action: "deny" };
   });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith("app://server-xtreme/")) {
+      event.preventDefault();
+      if (url.startsWith("https://") || url.startsWith("http://")) void shell.openExternal(url);
+    }
+  });
 
-  await mainWindow.loadURL(`http://127.0.0.1:${started.port}/`);
+  await mainWindow.loadURL("app://server-xtreme/");
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  protocol.handle("app", (request) => handleProtocolRequest(request));
+  ipcMain.handle("credentials:save", (_event, value) => {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    const encrypted = safeStorage.encryptString(String(value));
+    require("node:fs").writeFileSync(
+      path.join(app.getPath("userData"), "credentials.bin"),
+      encrypted
+    );
+    return true;
+  });
+  ipcMain.handle("credentials:load", () => {
+    try {
+      return safeStorage.decryptString(
+        require("node:fs").readFileSync(path.join(app.getPath("userData"), "credentials.bin"))
+      );
+    } catch {
+      return undefined;
+    }
+  });
+  ipcMain.handle("credentials:clear", () => {
+    try {
+      require("node:fs").unlinkSync(path.join(app.getPath("userData"), "credentials.bin"));
+    } catch {
+      // The credential file may not exist yet.
+    }
+  });
+  await createWindow();
+});
+
+app.on("second-instance", () => {
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.focus();
+});
 
 app.on("window-all-closed", () => {
-  localServer?.close();
   if (process.platform !== "darwin") app.quit();
 });
 

@@ -33,6 +33,15 @@ describe("playbackService", () => {
     expect(saved.positionSeconds).toBe(100);
   });
 
+  it("preserves progress while duration is unknown", () => {
+    const saved = savePlaybackProgress({
+      contentId: "unknown-duration",
+      positionSeconds: 42,
+      durationSeconds: 0
+    });
+    expect(saved.positionSeconds).toBe(42);
+  });
+
   it("calculates progress ratio", () => {
     expect(
       getProgressRatio({

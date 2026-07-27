@@ -1,9 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/xtream?**", async (route) => {
-    const url = new URL(route.request().url());
-    const action = url.searchParams.get("action");
+  await page.route("**/api/xtream", async (route) => {
+    const payload = route.request().postDataJSON() as { action?: string };
+    const action = payload.action;
 
     if (!action) {
       await route.fulfill({
@@ -93,12 +93,20 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("connects to catalog and opens a title", async ({ page }) => {
+async function connectToCatalog(page: Page) {
   await page.goto("/login");
   await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
   await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
   await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
   await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("button", { name: "Criar perfil" }).click();
+  await page.locator('input[placeholder="Ex: Kaworu"]').fill("Teste");
+  await page.getByRole("button", { name: "Criar e entrar" }).click();
+  await expect(page).toHaveURL(/\/catalog$/);
+}
+
+test("connects to catalog and opens a title", async ({ page }) => {
+  await connectToCatalog(page);
 
   await expect(page.getByText("Xtream server catalog")).toBeVisible();
   await expect(page.getByText("3 items loaded")).toBeVisible();
@@ -107,11 +115,7 @@ test("connects to catalog and opens a title", async ({ page }) => {
 });
 
 test("uses connected Xtream catalog on dedicated navigation pages", async ({ page }) => {
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
   await expect(page.getByText("Xtream server catalog")).toBeVisible();
 
   await page.goto("/catalog/movies");
@@ -122,11 +126,7 @@ test("uses connected Xtream catalog on dedicated navigation pages", async ({ pag
 });
 
 test("reloads Xtream series episodes from remembered server connection", async ({ page }) => {
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
   await expect(page.getByText("Pilot")).toBeVisible();
@@ -257,11 +257,7 @@ test("supports keyboard style navigation", async ({ page }) => {
 });
 
 test("opens a dedicated series page with seasons and episodes", async ({ page }) => {
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
@@ -275,11 +271,7 @@ test("opens a dedicated series page with seasons and episodes", async ({ page })
 });
 
 test("jumps to the next episode from player controls", async ({ page }) => {
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
   await page.getByRole("link", { name: /S1 E1 Pilot/ }).click();
@@ -292,11 +284,7 @@ test("jumps to the next episode from player controls", async ({ page }) => {
 });
 
 test("shows only current season episodes while watching a series", async ({ page }) => {
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
   await page.getByRole("button", { name: "Temporada 2" }).click();
@@ -334,11 +322,7 @@ test("preloads video without revealing hidden controls while buffering", async (
     });
   });
   await page.route("http://xtream.test/**", () => new Promise(() => undefined));
-  await page.goto("/login");
-  await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await connectToCatalog(page);
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
 
   const video = page.locator("video");

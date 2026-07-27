@@ -90,4 +90,26 @@ describe("libraryStore server accounts", () => {
     useLibraryStore.getState().activateServerAccount(accountA, true);
     expect(useLibraryStore.getState().profiles[0]?.name).toBe("Profile A");
   });
+
+  it("marks content watched and removes a series with its episodes", () => {
+    const store = useLibraryStore.getState();
+    store.saveProgress({
+      contentId: "series-a",
+      positionSeconds: 10,
+      durationSeconds: 100,
+      updatedAt: "now"
+    });
+    store.saveProgress({
+      contentId: "episode-a",
+      positionSeconds: 20,
+      durationSeconds: 100,
+      updatedAt: "now"
+    });
+    store.markWatched("episode-a");
+    expect(useLibraryStore.getState().playback["episode-a"]).toBeUndefined();
+    expect(useLibraryStore.getState().watched["episode-a"]).toBeDefined();
+    useLibraryStore.getState().removeSeriesProgress("series-a", ["episode-a"]);
+    expect(useLibraryStore.getState().playback["series-a"]).toBeUndefined();
+    expect(useLibraryStore.getState().watched["episode-a"]).toBeUndefined();
+  });
 });
