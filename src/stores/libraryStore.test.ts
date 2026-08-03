@@ -24,6 +24,15 @@ beforeEach(() => {
 });
 
 describe("libraryStore server accounts", () => {
+  it("keeps channel health isolated by Xtream account", () => {
+    const store = useLibraryStore.getState();
+    store.activateServerAccount(accountA, true);
+    useLibraryStore.getState().setChannelHealth("channel-1", { status: "unavailable", httpStatus: 404 });
+    expect(useLibraryStore.getState().getChannelHealth("channel-1")?.status).toBe("unavailable");
+    useLibraryStore.getState().activateServerAccount(accountB, true);
+    expect(useLibraryStore.getState().getChannelHealth("channel-1")).toBeUndefined();
+  });
+
   it("builds a stable account key without including the password", () => {
     const first = getServerAccountKey(accountA);
     const second = getServerAccountKey({

@@ -3,6 +3,9 @@ import { persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
 import type { ContentItem, Episode, PlaybackState, Profile, WatchedState } from "../types/catalog";
+import type { StreamHealthStatus } from "../services/desktopService";
+
+export interface ChannelHealth { contentId: string; accountKey: string; status: StreamHealthStatus; reason?: string; httpStatus?: number; candidateIndex?: number; checkedAt: string }
 
 export interface XtreamConnection {
   serverUrl: string;
@@ -42,6 +45,7 @@ interface LibraryState {
   profileData: Record<string, ProfileData>;
   sessionName: string;
   serverUrl?: string;
+  streamHealth: Record<string, ChannelHealth>;
   // Favorites / playback actions
   toggleFavorite: (contentId: string) => void;
   isFavorite: (contentId: string) => boolean;
@@ -53,6 +57,8 @@ interface LibraryState {
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageUrl: string) => void;
+  getChannelHealth: (contentId: string) => ChannelHealth | undefined;
+  setChannelHealth: (contentId: string, health: Omit<ChannelHealth, "contentId" | "accountKey" | "checkedAt">) => void;
   activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
   disconnectServerAccount: () => void;
   setSessionName: (name: string) => void;
@@ -148,6 +154,7 @@ export const useLibraryStore = create<LibraryState>()(
       rememberConnection: false,
       serverAccounts: {},
       activeAccountKey: null,
+      streamHealth: {},
       favorites: [],
       playback: {},
       watched: {},
@@ -282,6 +289,18 @@ export const useLibraryStore = create<LibraryState>()(
           item.id === seriesId && item.type === "series" ? { ...item, imageUrl } : item
         )
       })),
+      getChannelHealth: (contentId) => {
+        const current = get();
+        const accountKey = current.activeAccountKey ?? "session";
+        const health = current.streamHealth[`${accountKey}:${contentId}`];
+        if (!health) return undefined;
+        const ttl = new Set(["server-error", "network-error", "timeout"]).has(health.status) ? 10 * 60 * 1000 : 24 * 60 * 60 * 1000;
+        return Date.now() - new Date(health.checkedAt).getTime() <= ttl ? health : undefined;
+      },
+      setChannelHealth: (contentId, health) => set((current) => {
+        const accountKey = current.activeAccountKey ?? "session";
+        return { streamHealth: { ...current.streamHealth, [`${accountKey}:${contentId}`]: { ...health, contentId, accountKey, checkedAt: new Date().toISOString() } } };
+      }),
       activateServerAccount: (connection, remember) => {
         const accountKey = getServerAccountKey(connection);
         set((current) => {
@@ -411,7 +430,8 @@ export const useLibraryStore = create<LibraryState>()(
         activeProfileId: state.activeProfileId,
         profileData: state.profileData,
         sessionName: state.sessionName,
-        serverUrl: state.serverUrl
+        serverUrl: state.serverUrl,
+        streamHealth: state.streamHealth
       })
     }
   )

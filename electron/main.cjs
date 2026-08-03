@@ -127,6 +127,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("downloads:open", (_event, id) => downloadManager.open(id));
   ipcMain.handle("downloads:open-directory", () => downloadManager.openDirectory());
   ipcMain.handle("media:register-image", (_event, url) => mediaManager.registerImage(url));
+  ipcMain.handle("media:probe-stream", (_event, candidates) => mediaManager.probeStream(candidates));
   ipcMain.handle("media:start-transcode", (_event, url) => mediaManager.startTranscode(url));
   ipcMain.handle("media:stop-transcode", (_event, id) => mediaManager.stopTranscode(id));
   await createWindow();

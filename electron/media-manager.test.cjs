@@ -30,3 +30,18 @@ test("preflight classifies denied and missing streams", async () => {
     await assert.rejects(() => manager.preflight("https://example.test/video.mkv"), (error) => error.code === "not-found");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("stream probe rejects fake HTML success and accepts real HLS", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  try {
+    const responses = [
+      new Response("<html>offline</html>", { status: 200, headers: { "content-type": "text/html" } }),
+      new Response("#EXTM3U\n#EXT-X-VERSION:3", { status: 200, headers: { "content-type": "application/vnd.apple.mpegurl" } })
+    ];
+    const manager = new MediaManager({ app: { getPath: () => root }, net: { fetch: async () => responses.shift() }, ffmpegPath: "missing" });
+    const result = await manager.probeStream(["https://example.test/a.ts", "https://example.test/a.m3u8"]);
+    assert.equal(result.status, "available");
+    assert.equal(result.candidateIndex, 1);
+    assert.equal(result.format, "m3u8");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

@@ -43,6 +43,7 @@ export function PlayerPage() {
   const markWatched = useLibraryStore((state) => state.markWatched);
   const cacheSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const cacheSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
+  const setChannelHealth = useLibraryStore((state) => state.setChannelHealth);
   const downloads = useDownloadState();
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
@@ -76,6 +77,9 @@ export function PlayerPage() {
   const [transcodeSession, setTranscodeSession] = useState<{ id: string; url: string } | undefined>();
   const [isPreparingCompatibleFormat, setIsPreparingCompatibleFormat] = useState(false);
   const [playbackMode, setPlaybackMode] = useState<"native" | "fallback" | "transcoding">("native");
+  const [isProbingStream, setIsProbingStream] = useState(false);
+  const [isStreamApproved, setIsStreamApproved] = useState(false);
+  const [probeRetry, setProbeRetry] = useState(0);
   const securePosterUrl = useSecureImageUrl(item?.imageUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
@@ -98,7 +102,7 @@ export function PlayerPage() {
     [item?.type, originalStreamUrl]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
-  const activeStreamUrl = transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)]);
+  const activeStreamUrl = transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined);
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -281,6 +285,37 @@ export function PlayerPage() {
       return undefined;
     });
   }, [originalStreamUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (completedDownload || !originalStreamUrl) {
+      setIsStreamApproved(Boolean(completedDownload));
+      return;
+    }
+    const bridge = getDesktopBridge();
+    if (!bridge?.media) {
+      setIsStreamApproved(true);
+      return;
+    }
+    setIsStreamApproved(false);
+    setIsProbingStream(true);
+    setMediaError(undefined);
+    if (item?.type === "channel") setChannelHealth(item.id, { status: "checking" });
+    void bridge.media.probeStream(streamCandidates)
+      .then((result) => {
+        if (cancelled) return;
+        if (item?.type === "channel") setChannelHealth(item.id, { status: result.status, reason: result.reason, httpStatus: result.httpStatus, candidateIndex: result.candidateIndex });
+        if (result.status === "available") {
+          setStreamAttempt(result.candidateIndex ?? 0);
+          setIsStreamApproved(true);
+        } else {
+          setMediaError(result.reason ?? "Nao foi possivel verificar este stream.");
+        }
+      })
+      .catch(() => { if (!cancelled) setMediaError("Nao foi possivel conectar ao servidor."); })
+      .finally(() => { if (!cancelled) setIsProbingStream(false); });
+    return () => { cancelled = true; };
+  }, [completedDownload, item?.id, item?.type, originalStreamUrl, probeRetry, setChannelHealth, streamCandidates]);
 
   useEffect(() => () => {
     if (transcodeSession) void getDesktopBridge()?.media.stopTranscode(transcodeSession.id);
@@ -758,6 +793,7 @@ export function PlayerPage() {
     setMediaError(undefined);
     setStreamAttempt(0);
     setPlaybackMode("native");
+    setProbeRetry((value) => value + 1);
     const video = videoRef.current;
     if (video) {
       video.load();
@@ -914,6 +950,11 @@ export function PlayerPage() {
         {isPreparingCompatibleFormat ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
             Preparando formato compativel... Isso pode levar alguns segundos.
+          </div>
+        ) : null}
+        {isProbingStream ? (
+          <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
+            Verificando disponibilidade do conteudo...
           </div>
         ) : null}
         {content.type !== "channel" && isBuffering && !mediaError ? (

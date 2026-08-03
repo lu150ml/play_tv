@@ -13,7 +13,9 @@ describe("musicService", () => {
     expect(isMusicChannel(channel("Radio Rock", ["Radio"]))).toBe(true);
   });
 
-  it("keeps regular channels in live TV", () => {
+  it("keeps regular channels in live TV without partial word matches", () => {
     expect(isMusicChannel(channel("News 24", ["Noticias"]))).toBe(false);
+    expect(isMusicChannel(channel("Eclipse TV", ["CANAIS | Eclipse"]))).toBe(false);
+    expect(isMusicChannel(channel("Tradicional HD", ["CANAIS | Tradicional"]))).toBe(false);
   });
 });

@@ -225,30 +225,8 @@ async function requestXtream<T>(
   return (await response.json()) as T;
 }
 
-// "FILMES | DRAMA" → "Drama", "CANAIS | ESPN" → "ESPN", "SÉRIES | NETFLIX" → "Netflix"
-function normalizeCategory(raw: string): string {
-  const parts = raw.split("|");
-  const label = (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim();
-  if (!label) return raw;
-
-  // Capitaliza cada palavra usando split por espaço (funciona com acentos)
-  const titleCase = label
-    .toLowerCase()
-    .split(" ")
-    .map((word) => (word.length > 0 ? word[0].toUpperCase() + word.slice(1) : word))
-    .join(" ");
-
-  // Siglas e marcas conhecidas em caixa alta
-  return titleCase
-    .replace(/\bTv\b/g, "TV")
-    .replace(/\bHbo\b/g, "HBO")
-    .replace(/\bEspn\b/g, "ESPN")
-    .replace(/\bSbt\b/g, "SBT")
-    .replace(/\bUfc\b/g, "UFC")
-    .replace(/\bUhd\b/g, "UHD")
-    .replace(/\b4k\b/gi, "4K")
-    .replace(/\bHdr\b/gi, "HDR")
-    .replace(/\b24h\b/gi, "24h");
+export function normalizeCategory(raw: string): string {
+  return raw.trim() || "Outros";
 }
 
 function mapCategories(categories: XtreamCategory[]): Map<string, string> {

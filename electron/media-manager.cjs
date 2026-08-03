@@ -29,6 +29,7 @@ class MediaManager {
     this.images = new Map();
     this.imageTokensByUrl = new Map();
     this.transcodes = new Map();
+    this.probeQueue = Promise.resolve();
     this.root = path.join(app.getPath("userData"), "media-cache");
     fs.mkdirSync(this.root, { recursive: true });
     this.pruneCache();
@@ -42,6 +43,73 @@ class MediaManager {
     this.images.set(token, { url, expiresAt: Date.now() + TOKEN_TTL });
     this.imageTokensByUrl.set(url, token);
     return `app://server-xtreme/media/image/${token}`;
+  }
+
+  probeStream(candidates) {
+    const urls = Array.isArray(candidates) ? candidates.map(validateRemoteUrl).slice(0, 4) : [];
+    if (urls.length === 0) return Promise.resolve({ status: "network-error", reason: "Nenhuma URL de stream foi fornecida." });
+    const task = this.probeQueue.then(() => this.runProbe(urls));
+    this.probeQueue = task.catch(() => {});
+    return task;
+  }
+
+  async runProbe(urls) {
+    let last = { status: "network-error", reason: "Nao foi possivel conectar ao servidor." };
+    for (let index = 0; index < urls.length; index += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await this.net.fetch(urls[index], {
+          redirect: "follow",
+          signal: controller.signal,
+          headers: { Range: "bytes=0-1023", "User-Agent": "Play-TV-X/0.4.3", Accept: "*/*" }
+        });
+        if (response.status === 401 || response.status === 403) {
+          void response.body?.cancel();
+          return { status: "access-denied", httpStatus: response.status, reason: "Acesso recusado pelo provedor." };
+        }
+        if (response.status === 404 || response.status === 410) {
+          void response.body?.cancel();
+          last = { status: "unavailable", httpStatus: response.status, reason: "Canal removido ou desativado pelo servidor." };
+          continue;
+        }
+        if (response.status >= 500) {
+          void response.body?.cancel();
+          last = { status: "server-error", httpStatus: response.status, reason: "Servidor temporariamente indisponivel." };
+          continue;
+        }
+        if (!response.ok && response.status !== 206) {
+          void response.body?.cancel();
+          last = { status: "network-error", httpStatus: response.status, reason: `Servidor respondeu HTTP ${response.status}.` };
+          continue;
+        }
+        const reader = response.body?.getReader();
+        const chunk = reader ? await reader.read() : { value: undefined };
+        void reader?.cancel();
+        const bytes = Buffer.from(chunk.value ?? []);
+        const text = bytes.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
+        const type = (response.headers.get("content-type") || "").toLowerCase();
+        if (bytes.length === 0 || type.includes("text/html") || text.startsWith("<html") || text.startsWith("<!doctype")) {
+          last = { status: "unavailable", httpStatus: response.status, reason: "O servidor nao retornou um stream valido." };
+          continue;
+        }
+        const format = text.startsWith("#extm3u") || type.includes("mpegurl")
+          ? "m3u8"
+          : bytes[0] === 0x47 || type.includes("mp2t")
+            ? "ts"
+            : type.includes("mp4") || bytes.subarray(4, 8).toString("ascii") === "ftyp"
+              ? "mp4"
+              : "unknown";
+        return { status: "available", candidateIndex: index, format, httpStatus: response.status };
+      } catch (error) {
+        last = error?.name === "AbortError"
+          ? { status: "timeout", reason: "O servidor demorou demais para responder." }
+          : { status: "network-error", reason: "Nao foi possivel conectar ao servidor." };
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    return last;
   }
 
   async startTranscode(remoteUrl) {

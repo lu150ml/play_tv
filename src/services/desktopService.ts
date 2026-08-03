@@ -64,11 +64,15 @@ interface DesktopBridge {
   };
   media: {
     registerImage(url: string): Promise<string>;
+    probeStream(candidates: string[]): Promise<StreamProbeResult>;
     startTranscode(url: string): Promise<{ id: string; url: string; mode: "transcoding" }>;
     stopTranscode(id: string): Promise<void>;
     onState(callback: (state: { id: string; status: "ready" | "error"; error?: string }) => void): () => void;
   };
 }
+
+export type StreamHealthStatus = "pending" | "checking" | "available" | "unavailable" | "access-denied" | "server-error" | "network-error" | "timeout" | "unsupported";
+export interface StreamProbeResult { status: StreamHealthStatus; candidateIndex?: number; format?: "m3u8" | "ts" | "mp4" | "unknown"; httpStatus?: number; reason?: string }
 
 declare global { interface Window { serverXtreme?: DesktopBridge } }
 

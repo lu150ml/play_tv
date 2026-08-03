@@ -106,11 +106,20 @@ export function CatalogPage({
   const catalog = useLibraryStore((state) => state.catalog);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
+  const streamHealth = useLibraryStore((state) => state.streamHealth);
+  const activeAccountKey = useLibraryStore((state) => state.activeAccountKey ?? "session");
   const playback = useLibraryStore((state) => state.playback);
   const removeProgress = useLibraryStore((state) => state.removeProgress);
   const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
-  const sectionItems = useMemo(() => filterBySection(catalog, sectionKey), [catalog, sectionKey]);
+  const sectionItems = useMemo(() => filterBySection(catalog, sectionKey).sort((left, right) => {
+    if (left.type !== "channel" || right.type !== "channel") return 0;
+    const leftFavorite = favorites.has(left.id) ? -1 : 0;
+    const rightFavorite = favorites.has(right.id) ? -1 : 0;
+    const leftRank = healthRank(streamHealth[`${activeAccountKey}:${left.id}`]);
+    const rightRank = healthRank(streamHealth[`${activeAccountKey}:${right.id}`]);
+    return leftRank - rightRank || leftFavorite - rightFavorite;
+  }), [activeAccountKey, catalog, favorites, sectionKey, streamHealth]);
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -555,6 +564,16 @@ function filterBySection(items: ContentItem[], section: SectionKey): ContentItem
     return items.filter((item) => item.type === "channel" && !isMusicChannel(item));
   const type: ContentType = section === "movies" ? "movie" : "series";
   return items.filter((item) => item.type === type);
+}
+
+function healthRank(health?: { status: string; checkedAt: string }) {
+  if (!health) return 2;
+  const temporary = new Set(["server-error", "network-error", "timeout", "checking"]);
+  const ttl = temporary.has(health.status) ? 10 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  if (Date.now() - new Date(health.checkedAt).getTime() > ttl) return 2;
+  if (health.status === "available") return 0;
+  if (temporary.has(health.status)) return 3;
+  return 4;
 }
 
 function groupByDisplayCategory(
