@@ -1,7 +1,7 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, RotateCcw, SkipForward } from "lucide-react";
+import { ArrowLeft, Download, Heart, RotateCcw, SkipForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
@@ -14,6 +14,9 @@ import {
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
+import { formatResolution, getChannelStreamCandidates } from "../services/streamService";
+import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
+import { useDownloadState } from "../hooks/useDesktopState";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
@@ -36,11 +39,13 @@ export function PlayerPage() {
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
   const markWatched = useLibraryStore((state) => state.markWatched);
+  const cacheSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
+  const downloads = useDownloadState();
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
     routeContentId ? state.isFavorite(routeContentId) : false
   );
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(Boolean(episodeId));
   const [volume, setVolume] = useState(() => {
     const saved = Number(localStorage.getItem("server-xtreme-volume") ?? 1);
     return Number.isFinite(saved) ? Math.min(Math.max(saved, 0), 1) : 1;
@@ -62,10 +67,14 @@ export function PlayerPage() {
   const [subtitleError, setSubtitleError] = useState<string | undefined>();
   const [subtitleUrl, setSubtitleUrl] = useState<string | undefined>();
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
+  const [streamAttempt, setStreamAttempt] = useState(0);
+  const [activeResolution, setActiveResolution] = useState<string | undefined>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
   const bufferRecoveryTimeoutRef = useRef<number | undefined>(undefined);
+  const bufferIndicatorTimeoutRef = useRef<number | undefined>(undefined);
+  const networkRetryRef = useRef(0);
   const playbackIntentRef = useRef(isPlaying);
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
@@ -73,7 +82,13 @@ export function PlayerPage() {
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
   );
-  const activeStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const originalStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const streamCandidates = useMemo(
+    () => item?.type === "channel" ? getChannelStreamCandidates(originalStreamUrl) : originalStreamUrl ? [originalStreamUrl] : [],
+    [item?.type, originalStreamUrl]
+  );
+  const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
+  const activeStreamUrl = completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)];
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -217,6 +232,7 @@ export function PlayerPage() {
         }
 
         setSeriesEpisodes(episodes);
+        cacheSeriesEpisodes(series.id, episodes);
         setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
 
         if (episodes.length === 0) {
@@ -241,7 +257,12 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, episodeId, series]);
+  }, [cacheSeriesEpisodes, connection, episodeId, series]);
+
+  useEffect(() => {
+    setStreamAttempt(0);
+    setActiveResolution(undefined);
+  }, [originalStreamUrl]);
 
   useEffect(() => {
     if (episodeId) {
@@ -251,7 +272,7 @@ export function PlayerPage() {
 
   useEffect(() => {
     playbackIntentRef.current = isPlaying;
-  }, [isPlaying]);
+  }, [activeStreamUrl, isPlaying]);
 
   useEffect(() => {
     mediaErrorRef.current = mediaError;
@@ -316,12 +337,26 @@ export function PlayerPage() {
         hlsRef.current = hls;
         hls.loadSource(activeStreamUrl);
         hls.attachMedia(video);
+        hls.on(HlsPlayer.Events.MANIFEST_PARSED, () => {
+          if (!hls || hls.levels.length === 0) return;
+          networkRetryRef.current = 0;
+          hls.currentLevel = hls.levels.length - 1;
+          const level = hls.levels[hls.levels.length - 1];
+          setActiveResolution(formatResolution(level?.width, level?.height));
+        });
+        hls.on(HlsPlayer.Events.LEVEL_SWITCHED, (_event, data) => {
+          const level = hls?.levels[data.level];
+          setActiveResolution(formatResolution(level?.width, level?.height));
+        });
         hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
           if (data.fatal) {
             if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
-              hls?.startLoad(video.currentTime);
-              scheduleBufferRecovery();
-              return;
+              if (networkRetryRef.current < 2) {
+                networkRetryRef.current += 1;
+                window.setTimeout(() => hls?.startLoad(video.currentTime), networkRetryRef.current * 750);
+                scheduleBufferRecovery();
+                return;
+              }
             }
 
             if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
@@ -330,9 +365,11 @@ export function PlayerPage() {
               return;
             }
 
-            setMediaError(
-              "O navegador nao conseguiu carregar este HLS. Em IPTV isso geralmente acontece por CORS, stream offline ou URL expirada."
-            );
+            if (isLiveContent && streamAttempt + 1 < streamCandidates.length) {
+              setStreamAttempt((attempt) => attempt + 1);
+              return;
+            }
+            setMediaError("Este canal nao respondeu apos tentar os formatos disponiveis. Ele pode estar offline ou usar um codec nao suportado.");
             hls?.destroy();
             hlsRef.current = undefined;
             return;
@@ -356,7 +393,7 @@ export function PlayerPage() {
       video.removeAttribute("src");
       video.load();
     };
-  }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery]);
+  }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery, streamAttempt, streamCandidates.length]);
 
   const activePlaybackRef = useRef(activePlayback);
   useEffect(() => {
@@ -515,7 +552,12 @@ export function PlayerPage() {
 
   function handleBufferingStart() {
     updateBufferedState();
-    setIsBuffering(true);
+    if (bufferIndicatorTimeoutRef.current === undefined) {
+      bufferIndicatorTimeoutRef.current = window.setTimeout(() => {
+        bufferIndicatorTimeoutRef.current = undefined;
+        setIsBuffering(true);
+      }, 800);
+    }
     scheduleBufferRecovery();
   }
 
@@ -527,6 +569,10 @@ export function PlayerPage() {
       video &&
       hasEnoughStartupBuffer(video.buffered, video.currentTime, minimumStartupBufferSeconds)
     ) {
+      if (bufferIndicatorTimeoutRef.current !== undefined) {
+        window.clearTimeout(bufferIndicatorTimeoutRef.current);
+        bufferIndicatorTimeoutRef.current = undefined;
+      }
       clearBufferRecovery();
       setIsBuffering(false);
       // Se o vídeo parou por stall e já há buffer suficiente, retoma o play
@@ -544,6 +590,10 @@ export function PlayerPage() {
   }
 
   function handleBufferingEnd() {
+    if (bufferIndicatorTimeoutRef.current !== undefined) {
+      window.clearTimeout(bufferIndicatorTimeoutRef.current);
+      bufferIndicatorTimeoutRef.current = undefined;
+    }
     clearBufferRecovery();
     updateBufferedState();
     setIsBuffering(false);
@@ -595,17 +645,11 @@ export function PlayerPage() {
 
   async function handleToggleCaptions() {
     // Já há legenda ativa: alterna visibilidade no próprio vídeo.
-    if (subtitleUrl) {
-      const tracks = videoRef.current?.textTracks;
-      if (tracks && tracks.length > 0) {
-        const isShowing = tracks[0].mode === "showing";
-        tracks[0].mode = isShowing ? "hidden" : "showing";
-        setActiveSubtitleId(isShowing ? undefined : activeSubtitleId);
-      }
+    setIsSubtitlePickerOpen(true);
+    if (subtitles.length > 0) {
+      revealControls();
       return;
     }
-
-    setIsSubtitlePickerOpen(true);
     setIsLoadingSubtitles(true);
     setSubtitleError(undefined);
     revealControls();
@@ -624,6 +668,49 @@ export function PlayerPage() {
     } finally {
       setIsLoadingSubtitles(false);
     }
+  }
+
+  function handleDisableSubtitles() {
+    const tracks = videoRef.current?.textTracks;
+    if (tracks) for (const track of Array.from(tracks)) track.mode = "disabled";
+    if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+    setSubtitleUrl(undefined);
+    setActiveSubtitleId(undefined);
+    setIsSubtitlePickerOpen(false);
+  }
+
+  function handleStreamFailure() {
+    if (!videoRef.current?.currentSrc) return;
+    if (content.type === "channel" && streamAttempt + 1 < streamCandidates.length) {
+      setStreamAttempt((attempt) => attempt + 1);
+      return;
+    }
+    setMediaError("Este conteudo nao respondeu apos as tentativas de conexao. O stream pode estar offline ou usar um formato nao suportado.");
+  }
+
+  function handleRetryStream() {
+    setMediaError(undefined);
+    setStreamAttempt(0);
+    const video = videoRef.current;
+    if (video) {
+      video.load();
+      void video.play().catch(() => setIsPlaying(false));
+    }
+  }
+
+  function handleDownload() {
+    if (!originalStreamUrl || content.type === "channel") return;
+    const target = selectedEpisode ?? content;
+    const extension = new URL(originalStreamUrl).pathname.split(".").pop() || "mp4";
+    void getDesktopBridge()?.downloads.enqueue({
+      contentId: target.id,
+      seriesId: selectedEpisode ? content.id : undefined,
+      title: selectedEpisode
+        ? `${content.title} - S${selectedEpisode.season}E${selectedEpisode.episode} - ${selectedEpisode.title}`
+        : content.title,
+      url: originalStreamUrl,
+      extension
+    });
   }
 
   async function handleSelectSubtitle(result: SubtitleResult) {
@@ -666,14 +753,15 @@ export function PlayerPage() {
 
   return (
     <div className="mx-auto max-w-canvas">
-      <Link
-        to={series ? `/series/${series.id}` : "/catalog"}
+      <button
+        type="button"
+        onClick={() => void navigate(-1)}
         data-focusable="true"
         className="focus-card mb-4 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
       >
         <ArrowLeft aria-hidden="true" size={18} />
         {series ? "Serie" : "Catalog"}
-      </Link>
+      </button>
 
       <section
         ref={playerShellRef}
@@ -712,11 +800,7 @@ export function PlayerPage() {
                 handleSeek(videoRef.current?.currentTime ?? positionSeconds);
             }}
             onEnded={handleEnded}
-            onError={() =>
-              setMediaError(
-                "Nao foi possivel iniciar esta midia. Confira se o link do servidor esta ativo e se o formato e aceito no navegador."
-              )
-            }
+            onError={handleStreamFailure}
           >
             {subtitleUrl ? (
               <track kind="subtitles" src={subtitleUrl} srcLang="pt" label="Português" default />
@@ -742,11 +826,12 @@ export function PlayerPage() {
             shouldShowControls ? "opacity-100" : "opacity-0"
           ].join(" ")}
         >
-          {activeStreamUrl ? "Now Playing" : "Preview"}
+          {activeStreamUrl ? `Now Playing${activeResolution ? ` · ${activeResolution}` : ""}` : "Preview"}
         </div>
         {mediaError ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-error/40 bg-error-container/70 p-4 text-sm leading-6 text-error backdrop-blur-xl">
-            {mediaError}
+            <span>{mediaError}</span>
+            <button type="button" data-focusable="true" onClick={handleRetryStream} className="focus-card ml-3 rounded-lg border border-error/40 px-3 py-1 font-semibold">Tentar novamente</button>
           </div>
         ) : null}
         {isBuffering && !mediaError ? (
@@ -837,6 +922,10 @@ export function PlayerPage() {
                 </button>
               </div>
 
+              {subtitleUrl ? (
+                <button type="button" data-focusable="true" onClick={handleDisableSubtitles} className="focus-card mb-3 w-full rounded-lg border border-white/10 bg-surface-container-high p-3 text-left text-sm">Desativar legendas</button>
+              ) : null}
+
               {isLoadingSubtitles ? (
                 <p className="py-6 text-center font-mono text-xs uppercase text-on-surface-variant">
                   Buscando legendas...
@@ -898,6 +987,9 @@ export function PlayerPage() {
           <p className="mt-4 max-w-3xl text-lg leading-8 text-on-surface-variant">
             {content.description}
           </p>
+          {content.type !== "channel" && originalStreamUrl ? (
+            <button type="button" data-focusable="true" onClick={handleDownload} disabled={!getDesktopBridge()} className="focus-card mt-5 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 py-3 font-semibold disabled:opacity-50"><Download size={18} />Baixar {selectedEpisode ? "episodio" : "filme"}</button>
+          ) : null}
 
           <div className="mt-6 flex flex-wrap gap-3">
             {activeStreamUrl && content.type !== "channel" ? (

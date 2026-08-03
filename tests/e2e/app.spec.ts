@@ -256,25 +256,21 @@ test("supports keyboard style navigation", async ({ page }) => {
   await expect(page).toHaveURL(/\/watch\//);
 });
 
-test("opens a dedicated series page with seasons and episodes", async ({ page }) => {
+test("automatically starts the first series episode", async ({ page }) => {
   await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
-  await expect(page).toHaveURL(/\/series\/xtream-series-30$/);
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
   await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Temporadas" })).toBeVisible();
-  await expect(page.getByText("S1 E1")).toBeVisible();
-  await expect(page.getByText("Pilot")).toBeVisible();
-  await page.getByRole("button", { name: "Temporada 2" }).click();
-  await expect(page.getByText("Second Season Premiere")).toBeVisible();
+  await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("jumps to the next episode from player controls", async ({ page }) => {
   await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
-  await page.getByRole("link", { name: /S1 E1 Pilot/ }).click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
   await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "Next episode" }).click();
@@ -286,9 +282,7 @@ test("jumps to the next episode from player controls", async ({ page }) => {
 test("shows only current season episodes while watching a series", async ({ page }) => {
   await connectToCatalog(page);
 
-  await page.getByRole("link", { name: "Server Series series" }).first().click();
-  await page.getByRole("button", { name: "Temporada 2" }).click();
-  await page.getByRole("link", { name: /S2 E1 Second Season Premiere/ }).click();
+  await page.goto("/watch/xtream-series-30/xtream-episode-3003");
 
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3003$/);
   await expect(page.getByRole("heading", { name: "Temporada 2" })).toBeVisible();

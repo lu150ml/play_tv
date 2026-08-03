@@ -7,6 +7,7 @@ import {
   shouldShowPlaybackProgress
 } from "../services/playbackService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { getContinueEpisode } from "../services/seriesService";
 import type { ContentItem } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
@@ -17,7 +18,9 @@ interface ContentCardProps {
 }
 
 export function ContentCard({ item, compact = false, onRemove }: ContentCardProps) {
-  const playback = useLibraryStore((state) => state.playback[item.id]);
+  const allPlayback = useLibraryStore((state) => state.playback);
+  const continueEpisode = item.type === "series" ? getContinueEpisode(item.episodes, allPlayback) : undefined;
+  const playback = allPlayback[item.id];
   const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
   const showProgress = shouldShowPlaybackProgress(item.type);
   const progress = showProgress ? getProgressRatio(playback) : 0;
@@ -30,6 +33,7 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
     <Link
       to={href}
       data-focusable="true"
+      data-content-id={item.id}
       aria-label={`${item.title} ${item.type}`}
       className={[
         "focus-card group block overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 text-left",
@@ -108,6 +112,9 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
           <p className="mt-3 font-mono text-xs uppercase text-primary-container">
             {remainingLabel}
           </p>
+        ) : null}
+        {continueEpisode && allPlayback[continueEpisode.id]?.positionSeconds ? (
+          <p className="mt-2 font-mono text-xs uppercase text-primary-container">Continuar S{continueEpisode.season} E{continueEpisode.episode}</p>
         ) : null}
       </div>
     </Link>

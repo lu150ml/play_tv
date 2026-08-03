@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { CatalogPage } from "./pages/CatalogPage";
+import { DownloadsPage } from "./pages/DownloadsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
@@ -19,6 +20,7 @@ export function App() {
         <Route path="/catalog/:section" element={<CatalogPage />} />
         <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
         <Route path="/series/:seriesId" element={<SeriesPage />} />
+        <Route path="/downloads" element={<DownloadsPage />} />
         <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />
         <Route path="/watch/:contentId" element={<PlayerPage />} />
       </Route>

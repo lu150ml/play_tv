@@ -13,6 +13,7 @@ export interface BaseContent {
   description: string;
   genres: string[];
   categories: string[];
+  providerCategoryId?: string;
   quality: Quality[];
   year?: number;
   durationSeconds?: number;
@@ -86,6 +87,7 @@ export interface CatalogFilter {
   query?: string;
   type?: ContentType | "all";
   category?: string;
+  providerCategoryId?: string;
   genre?: string;
   quality?: Quality | "all";
   favoritesOnly?: boolean;

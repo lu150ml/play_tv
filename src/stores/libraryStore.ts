@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
-import type { ContentItem, PlaybackState, Profile, WatchedState } from "../types/catalog";
+import type { ContentItem, Episode, PlaybackState, Profile, WatchedState } from "../types/catalog";
 
 export interface XtreamConnection {
   serverUrl: string;
@@ -51,6 +51,7 @@ interface LibraryState {
   markWatched: (contentId: string) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
+  setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
   disconnectServerAccount: () => void;
   setSessionName: (name: string) => void;
@@ -266,6 +267,15 @@ export const useLibraryStore = create<LibraryState>()(
       },
 
       setCatalog: (catalog, source) => set({ catalog, catalogSource: source }),
+      setSeriesEpisodes: (seriesId, episodes) => set((current) => ({
+        catalog: current.catalog.map((item) =>
+          item.id === seriesId && item.type === "series"
+            ? item.episodes.length === episodes.length && item.episodes.every((episode, index) => episode.id === episodes[index]?.id)
+              ? item
+              : { ...item, episodes, seasons: new Set(episodes.map((episode) => episode.season)).size }
+            : item
+        )
+      })),
       activateServerAccount: (connection, remember) => {
         const accountKey = getServerAccountKey(connection);
         set((current) => {

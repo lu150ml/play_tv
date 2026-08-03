@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getCatalog, searchCatalog, sortCatalog } from "./catalogService";
+import { getCatalog, normalizeSearchText, searchCatalog, sortCatalog } from "./catalogService";
 
 describe("catalogService", () => {
+  it("normalizes accents for indexed search", () => {
+    expect(normalizeSearchText("Ação SÉRIES")).toBe("acao series");
+  });
   it("filters catalog items by query", () => {
     const results = searchCatalog({ query: "sports" });
 

@@ -1,6 +1,6 @@
 import { ArrowLeft, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
@@ -15,10 +15,12 @@ import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function SeriesPage() {
+  const navigate = useNavigate();
   const { seriesId } = useParams();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const playback = useLibraryStore((state) => state.playback);
+  const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -43,6 +45,7 @@ export function SeriesPage() {
         }
 
         setEpisodes(nextEpisodes);
+        setSeriesEpisodes(series.id, nextEpisodes);
         setSelectedSeason((currentSeason) => currentSeason ?? nextEpisodes[0]?.season);
 
         if (nextEpisodes.length === 0) {
@@ -67,7 +70,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, series]);
+  }, [connection, series, setSeriesEpisodes]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;
@@ -79,6 +82,12 @@ export function SeriesPage() {
   );
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
   const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
+
+  useEffect(() => {
+    if (!isLoadingEpisodes && continueEpisode && series) {
+      void navigate(`/watch/${series.id}/${continueEpisode.id}`, { replace: true });
+    }
+  }, [continueEpisode, isLoadingEpisodes, navigate, series]);
 
   if (!item) {
     return <Navigate to="/catalog/series" replace />;

@@ -1,6 +1,9 @@
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, protocol, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, shell } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { handleProtocolRequest } = require("./server.cjs");
+const { DownloadManager } = require("./download-manager.cjs");
+const { setupUpdater } = require("./updater.cjs");
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -10,6 +13,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow = null;
+let downloadManager;
+let updater;
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
@@ -50,7 +55,21 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  protocol.handle("app", (request) => handleProtocolRequest(request));
+  const emit = (channel, payload) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload);
+  };
+  downloadManager = new DownloadManager({
+    app,
+    dialog,
+    shell,
+    safeStorage,
+    emit: (snapshot) => emit("downloads:state", snapshot)
+  });
+  updater = setupUpdater({ app, autoUpdater, emit: (state) => emit("updates:state", state) });
+  protocol.handle("app", (request) => {
+    const downloadResponse = downloadManager.handleProtocolRequest(request);
+    return downloadResponse ?? handleProtocolRequest(request);
+  });
   ipcMain.handle("credentials:save", (_event, value) => {
     if (!safeStorage.isEncryptionAvailable()) return false;
     const encrypted = safeStorage.encryptString(String(value));
@@ -76,7 +95,22 @@ app.whenReady().then(async () => {
       // The credential file may not exist yet.
     }
   });
+  ipcMain.handle("updates:get-state", () => updater.getState());
+  ipcMain.handle("updates:check", () => updater.check());
+  ipcMain.handle("updates:install", () => updater.install());
+  ipcMain.handle("downloads:get-state", () => downloadManager.snapshot());
+  ipcMain.handle("downloads:choose-directory", () => downloadManager.chooseDirectory(mainWindow));
+  ipcMain.handle("downloads:enqueue", (_event, input) => downloadManager.enqueue(input));
+  ipcMain.handle("downloads:pause", (_event, id) => downloadManager.pause(id));
+  ipcMain.handle("downloads:resume", (_event, id) => downloadManager.resume(id));
+  ipcMain.handle("downloads:cancel", (_event, id) => downloadManager.cancel(id));
+  ipcMain.handle("downloads:remove", (_event, id) => downloadManager.remove(id));
+  ipcMain.handle("downloads:open", (_event, id) => downloadManager.open(id));
+  ipcMain.handle("downloads:open-directory", () => downloadManager.openDirectory());
   await createWindow();
+  if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {
+    setTimeout(() => void updater.check(), 5000);
+  }
 });
 
 app.on("second-instance", () => {

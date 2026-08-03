@@ -1,7 +1,7 @@
 {
   "name": "play-tv-recolhe",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Server Xtreme",
   "type": "module",
@@ -22,6 +22,11 @@
   "build": {
     "appId": "com.serverxtreme.app",
     "productName": "Server Xtreme",
+    "publish": {
+      "provider": "github",
+      "owner": "lu150ml",
+      "repo": "play_tv"
+    },
     "directories": {
       "output": "release"
     },
@@ -40,14 +45,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "Server-Xtreme-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.${ext}"
+      "artifactName": "Server-Xtreme-${version}-portable.${ext}"
     }
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "electron-updater": "^6.8.9",
     "hls.js": "^1.6.16",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",

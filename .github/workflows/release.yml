@@ -42,6 +42,8 @@ jobs:
         with:
           files: |
             release/*.exe
+            release/*.blockmap
+            release/latest.yml
             release/*.sha256
           generate_release_notes: true
 
@@ -51,4 +53,6 @@ jobs:
           name: server-xtreme-windows
           path: |
             release/*.exe
+            release/*.blockmap
+            release/latest.yml
             release/*.sha256

@@ -82,30 +82,6 @@ export interface XtreamCatalogResult {
 // Limite por categoria (não por tipo). Um corte plano em N itens do início da
 // lista descartava categorias inteiras que o servidor retorna no fim (ex.:
 // Comédia, Netflix). Capando por categoria, toda categoria fica representada.
-const MAX_ITEMS_PER_CATEGORY = 600;
-
-function capPerCategory<T extends { category_id?: string | number }>(
-  streams: T[],
-  max: number
-): T[] {
-  const counts = new Map<string, number>();
-  const result: T[] = [];
-
-  for (const stream of streams) {
-    const key = String(stream.category_id ?? "uncategorized");
-    const count = counts.get(key) ?? 0;
-
-    if (count >= max) {
-      continue;
-    }
-
-    counts.set(key, count + 1);
-    result.push(stream);
-  }
-
-  return result;
-}
-
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
@@ -155,13 +131,13 @@ export async function loadXtreamCatalog(
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
-  const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const liveItems = liveStreams.map((stream) =>
     mapLiveStream(stream, liveCategoryMap, canonicalCredentials)
   );
-  const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const vodItems = vodStreams.map((stream) =>
     mapVodStream(stream, vodCategoryMap, canonicalCredentials)
   );
-  const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const seriesItems = seriesStreams.map((stream) =>
     mapSeriesStream(stream, seriesCategoryMap)
   );
 
@@ -291,6 +267,7 @@ function mapLiveStream(
       : "Live channel from the connected IPTV server.",
     genres: [categoryName],
     categories: ["Live TV", categoryName],
+    providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
     imageUrl: normalizeImage(stream.stream_icon),
     streamUrl: buildStreamUrl(credentials, "live", providerId, "m3u8"),
@@ -325,6 +302,7 @@ function mapVodStream(
       : `Movie from ${categoryName}.`,
     genres: [categoryName],
     categories: ["Movies", categoryName],
+    providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
     year: parseNumber(stream.year),
     durationSeconds: parseNumber(stream.duration_secs),
@@ -355,6 +333,7 @@ function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, str
       : `Series from ${categoryName}.`,
     genres: [categoryName],
     categories: ["Series", categoryName],
+    providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
     year: parseNumber(stream.year),
     imageUrl: normalizeImage(stream.cover),

@@ -1,14 +1,4 @@
-declare global {
-  interface Window {
-    serverXtreme?: {
-      credentials: {
-        save(value: string): Promise<boolean>;
-        load(): Promise<string | undefined>;
-        clear(): Promise<void>;
-      };
-    };
-  }
-}
+import "./desktopService";
 
 const WEB_KEY = "server-xtreme-remembered-secret";
 

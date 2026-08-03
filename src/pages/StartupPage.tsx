@@ -34,8 +34,12 @@ export function StartupPage() {
         state.setCatalog(session.catalog, session.source);
         state.setSessionName(session.displayName);
         state.setServerUrl(session.serverUrl);
+        const restored = useLibraryStore.getState();
+        if (restored.profiles.length === 1) {
+          restored.setActiveProfile(restored.profiles[0].id);
+        }
         if (!cancelled)
-          void navigate(state.profiles.length ? "/profiles" : "/profiles", { replace: true });
+          void navigate(restored.profiles.length === 1 ? "/catalog" : "/profiles", { replace: true });
       } catch (error) {
         const text =
           error instanceof Error ? error.message : "Nao foi possivel restaurar a conexao.";

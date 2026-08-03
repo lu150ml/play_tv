@@ -1,6 +1,22 @@
 import { mockCatalog } from "../data/mockCatalog";
 import type { CatalogFilter, ContentItem } from "../types/catalog";
 
+const searchTextCache = new WeakMap<ContentItem, string>();
+
+export function normalizeSearchText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
+export function getSearchText(item: ContentItem): string {
+  const cached = searchTextCache.get(item);
+  if (cached) return cached;
+  const value = normalizeSearchText(
+    [item.title, item.description, ...item.genres, ...item.categories].join(" ")
+  );
+  searchTextCache.set(item, value);
+  return value;
+}
+
 export function getCatalog(items: ContentItem[] = mockCatalog): ContentItem[] {
   return items;
 }
@@ -21,18 +37,17 @@ export function searchCatalog(
   favorites: ReadonlySet<string> = new Set(),
   items: ContentItem[] = mockCatalog
 ): ContentItem[] {
-  const query = filters.query?.trim().toLowerCase();
+  const query = filters.query?.trim() ? normalizeSearchText(filters.query.trim()) : undefined;
 
   const results = items.filter((item) => {
     const matchesQuery =
       !query ||
-      [item.title, item.description, ...item.genres, ...item.categories]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+      getSearchText(item).includes(query);
 
     const matchesType = !filters.type || filters.type === "all" || item.type === filters.type;
     const matchesCategory = !filters.category || item.categories.includes(filters.category);
+    const matchesProviderCategory =
+      !filters.providerCategoryId || item.providerCategoryId === filters.providerCategoryId;
     const matchesGenre = !filters.genre || item.genres.includes(filters.genre);
     const matchesQuality =
       !filters.quality || filters.quality === "all" || item.quality.includes(filters.quality);
@@ -42,6 +57,7 @@ export function searchCatalog(
       matchesQuery &&
       matchesType &&
       matchesCategory &&
+      matchesProviderCategory &&
       matchesGenre &&
       matchesQuality &&
       matchesFavorite

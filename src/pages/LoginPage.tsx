@@ -37,7 +37,13 @@ export function LoginPage() {
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
       setCatalog(session.catalog, session.source);
-      void navigate("/profiles");
+      const account = useLibraryStore.getState();
+      if (account.profiles.length === 1) {
+        account.setActiveProfile(account.profiles[0].id);
+        void navigate("/catalog");
+      } else {
+        void navigate("/profiles");
+      }
     } catch (connectionError) {
       setError(
         connectionError instanceof Error

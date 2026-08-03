@@ -8,7 +8,8 @@ import {
   Tv,
   UserRound,
   LogOut,
-  Users
+  Users,
+  Download
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -18,6 +19,7 @@ import { connectServerSession } from "../services/sessionService";
 import { clearRememberedPassword, loadRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
+import { UpdateBanner } from "./UpdateBanner";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
@@ -25,7 +27,8 @@ const navItems = [
   { label: "TV", path: "/catalog/tv", icon: Tv },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search }
+  { label: "Search", path: "/catalog?search=open", icon: Search },
+  { label: "Downloads", path: "/downloads", icon: Download }
 ];
 
 export function AppShell() {
@@ -126,7 +129,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Server Xtreme
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.2.2</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.3.0</p>
           </div>
         </div>
 
@@ -314,6 +317,7 @@ export function AppShell() {
         onCancel={() => setIsSwitchAccountOpen(false)}
         onConfirm={handleConfirmSwitchAccount}
       />
+      <UpdateBanner />
     </div>
   );
 }

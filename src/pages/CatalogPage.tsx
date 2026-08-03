@@ -1,6 +1,6 @@
 import { Clapperboard, Film, Grid2x2, Search, Tv } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
@@ -14,6 +14,7 @@ import { useLibraryStore } from "../stores/libraryStore";
 import type { CatalogFilter, ContentItem, ContentType } from "../types/catalog";
 
 const RAIL_LIMIT = 10;
+const SEARCH_PAGE_SIZE = 80;
 
 const sectionConfigs = {
   all: {
@@ -54,6 +55,7 @@ type SectionKey = keyof typeof sectionConfigs;
 
 export function CatalogPage() {
   const { section, categorySlug } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const sectionKey = getSectionKey(section);
   const sectionConfig = sectionConfigs[sectionKey];
@@ -62,6 +64,9 @@ export function CatalogPage() {
     type: sectionType,
     sort: "featured"
   });
+  const [visibleResults, setVisibleResults] = useState(SEARCH_PAGE_SIZE);
+  const navigationStateRef = useRef<{ filters: CatalogFilter }>({ filters });
+  navigationStateRef.current = { filters };
   const catalog = useLibraryStore((state) => state.catalog);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
@@ -89,20 +94,22 @@ export function CatalogPage() {
     [sectionConfig.broadCategories, sectionItems]
   );
   const selectedCategory = categorySlug
-    ? categoryGroups.find((group) => slugify(group.title) === categorySlug)
+    ? categoryGroups.find((group) => group.slug === categorySlug || slugify(group.title) === categorySlug)
     : undefined;
   const isUnknownCategory = Boolean(categorySlug && !selectedCategory);
   const effectiveFilters = useMemo(
     () => ({
       ...filters,
       type: sectionType,
-      category: selectedCategory?.title ?? filters.category
+      category: selectedCategory?.title ?? filters.category,
+      providerCategoryId: selectedCategory?.providerCategoryId
     }),
     [filters, sectionType, selectedCategory]
   );
+  const deferredFilters = useDeferredValue(effectiveFilters);
   const results = useMemo(
-    () => searchCatalog(effectiveFilters, favorites, catalog),
-    [catalog, effectiveFilters, favorites]
+    () => searchCatalog(deferredFilters, favorites, catalog),
+    [catalog, deferredFilters, favorites]
   );
   const continueWatching = useMemo(
     () =>
@@ -127,10 +134,33 @@ export function CatalogPage() {
       ...current,
       type: sectionType,
       category: selectedCategory?.title,
+      providerCategoryId: selectedCategory?.providerCategoryId,
       query: current.query,
       sort: current.sort ?? "featured"
     }));
-  }, [sectionType, selectedCategory?.title]);
+  }, [sectionType, selectedCategory?.providerCategoryId, selectedCategory?.title]);
+
+  useEffect(() => {
+    setVisibleResults(SEARCH_PAGE_SIZE);
+  }, [deferredFilters]);
+
+  useEffect(() => {
+    const key = `catalog-view:${location.pathname}${location.search}`;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as
+        | { filters?: CatalogFilter; scrollY?: number; focusId?: string }
+        | null;
+      if (saved?.filters) setFilters((current) => ({ ...current, ...saved.filters, type: sectionType }));
+      window.requestAnimationFrame(() => {
+        window.scrollTo(0, saved?.scrollY ?? 0);
+        if (saved?.focusId) document.querySelector<HTMLElement>(`[data-content-id="${CSS.escape(saved.focusId)}"]`)?.focus();
+      });
+    } catch { /* Ignore invalid navigation state. */ }
+    return () => {
+      const focused = document.activeElement as HTMLElement | null;
+      sessionStorage.setItem(key, JSON.stringify({ filters: navigationStateRef.current.filters, scrollY: window.scrollY, focusId: focused?.dataset.contentId }));
+    };
+  }, [location.pathname, location.search, sectionType]);
 
   if (isUnknownCategory) {
     return <Navigate to={sectionConfig.path} replace />;
@@ -212,7 +242,7 @@ export function CatalogPage() {
           filters={effectiveFilters}
           catalog={sectionItems}
           onChange={(nextFilters) =>
-            setFilters({ ...nextFilters, type: sectionType, category: selectedCategory?.title })
+            setFilters({ ...nextFilters, type: sectionType, category: selectedCategory?.title, providerCategoryId: selectedCategory?.providerCategoryId })
           }
         />
       ) : null}
@@ -225,7 +255,10 @@ export function CatalogPage() {
               <h2 className="font-display text-2xl font-bold">Resultados da busca</h2>
             </div>
           ) : null}
-          <CatalogGrid items={results} />
+          <CatalogGrid items={results.slice(0, visibleResults)} />
+          {results.length > visibleResults ? (
+            <button type="button" data-focusable="true" onClick={() => setVisibleResults((count) => count + SEARCH_PAGE_SIZE)} className="focus-card mx-auto mt-6 block rounded-lg border border-white/10 bg-surface-container px-5 py-3 font-semibold">Carregar mais ({results.length - visibleResults})</button>
+          ) : null}
         </section>
       ) : (
         <>
@@ -333,7 +366,7 @@ function CategoryRails({ groups, sectionPath }: { groups: CategoryGroup[]; secti
           key={group.title}
           title={group.title}
           items={group.items.slice(0, RAIL_LIMIT)}
-          viewAllTo={`${sectionPath}/${slugify(group.title)}`}
+          viewAllTo={`${sectionPath}/${group.slug}`}
         />
       ))}
     </>
@@ -407,6 +440,8 @@ function TypeLink({ label, count, isActive, icon, to }: TypeLinkProps) {
 interface CategoryGroup {
   title: string;
   items: ContentItem[];
+  slug: string;
+  providerCategoryId?: string;
 }
 
 function getSectionKey(section?: string): SectionKey {
@@ -429,7 +464,7 @@ function groupByDisplayCategory(
   items: ContentItem[],
   broadCategories: readonly string[]
 ): CategoryGroup[] {
-  const groups = new Map<string, ContentItem[]>();
+  const groups = new Map<string, { title: string; items: ContentItem[]; providerCategoryId?: string }>();
 
   for (const item of items) {
     const displayCategories = unique(item.categories).filter(
@@ -438,14 +473,15 @@ function groupByDisplayCategory(
     const categories = displayCategories.length > 0 ? displayCategories : item.categories;
 
     for (const category of unique(categories)) {
-      const group = groups.get(category) ?? [];
-      group.push(item);
-      groups.set(category, group);
+      const key = item.providerCategoryId ? `${item.providerCategoryId}:${category}` : category;
+      const group = groups.get(key) ?? { title: category, items: [], providerCategoryId: item.providerCategoryId };
+      group.items.push(item);
+      groups.set(key, group);
     }
   }
 
-  return Array.from(groups.entries())
-    .map(([title, groupItems]) => ({ title, items: groupItems }))
+  return Array.from(groups.values())
+    .map((group) => ({ ...group, slug: group.providerCategoryId ? `${slugify(group.title)}-${group.providerCategoryId}` : slugify(group.title) }))
     .sort((left, right) => left.title.localeCompare(right.title));
 }
 
