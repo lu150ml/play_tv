@@ -14,11 +14,12 @@ function sanitizeFilename(value) {
 }
 
 class DownloadManager {
-  constructor({ app, dialog, shell, safeStorage, emit }) {
+  constructor({ app, dialog, shell, safeStorage, fetch = globalThis.fetch, emit }) {
     this.app = app;
     this.dialog = dialog;
     this.shell = shell;
     this.safeStorage = safeStorage;
+    this.fetch = fetch;
     this.emit = emit;
     this.jobs = new Map();
     this.controllers = new Map();
@@ -70,6 +71,15 @@ class DownloadManager {
     };
   }
 
+  publicJob(job) {
+    return this.snapshot().jobs.find((candidate) => candidate.id === job.id);
+  }
+
+  ensureWritableDirectory() {
+    fs.mkdirSync(this.downloadDirectory, { recursive: true });
+    fs.accessSync(this.downloadDirectory, fs.constants.W_OK);
+  }
+
   encryptUrl(url) {
     if (!url) return "";
     if (this.safeStorage?.isEncryptionAvailable()) {
@@ -107,6 +117,11 @@ class DownloadManager {
 
   enqueue(input) {
     if (!input || !/^https?:\/\//i.test(input.url || "")) throw new Error("URL de download invalida.");
+    try {
+      this.ensureWritableDirectory();
+    } catch {
+      throw new Error("A pasta de downloads nao existe ou nao permite gravacao.");
+    }
     const id = randomUUID();
     const extension = String(input.extension || path.extname(new URL(input.url).pathname) || ".mp4")
       .replace(/[^a-z0-9.]/gi, "")
@@ -129,7 +144,7 @@ class DownloadManager {
     this.jobs.set(id, job);
     this.notify();
     this.pump();
-    return job;
+    return this.publicJob(job);
   }
 
   pump() {
@@ -156,7 +171,21 @@ class DownloadManager {
 
     try {
       const headers = existing > 0 ? { Range: `bytes=${existing}-` } : {};
-      let response = await fetch(job.url, { headers, signal: controller.signal });
+      let response = await this.fetch(job.url, { headers, signal: controller.signal });
+      if (response.status === 416 && existing > 0) {
+        const total = Number(/\*\/(\d+)/.exec(response.headers.get("content-range") || "")?.[1]);
+        if (total === existing) {
+          fs.renameSync(job.partPath, job.finalPath);
+          job.status = "completed";
+          job.totalBytes = total;
+          job.completedAt = new Date().toISOString();
+          this.notify();
+          return;
+        }
+        fs.truncateSync(job.partPath, 0);
+        job.receivedBytes = 0;
+        response = await this.fetch(job.url, { signal: controller.signal });
+      }
       let append = existing > 0 && response.status === 206;
       if (existing > 0 && response.status === 200) {
         append = false;

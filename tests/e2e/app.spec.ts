@@ -118,7 +118,7 @@ test("uses connected Xtream catalog on dedicated navigation pages", async ({ pag
   await connectToCatalog(page);
   await expect(page.getByText("Xtream server catalog")).toBeVisible();
 
-  await page.goto("/catalog/movies");
+  await page.getByRole("link", { name: "Filmes", exact: true }).first().click();
 
   await expect(page.getByText("Xtream server catalog")).toBeVisible();
   await expect(page.getByText("Server Movie 4K").first()).toBeVisible();
@@ -143,6 +143,26 @@ test("filters catalog results", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Resultados da busca" })).toBeVisible();
   await expect(page.getByText("Sports Grid").first()).toBeVisible();
   await expect(page.getByText("Machine Heart").first()).not.toBeVisible();
+});
+
+test("keeps search state isolated between catalog screens", async ({ page }) => {
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "Search", exact: true }).first().click();
+  await page.locator('input[aria-label="Search catalog"]').fill("world");
+  await expect(page.getByText("World News HD").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Filmes", exact: true }).first().click();
+  await expect(page.locator('input[aria-label="Search catalog"]')).not.toBeVisible();
+  await expect(page.getByText("Server Movie 4K").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Search", exact: true }).first().click();
+  await expect(page.locator('input[aria-label="Search catalog"]')).toHaveValue("world");
+});
+
+test("shows the installed version and updater availability in the footer", async ({ page }) => {
+  await page.goto("/catalog");
+  await expect(page.getByText(/Versao 0\.3\.1/)).toBeVisible();
+  await expect(page.getByText(/Atualizacao automatica indisponivel/)).toBeVisible();
 });
 
 test("personalizes hero and recommendations from watch history", async ({ page }) => {
@@ -338,6 +358,18 @@ test("preloads video without revealing hidden controls while buffering", async (
   });
 
   await expect(page.getByTestId("buffering-indicator")).not.toBeVisible();
+});
+
+test("never shows the buffering banner for live TV", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: () => Promise.resolve() });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: () => undefined });
+  });
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "World News HD channel" }).first().click();
+  await page.locator("video").evaluate((element) => element.dispatchEvent(new Event("waiting", { bubbles: true })));
+  await page.waitForTimeout(1000);
+  await expect(page.getByTestId("buffering-indicator")).toHaveCount(0);
 });
 
 test("shows saved movie progress but not live tv progress", async ({ page }) => {

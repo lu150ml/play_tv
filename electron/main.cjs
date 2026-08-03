@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { handleProtocolRequest } = require("./server.cjs");
 const { DownloadManager } = require("./download-manager.cjs");
@@ -63,6 +63,7 @@ app.whenReady().then(async () => {
     dialog,
     shell,
     safeStorage,
+    fetch: (url, options) => net.fetch(url, { ...options, redirect: "follow" }),
     emit: (snapshot) => emit("downloads:state", snapshot)
   });
   updater = setupUpdater({ app, autoUpdater, emit: (state) => emit("updates:state", state) });

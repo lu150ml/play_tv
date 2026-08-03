@@ -4,7 +4,7 @@ import { getDesktopBridge } from "../services/desktopService";
 
 export function UpdateBanner() {
   const update = useUpdateState();
-  if (update.status === "idle" || update.status === "checking") return null;
+  if (update.status === "idle" || update.status === "checking" || update.status === "unsupported") return null;
   const ready = update.status === "ready";
   return (
     <div className="fixed bottom-24 right-4 z-50 max-w-sm rounded-xl border border-primary-container/50 bg-surface-container-high p-4 shadow-2xl lg:bottom-6">

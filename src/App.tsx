@@ -1,7 +1,14 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
-import { CatalogPage } from "./pages/CatalogPage";
+import {
+  GlobalSearchPage,
+  HomeCatalogPage,
+  LiveTvCatalogPage,
+  MoviesCatalogPage,
+  MusicCatalogPage,
+  SeriesCatalogPage
+} from "./pages/CatalogPage";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
@@ -16,9 +23,18 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/profiles" element={<ProfilesPage />} />
       <Route element={<AppShell />}>
-        <Route path="/catalog" element={<CatalogPage />} />
-        <Route path="/catalog/:section" element={<CatalogPage />} />
-        <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
+        <Route path="/catalog" element={<HomeCatalogPage />} />
+        <Route path="/catalog/all" element={<HomeCatalogPage />} />
+        <Route path="/catalog/all/:categorySlug" element={<HomeCatalogPage />} />
+        <Route path="/catalog/tv" element={<LiveTvCatalogPage />} />
+        <Route path="/catalog/tv/:categorySlug" element={<LiveTvCatalogPage />} />
+        <Route path="/catalog/music" element={<MusicCatalogPage />} />
+        <Route path="/catalog/music/:categorySlug" element={<MusicCatalogPage />} />
+        <Route path="/catalog/movies" element={<MoviesCatalogPage />} />
+        <Route path="/catalog/movies/:categorySlug" element={<MoviesCatalogPage />} />
+        <Route path="/catalog/series" element={<SeriesCatalogPage />} />
+        <Route path="/catalog/series/:categorySlug" element={<SeriesCatalogPage />} />
+        <Route path="/search" element={<GlobalSearchPage />} />
         <Route path="/series/:seriesId" element={<SeriesPage />} />
         <Route path="/downloads" element={<DownloadsPage />} />
         <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />

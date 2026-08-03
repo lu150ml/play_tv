@@ -1,7 +1,7 @@
 {
   "name": "play-tv-recolhe",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Server Xtreme",
   "type": "module",

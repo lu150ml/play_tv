@@ -9,7 +9,8 @@ import {
   UserRound,
   LogOut,
   Users,
-  Download
+  Download,
+  Music2
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -20,18 +21,23 @@ import { clearRememberedPassword, loadRememberedPassword } from "../services/cre
 import { useLibraryStore } from "../stores/libraryStore";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { UpdateBanner } from "./UpdateBanner";
+import { DownloadStatusToast } from "./DownloadStatusToast";
+import { AppFooter } from "./AppFooter";
+import { useUpdateState } from "../hooks/useDesktopState";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
   { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
   { label: "TV", path: "/catalog/tv", icon: Tv },
+  { label: "Musica", path: "/catalog/music", icon: Music2 },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search },
+  { label: "Search", path: "/search", icon: Search },
   { label: "Downloads", path: "/downloads", icon: Download }
 ];
 
 export function AppShell() {
+  const updateState = useUpdateState();
   const sessionName = useLibraryStore((state) => state.sessionName);
   const profiles = useLibraryStore((state) => state.profiles);
   const activeProfileId = useLibraryStore((state) => state.activeProfileId);
@@ -129,7 +135,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Server Xtreme
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.3.0</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">v{updateState.version}</p>
           </div>
         </div>
 
@@ -267,10 +273,12 @@ export function AppShell() {
         ) : (
           <p className="p-8 text-on-surface-variant">Restaurando sessao...</p>
         )}
+        <AppFooter />
       </main>
 
       <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
-        {navItems.slice(0, 4).map((item) => {
+        <div className="col-span-4 flex min-w-0 overflow-x-auto">
+        {navItems.map((item) => {
           const isActive = isNavItemActive(item.path, currentPath);
 
           return (
@@ -280,7 +288,7 @@ export function AppShell() {
               data-focusable="true"
               aria-current={isActive ? "page" : undefined}
               className={[
-                "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
+                "focus-card my-2 flex min-w-20 flex-1 flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
                 isActive
                   ? "border-secondary-container bg-secondary-container/40 text-primary"
                   : "border-transparent text-on-surface-variant"
@@ -291,6 +299,7 @@ export function AppShell() {
             </Link>
           );
         })}
+        </div>
         {/* Profile button in mobile nav */}
         <button
           type="button"
@@ -318,6 +327,7 @@ export function AppShell() {
         onConfirm={handleConfirmSwitchAccount}
       />
       <UpdateBanner />
+      <DownloadStatusToast />
     </div>
   );
 }

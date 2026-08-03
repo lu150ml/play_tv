@@ -4,7 +4,7 @@ import { getDesktopBridge, type DownloadSnapshot, type UpdateState } from "../se
 const emptyDownloads: DownloadSnapshot = { directory: "", jobs: [] };
 
 export function useUpdateState() {
-  const [state, setState] = useState<UpdateState>({ status: "idle", version: "0.3.0" });
+  const [state, setState] = useState<UpdateState>({ status: "unsupported", version: "0.3.1", supported: false, environment: "development", lastResult: "not-checked" });
   useEffect(() => {
     const bridge = getDesktopBridge();
     if (!bridge) return;

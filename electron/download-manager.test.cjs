@@ -29,3 +29,18 @@ test("download snapshots do not expose credentials or filesystem paths", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("rejects an unwritable download directory before queueing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "server-xtreme-download-test-"));
+  try {
+    const manager = new DownloadManager({
+      app: { getPath: (name) => name === "userData" ? root : path.join(root, "media") },
+      dialog: {}, shell: {}, safeStorage: { isEncryptionAvailable: () => false }, emit: () => {}
+    });
+    manager.downloadDirectory = path.join(root, "file-as-directory");
+    fs.writeFileSync(manager.downloadDirectory, "not a directory");
+    assert.throws(() => manager.enqueue({ contentId: "movie", title: "Movie", url: "https://example.test/movie.mp4" }), /nao existe ou nao permite/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -69,6 +69,7 @@ export function PlayerPage() {
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [activeResolution, setActiveResolution] = useState<string | undefined>();
+  const [downloadActionError, setDownloadActionError] = useState<string | undefined>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
@@ -552,6 +553,11 @@ export function PlayerPage() {
 
   function handleBufferingStart() {
     updateBufferedState();
+    if (content.type === "channel") {
+      setIsBuffering(false);
+      scheduleBufferRecovery();
+      return;
+    }
     if (bufferIndicatorTimeoutRef.current === undefined) {
       bufferIndicatorTimeoutRef.current = window.setTimeout(() => {
         bufferIndicatorTimeoutRef.current = undefined;
@@ -698,19 +704,29 @@ export function PlayerPage() {
     }
   }
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!originalStreamUrl || content.type === "channel") return;
+    const bridge = getDesktopBridge();
+    if (!bridge) {
+      setDownloadActionError("Downloads estao disponiveis apenas no aplicativo instalado.");
+      return;
+    }
     const target = selectedEpisode ?? content;
     const extension = new URL(originalStreamUrl).pathname.split(".").pop() || "mp4";
-    void getDesktopBridge()?.downloads.enqueue({
-      contentId: target.id,
-      seriesId: selectedEpisode ? content.id : undefined,
-      title: selectedEpisode
-        ? `${content.title} - S${selectedEpisode.season}E${selectedEpisode.episode} - ${selectedEpisode.title}`
-        : content.title,
-      url: originalStreamUrl,
-      extension
-    });
+    setDownloadActionError(undefined);
+    try {
+      await bridge.downloads.enqueue({
+        contentId: target.id,
+        seriesId: selectedEpisode ? content.id : undefined,
+        title: selectedEpisode
+          ? `${content.title} - S${selectedEpisode.season}E${selectedEpisode.episode} - ${selectedEpisode.title}`
+          : content.title,
+        url: originalStreamUrl,
+        extension
+      });
+    } catch (error) {
+      setDownloadActionError(error instanceof Error ? error.message : "Nao foi possivel iniciar o download.");
+    }
   }
 
   async function handleSelectSubtitle(result: SubtitleResult) {
@@ -834,7 +850,7 @@ export function PlayerPage() {
             <button type="button" data-focusable="true" onClick={handleRetryStream} className="focus-card ml-3 rounded-lg border border-error/40 px-3 py-1 font-semibold">Tentar novamente</button>
           </div>
         ) : null}
-        {isBuffering && !mediaError ? (
+        {content.type !== "channel" && isBuffering && !mediaError ? (
           <div
             data-testid="buffering-indicator"
             className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/80 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl"
@@ -988,8 +1004,9 @@ export function PlayerPage() {
             {content.description}
           </p>
           {content.type !== "channel" && originalStreamUrl ? (
-            <button type="button" data-focusable="true" onClick={handleDownload} disabled={!getDesktopBridge()} className="focus-card mt-5 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 py-3 font-semibold disabled:opacity-50"><Download size={18} />Baixar {selectedEpisode ? "episodio" : "filme"}</button>
+            <button type="button" data-focusable="true" onClick={() => void handleDownload()} className="focus-card mt-5 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 py-3 font-semibold"><Download size={18} />Baixar {selectedEpisode ? "episodio" : "filme"}</button>
           ) : null}
+          {downloadActionError ? <p className="mt-2 text-sm text-error">{downloadActionError}</p> : null}
 
           <div className="mt-6 flex flex-wrap gap-3">
             {activeStreamUrl && content.type !== "channel" ? (

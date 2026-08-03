@@ -1,4 +1,4 @@
-import { Clapperboard, Film, Grid2x2, Search, Tv } from "lucide-react";
+import { Clapperboard, Film, Grid2x2, Music2, Search, Tv } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 
@@ -6,6 +6,7 @@ import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
 import { SearchOverlay } from "../components/SearchOverlay";
 import { searchCatalog } from "../services/catalogService";
+import { isMusicChannel } from "../services/musicService";
 import {
   getPersonalizedRecommendations,
   getRecommendedHero
@@ -33,6 +34,14 @@ const sectionConfigs = {
     icon: Tv,
     broadCategories: ["Live TV"]
   },
+  music: {
+    label: "Musica",
+    title: "Canais de musica",
+    path: "/catalog/music",
+    type: "channel",
+    icon: Music2,
+    broadCategories: ["Live TV"]
+  },
   movies: {
     label: "Filmes",
     title: "Filmes",
@@ -53,11 +62,20 @@ const sectionConfigs = {
 
 type SectionKey = keyof typeof sectionConfigs;
 
-export function CatalogPage() {
+interface CatalogPageProps { sectionOverride?: SectionKey }
+
+export function HomeCatalogPage() { return <CatalogPage sectionOverride="all" />; }
+export function LiveTvCatalogPage() { return <CatalogPage sectionOverride="tv" />; }
+export function MusicCatalogPage() { return <CatalogPage sectionOverride="music" />; }
+export function MoviesCatalogPage() { return <CatalogPage sectionOverride="movies" />; }
+export function SeriesCatalogPage() { return <CatalogPage sectionOverride="series" />; }
+export function GlobalSearchPage() { return <CatalogPage sectionOverride="all" forceSearch />; }
+
+export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPageProps & { forceSearch?: boolean }) {
   const { section, categorySlug } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const sectionKey = getSectionKey(section);
+  const sectionKey = sectionOverride ?? getSectionKey(section);
   const sectionConfig = sectionConfigs[sectionKey];
   const sectionType = sectionConfig.type;
   const [filters, setFilters] = useState<CatalogFilter>({
@@ -74,7 +92,10 @@ export function CatalogPage() {
   const removeProgress = useLibraryStore((state) => state.removeProgress);
   const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
-  const sectionItems = useMemo(() => filterBySection(catalog, sectionType), [catalog, sectionType]);
+  const sectionItems = useMemo(
+    () => filterBySection(catalog, sectionKey),
+    [catalog, sectionKey]
+  );
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -108,8 +129,8 @@ export function CatalogPage() {
   );
   const deferredFilters = useDeferredValue(effectiveFilters);
   const results = useMemo(
-    () => searchCatalog(deferredFilters, favorites, catalog),
-    [catalog, deferredFilters, favorites]
+    () => searchCatalog(deferredFilters, favorites, sectionItems),
+    [deferredFilters, favorites, sectionItems]
   );
   const continueWatching = useMemo(
     () =>
@@ -122,7 +143,7 @@ export function CatalogPage() {
   const typeCounts = useMemo(
     () => ({
       all: catalog.length,
-      channel: catalog.filter((item) => item.type === "channel").length,
+      channel: catalog.filter((item) => item.type === "channel" && !isMusicChannel(item)).length,
       movie: catalog.filter((item) => item.type === "movie").length,
       series: catalog.filter((item) => item.type === "series").length
     }),
@@ -171,7 +192,7 @@ export function CatalogPage() {
     : sectionKey === "all"
       ? "Home"
       : sectionConfig.title;
-  const showSearch = searchParams.get("search") === "open" || selectedCategory;
+  const showSearch = forceSearch || searchParams.get("search") === "open" || selectedCategory;
   const isSearchResult = Boolean(filters.query?.trim());
 
   return (
@@ -219,6 +240,13 @@ export function CatalogPage() {
             isActive={sectionKey === "tv"}
             icon={<Tv aria-hidden="true" size={22} />}
             to="/catalog/tv"
+          />
+          <TypeLink
+            label="Musica"
+            count={catalog.filter(isMusicChannel).length}
+            isActive={sectionKey === "music"}
+            icon={<Music2 aria-hidden="true" size={22} />}
+            to="/catalog/music"
           />
           <TypeLink
             label="Filmes"
@@ -337,13 +365,15 @@ function getContentHref(item: ContentItem): string {
 }
 
 function HomeRails({ catalog }: { catalog: ContentItem[] }) {
-  const liveTv = catalog.filter((item) => item.type === "channel");
+  const liveTv = catalog.filter((item) => item.type === "channel" && !isMusicChannel(item));
+  const music = catalog.filter(isMusicChannel);
   const movies = catalog.filter((item) => item.type === "movie");
   const series = catalog.filter((item) => item.type === "series");
 
   return (
     <>
       <CatalogRail title="TV ao vivo" items={liveTv.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/tv" />
+      <CatalogRail title="Musica" items={music.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/music" />
       <CatalogRail title="Filmes" items={movies.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/movies" />
       <CatalogRail title="Series" items={series.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/series" />
     </>
@@ -445,18 +475,20 @@ interface CategoryGroup {
 }
 
 function getSectionKey(section?: string): SectionKey {
-  if (section === "tv" || section === "movies" || section === "series" || section === "all") {
+  if (section === "tv" || section === "music" || section === "movies" || section === "series" || section === "all") {
     return section;
   }
 
   return "all";
 }
 
-function filterBySection(items: ContentItem[], type: ContentType | "all"): ContentItem[] {
-  if (type === "all") {
+function filterBySection(items: ContentItem[], section: SectionKey): ContentItem[] {
+  if (section === "all") {
     return items;
   }
-
+  if (section === "music") return items.filter(isMusicChannel);
+  if (section === "tv") return items.filter((item) => item.type === "channel" && !isMusicChannel(item));
+  const type: ContentType = section === "movies" ? "movie" : "series";
   return items.filter((item) => item.type === type);
 }
 

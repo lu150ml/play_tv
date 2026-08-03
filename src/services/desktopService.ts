@@ -1,4 +1,4 @@
-export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error" | "unsupported";
 
 export interface UpdateState {
   status: UpdateStatus;
@@ -8,6 +8,10 @@ export interface UpdateState {
   transferred?: number;
   total?: number;
   error?: string;
+  supported: boolean;
+  environment: "development" | "portable" | "installed";
+  lastCheckedAt?: string;
+  lastResult: "not-checked" | "up-to-date" | "available" | "error";
 }
 
 export type DownloadStatus = "queued" | "downloading" | "paused" | "completed" | "cancelled" | "error";
