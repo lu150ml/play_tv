@@ -1,4 +1,4 @@
-import { LogOut, MonitorPlay, Plus, Trash2, UserRound, X } from "lucide-react";
+import { LogOut, Plus, Trash2, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -62,10 +62,12 @@ export function ProfilesPage() {
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12 text-on-surface">
       {/* Header */}
       <div className="mb-2 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
-          <MonitorPlay aria-hidden="true" size={22} />
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-on-primary">
+          <span className="font-display text-xl font-bold">X</span>
         </div>
-        <p className="font-display text-xl font-bold text-primary">Server Xtreme</p>
+        <p className="font-display text-xl font-bold text-on-surface">
+          PLAY TV <span className="text-primary">X</span>
+        </p>
       </div>
       <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">{sessionName}</p>
       <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">Quem vai assistir?</h1>

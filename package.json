@@ -1,9 +1,9 @@
 {
-  "name": "play-tv-recolhe",
+  "name": "play-tv-x",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
-  "author": "Server Xtreme",
+  "author": "Play TV X",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "com.serverxtreme.app",
-    "productName": "Server Xtreme",
+    "productName": "Play TV X",
     "publish": {
       "provider": "github",
       "owner": "lu150ml",
@@ -45,10 +45,10 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Server-Xtreme-Setup-${version}.${ext}"
+      "artifactName": "Play-TV-X-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "Server-Xtreme-${version}-portable.${ext}"
+      "artifactName": "Play-TV-X-${version}-portable.${ext}"
     }
   },
   "dependencies": {

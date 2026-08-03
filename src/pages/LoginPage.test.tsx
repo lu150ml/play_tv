@@ -12,7 +12,7 @@ describe("LoginPage", () => {
       </MemoryRouter>
     );
 
-    const password = screen.getByLabelText("Password");
+    const password = screen.getByLabelText("Senha");
     expect(password).toHaveAttribute("type", "password");
 
     fireEvent.click(screen.getByRole("button", { name: "Mostrar senha" }));

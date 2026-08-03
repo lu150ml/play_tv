@@ -26,13 +26,13 @@ import { AppFooter } from "./AppFooter";
 import { useUpdateState } from "../hooks/useDesktopState";
 
 const navItems = [
-  { label: "Home", path: "/catalog", icon: Home },
+  { label: "Início", path: "/catalog", icon: Home },
   { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
   { label: "TV", path: "/catalog/tv", icon: Tv },
-  { label: "Musica", path: "/catalog/music", icon: Music2 },
+  { label: "Música", path: "/catalog/music", icon: Music2 },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/search", icon: Search },
+  { label: "Buscar", path: "/search", icon: Search },
   { label: "Downloads", path: "/downloads", icon: Download }
 ];
 
@@ -126,16 +126,18 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
-        <div className="mb-8 flex items-center gap-4 px-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary-container/50 bg-primary-container/10 text-primary shadow-glow">
-            <MonitorPlay aria-hidden="true" size={28} />
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-60 border-r border-white/5 bg-surface-dim px-4 py-7 lg:flex lg:flex-col">
+        <div className="mb-9 flex items-center gap-3 px-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
+            <span className="font-display text-lg font-bold">X</span>
           </div>
           <div>
-            <p className="font-display text-xl font-bold tracking-normal text-primary">
-              Server Xtreme
+            <p className="font-display text-lg font-bold tracking-tight text-on-surface">
+              PLAY TV <span className="text-primary">X</span>
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v{updateState.version}</p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
+              v{updateState.version}
+            </p>
           </div>
         </div>
 
@@ -152,8 +154,8 @@ export function AppShell() {
                 className={[
                   "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
                   isActive
-                    ? "border-primary-container/40 bg-primary-container/10 text-primary"
-                    : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
+                    ? "border-primary bg-primary/10 text-on-surface"
+                    : "border-transparent text-on-surface-variant hover:bg-white/[0.04] hover:text-on-surface"
                 ].join(" ")}
               >
                 <item.icon aria-hidden="true" size={20} />
@@ -164,8 +166,10 @@ export function AppShell() {
         </nav>
 
         {/* Profile card */}
-        <div className="rounded-xl border border-white/10 bg-surface-container/70 p-4">
-          <p className="font-mono text-xs uppercase text-on-surface-variant">Connected as</p>
+        <div className="rounded-lg border border-white/10 bg-surface-container/70 p-4">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-on-surface-variant">
+            Conectado como
+          </p>
           <p className="mt-1 font-display text-lg font-semibold text-on-surface">{sessionName}</p>
 
           {activeProfile ? (
@@ -184,9 +188,7 @@ export function AppShell() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-on-surface">{activeProfile.name}</p>
-                <p className="font-mono text-[10px] uppercase text-primary-container">
-                  Trocar perfil
-                </p>
+                <p className="text-[10px] uppercase tracking-wider text-primary">Trocar perfil</p>
               </div>
               <UserRound size={16} className="shrink-0 text-on-surface-variant" />
             </button>
@@ -203,8 +205,10 @@ export function AppShell() {
         </div>
       </aside>
 
-      <header className="fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
-        <p className="font-display text-xl font-bold text-primary lg:text-2xl">Server Xtreme</p>
+      <header className="fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/5 bg-surface/95 px-4 lg:left-60 lg:w-[calc(100%-15rem)] lg:px-10">
+        <p className="font-display text-xl font-bold tracking-tight text-on-surface lg:text-2xl">
+          PLAY TV <span className="text-primary">X</span>
+        </p>
         <div className="flex items-center gap-2">
           {activeProfile ? (
             <button
@@ -267,7 +271,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
+      <main className="min-h-screen px-4 pb-24 pt-20 lg:ml-60 lg:px-10 lg:pb-10">
         {credentialReady && catalogReady ? (
           <Outlet />
         ) : (
@@ -276,29 +280,29 @@ export function AppShell() {
         <AppFooter />
       </main>
 
-      <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
+      <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/95 px-2 lg:hidden">
         <div className="col-span-4 flex min-w-0 overflow-x-auto">
-        {navItems.map((item) => {
-          const isActive = isNavItemActive(item.path, currentPath);
+          {navItems.map((item) => {
+            const isActive = isNavItemActive(item.path, currentPath);
 
-          return (
-            <Link
-              key={item.label}
-              to={item.path}
-              data-focusable="true"
-              aria-current={isActive ? "page" : undefined}
-              className={[
-                "focus-card my-2 flex min-w-20 flex-1 flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
-                isActive
-                  ? "border-secondary-container bg-secondary-container/40 text-primary"
-                  : "border-transparent text-on-surface-variant"
-              ].join(" ")}
-            >
-              <item.icon aria-hidden="true" size={19} />
-              {item.label}
-            </Link>
-          );
-        })}
+            return (
+              <Link
+                key={item.label}
+                to={item.path}
+                data-focusable="true"
+                aria-current={isActive ? "page" : undefined}
+                className={[
+                  "focus-card my-2 flex min-w-20 flex-1 flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
+                  isActive
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-transparent text-on-surface-variant"
+                ].join(" ")}
+              >
+                <item.icon aria-hidden="true" size={19} />
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
         {/* Profile button in mobile nav */}
         <button

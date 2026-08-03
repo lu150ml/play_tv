@@ -1,4 +1,4 @@
-# Server Xtreme
+# Play TV X
 
 ## Download para Windows
 
@@ -25,17 +25,17 @@ Player IPTV com interface estilo streaming para servidores compatíveis com **Xt
 
 ## Stack
 
-| Camada | Tecnologia |
-|---|---|
-| UI | React 18 + TypeScript |
-| Estilo | Tailwind CSS com design tokens customizados |
-| Roteamento | React Router v6 |
-| Estado | Zustand com persistência via localStorage |
-| Player HLS | hls.js (carregado dinamicamente) |
-| Proxy IPTV | Plugin Vite — repassa chamadas Xtream sem CORS |
-| Testes unitários | Vitest + jsdom |
-| Testes E2E | Playwright (browser, mobile e layout TV) |
-| Qualidade | ESLint, Prettier, TypeScript strict |
+| Camada           | Tecnologia                                     |
+| ---------------- | ---------------------------------------------- |
+| UI               | React 18 + TypeScript                          |
+| Estilo           | Tailwind CSS com design tokens customizados    |
+| Roteamento       | React Router v6                                |
+| Estado           | Zustand com persistência via localStorage      |
+| Player HLS       | hls.js (carregado dinamicamente)               |
+| Proxy IPTV       | Plugin Vite — repassa chamadas Xtream sem CORS |
+| Testes unitários | Vitest + jsdom                                 |
+| Testes E2E       | Playwright (browser, mobile e layout TV)       |
+| Qualidade        | ESLint, Prettier, TypeScript strict            |
 
 ---
 

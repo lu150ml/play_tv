@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,8 +6,8 @@
 
 :root {
   color-scheme: dark;
-  background: #0b1326;
-  color: #dae2fd;
+  background: #11110f;
+  color: #f1ede4;
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -20,8 +20,8 @@ body {
   min-height: 100dvh;
   margin: 0;
   background:
-    radial-gradient(circle at 18% 8%, rgba(0, 219, 233, 0.14), transparent 30%),
-    linear-gradient(180deg, #060e20 0%, #0b1326 38%, #060e20 100%);
+    radial-gradient(circle at 76% -12%, rgba(214, 168, 75, 0.07), transparent 34%),
+    linear-gradient(180deg, #11110f 0%, #0c0c0b 100%);
 }
 
 button,
@@ -33,12 +33,14 @@ select {
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.42);
+  box-shadow:
+    0 0 0 2px #f1ede4,
+    0 0 0 5px rgba(232, 93, 63, 0.72);
 }
 
 ::selection {
-  background: #00f0ff;
-  color: #00363a;
+  background: #e85d3f;
+  color: #fff8f2;
 }
 
 ::-webkit-scrollbar {
@@ -47,43 +49,43 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b1326;
+  background: #11110f;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2d3449;
-  border-radius: 999px;
+  background: #403c35;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #00dbe9;
+  background: #e85d3f;
 }
 
 @layer components {
   .glass-panel {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(23, 31, 51, 0.72);
-    backdrop-filter: blur(24px);
+    border: 1px solid rgba(241, 237, 228, 0.12);
+    background: rgba(26, 25, 22, 0.96);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
   }
 
   .focus-card {
     transition:
       border-color 160ms ease,
-      box-shadow 160ms ease,
-      transform 160ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease,
       background-color 160ms ease;
   }
 
   .focus-card:hover,
   .focus-card:focus-visible {
-    border-color: rgba(0, 240, 255, 0.72);
-    box-shadow: 0 0 24px rgba(0, 219, 233, 0.22);
-    transform: translateY(-2px);
+    border-color: rgba(232, 93, 63, 0.82);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
   }
 
   .media-poster {
     background:
-      linear-gradient(135deg, rgba(0, 219, 233, 0.22), transparent 38%),
-      linear-gradient(160deg, rgba(208, 188, 255, 0.18), transparent 52%), #131b2e;
+      linear-gradient(135deg, rgba(232, 93, 63, 0.18), transparent 38%),
+      linear-gradient(160deg, rgba(214, 168, 75, 0.14), transparent 52%), #1a1916;
   }
 }

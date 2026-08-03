@@ -96,9 +96,9 @@ test.beforeEach(async ({ page }) => {
 async function connectToCatalog(page: Page) {
   await page.goto("/login");
   await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
-  await page.locator('input[placeholder="Your Xtream username"]').fill("demo-user");
-  await page.locator('input[placeholder="Your Xtream password"]').fill("demo-pass");
-  await page.getByRole("button", { name: "Connect" }).click();
+  await page.locator('input[placeholder="Seu usuário Xtream"]').fill("demo-user");
+  await page.locator('input[placeholder="Sua senha"]').fill("demo-pass");
+  await page.getByRole("button", { name: "Entrar" }).click();
   await page.getByRole("button", { name: "Criar perfil" }).click();
   await page.locator('input[placeholder="Ex: Kaworu"]').fill("Teste");
   await page.getByRole("button", { name: "Criar e entrar" }).click();
@@ -108,19 +108,19 @@ async function connectToCatalog(page: Page) {
 test("connects to catalog and opens a title", async ({ page }) => {
   await connectToCatalog(page);
 
-  await expect(page.getByText("Xtream server catalog")).toBeVisible();
-  await expect(page.getByText("3 items loaded")).toBeVisible();
+  await expect(page.getByText("Catálogo conectado")).toBeVisible();
+  await expect(page.getByText("3 itens carregados")).toBeVisible();
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
   await expect(page.getByText("Now Playing")).toBeVisible();
 });
 
 test("uses connected Xtream catalog on dedicated navigation pages", async ({ page }) => {
   await connectToCatalog(page);
-  await expect(page.getByText("Xtream server catalog")).toBeVisible();
+  await expect(page.getByText("Catálogo conectado")).toBeVisible();
 
   await page.getByRole("link", { name: "Filmes", exact: true }).first().click();
 
-  await expect(page.getByText("Xtream server catalog")).toBeVisible();
+  await expect(page.getByText("Catálogo conectado")).toBeVisible();
   await expect(page.getByText("Server Movie 4K").first()).toBeVisible();
   await expect(page.getByText("Neon Genesis: The Awakening").first()).not.toBeVisible();
 });
@@ -147,7 +147,7 @@ test("filters catalog results", async ({ page }) => {
 
 test("keeps search state isolated between catalog screens", async ({ page }) => {
   await connectToCatalog(page);
-  await page.getByRole("link", { name: "Search", exact: true }).first().click();
+  await page.getByRole("link", { name: "Buscar", exact: true }).first().click();
   await page.locator('input[aria-label="Search catalog"]').fill("world");
   await expect(page.getByText("World News HD").first()).toBeVisible();
 
@@ -155,13 +155,13 @@ test("keeps search state isolated between catalog screens", async ({ page }) => 
   await expect(page.locator('input[aria-label="Search catalog"]')).not.toBeVisible();
   await expect(page.getByText("Server Movie 4K").first()).toBeVisible();
 
-  await page.getByRole("link", { name: "Search", exact: true }).first().click();
+  await page.getByRole("link", { name: "Buscar", exact: true }).first().click();
   await expect(page.locator('input[aria-label="Search catalog"]')).toHaveValue("world");
 });
 
 test("shows the installed version and updater availability in the footer", async ({ page }) => {
   await page.goto("/catalog");
-  await expect(page.getByText(/Versao 0\.3\.1/)).toBeVisible();
+  await expect(page.getByText(/Versao 0\.4\.0/)).toBeVisible();
   await expect(page.getByText(/Atualizacao automatica indisponivel/)).toBeVisible();
 });
 
@@ -192,7 +192,7 @@ test("personalizes hero and recommendations from watch history", async ({ page }
   await expect(page.getByRole("link", { name: "Abrir Machine Heart" })).toBeVisible();
   const recommendations = page
     .locator("section")
-    .filter({ hasText: "Baseado no que voce assiste" });
+    .filter({ hasText: "Baseado no que você assiste" });
   await expect(recommendations).toBeVisible();
   await expect(recommendations.getByRole("link")).toHaveCount(5);
   await expect(recommendations.getByText("Machine Heart")).not.toBeVisible();
@@ -261,7 +261,7 @@ test("navigates catalog by content type shortcuts", async ({ page }) => {
 test("opens a dedicated category page from view all", async ({ page }) => {
   await page.goto("/catalog/series");
 
-  await page.getByRole("link", { name: "View all" }).first().click();
+  await page.getByRole("link", { name: "Ver todos" }).first().click();
 
   await expect(page).toHaveURL(/\/catalog\/series\/.+/);
   await expect(page.getByRole("link", { name: /Voltar para Series/ })).toBeVisible();
@@ -362,12 +362,20 @@ test("preloads video without revealing hidden controls while buffering", async (
 
 test("never shows the buffering banner for live TV", async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: () => Promise.resolve() });
-    Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: () => Promise.resolve()
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value: () => undefined
+    });
   });
   await connectToCatalog(page);
   await page.getByRole("link", { name: "World News HD channel" }).first().click();
-  await page.locator("video").evaluate((element) => element.dispatchEvent(new Event("waiting", { bubbles: true })));
+  await page
+    .locator("video")
+    .evaluate((element) => element.dispatchEvent(new Event("waiting", { bubbles: true })));
   await page.waitForTimeout(1000);
   await expect(page.getByTestId("buffering-indicator")).toHaveCount(0);
 });

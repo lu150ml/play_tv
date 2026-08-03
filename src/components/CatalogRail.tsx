@@ -18,14 +18,14 @@ export function CatalogRail({ title, items, viewAllTo, onRemoveItem }: CatalogRa
   return (
     <section className="mb-10">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-display text-2xl font-bold text-on-surface">{title}</h2>
+        <h2 className="font-display text-xl font-semibold text-on-surface lg:text-2xl">{title}</h2>
         {viewAllTo ? (
           <Link
             to={viewAllTo}
             data-focusable="true"
             className="focus-card rounded-lg border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant hover:text-on-surface"
           >
-            View all
+            Ver todos
           </Link>
         ) : null}
       </div>

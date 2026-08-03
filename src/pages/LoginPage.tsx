@@ -1,4 +1,4 @@
-import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, Server, UserRound } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, UserRound } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -64,35 +64,37 @@ export function LoginPage() {
         className="glass-panel w-full max-w-md rounded-xl p-8 shadow-2xl"
       >
         <header className="mb-8 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
-            <Server aria-hidden="true" size={34} />
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg bg-primary text-on-primary">
+            <span className="font-display text-3xl font-bold">X</span>
           </div>
-          <h1 className="font-display text-3xl font-bold text-primary">Server Xtreme</h1>
-          <p className="mt-2 text-on-surface-variant">Secure connection gateway</p>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-on-surface">
+            PLAY TV <span className="text-primary">X</span>
+          </h1>
+          <p className="mt-2 text-on-surface-variant">Sua programação começa aqui</p>
         </header>
 
         <div className="space-y-5">
           <InputField
-            label="Server URL"
+            label="Endereço do servidor"
             value={serverUrl}
             onChange={setServerUrl}
             placeholder="http://host:port"
             icon={<LinkIcon aria-hidden="true" size={20} />}
           />
           <InputField
-            label="Username"
+            label="Usuário"
             value={username}
             onChange={setUsername}
-            placeholder="Your Xtream username"
+            placeholder="Seu usuário Xtream"
             icon={<UserRound aria-hidden="true" size={20} />}
           />
           <InputField
             id="server-password"
-            label="Password"
+            label="Senha"
             value={password}
             onChange={setPassword}
             type={isPasswordVisible ? "text" : "password"}
-            placeholder="Your Xtream password"
+            placeholder="Sua senha"
             icon={<Lock aria-hidden="true" size={20} />}
             endAction={
               <button
@@ -127,7 +129,7 @@ export function LoginPage() {
               onChange={(event) => setRemember(event.target.checked)}
               className="h-5 w-5 accent-primary-container"
             />
-            Remember Me
+            Lembrar acesso
           </label>
         </div>
 
@@ -136,7 +138,7 @@ export function LoginPage() {
           disabled={isConnecting}
           className="focus-card flex w-full items-center justify-center gap-3 rounded-lg border border-primary-container/40 bg-primary px-6 py-4 font-display text-lg font-bold text-on-primary shadow-glow disabled:cursor-wait disabled:opacity-70"
         >
-          {isConnecting ? "Connecting..." : "Connect"}
+          {isConnecting ? "Conectando..." : "Entrar"}
           <ArrowRight aria-hidden="true" size={24} />
         </button>
       </form>

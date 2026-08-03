@@ -1,5 +1,14 @@
 const path = require("node:path");
-const { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  safeStorage,
+  shell
+} = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { handleProtocolRequest } = require("./server.cjs");
 const { DownloadManager } = require("./download-manager.cjs");
@@ -26,7 +35,7 @@ async function createWindow() {
     minHeight: 600,
     backgroundColor: "#141414",
     autoHideMenuBar: true,
-    title: "Server Xtreme",
+    title: "Play TV X",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

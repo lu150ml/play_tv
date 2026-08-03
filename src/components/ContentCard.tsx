@@ -19,7 +19,8 @@ interface ContentCardProps {
 
 export function ContentCard({ item, compact = false, onRemove }: ContentCardProps) {
   const allPlayback = useLibraryStore((state) => state.playback);
-  const continueEpisode = item.type === "series" ? getContinueEpisode(item.episodes, allPlayback) : undefined;
+  const continueEpisode =
+    item.type === "series" ? getContinueEpisode(item.episodes, allPlayback) : undefined;
   const playback = allPlayback[item.id];
   const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
   const showProgress = shouldShowPlaybackProgress(item.type);
@@ -28,6 +29,7 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
     ? formatRemainingTime(getRemainingSeconds(playback))
     : undefined;
   const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  const isPoster = item.type !== "channel";
 
   return (
     <Link
@@ -36,13 +38,14 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
       data-content-id={item.id}
       aria-label={`${item.title} ${item.type}`}
       className={[
-        "focus-card group block overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 text-left",
-        compact ? "w-72 shrink-0" : "min-h-full"
+        "focus-card group block overflow-hidden rounded-lg border border-white/10 bg-surface-container/60 text-left",
+        compact ? (isPoster ? "w-48 shrink-0" : "w-72 shrink-0") : "min-h-full"
       ].join(" ")}
     >
       <div
         className={[
-          "media-poster relative aspect-video overflow-hidden bg-gradient-to-br",
+          "media-poster relative overflow-hidden bg-gradient-to-br",
+          isPoster ? "aspect-[2/3]" : "aspect-video",
           item.posterTone
         ].join(" ")}
       >
@@ -51,7 +54,7 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
             src={item.imageUrl}
             alt=""
             loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover opacity-75"
+            className="absolute inset-0 h-full w-full object-cover opacity-85 transition duration-500 group-hover:scale-[1.03]"
           />
         ) : null}
         <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.12),transparent)] opacity-0 transition-opacity group-hover:opacity-100" />
@@ -94,9 +97,9 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
         ) : null}
       </div>
 
-      <div className="p-4">
+      <div className="p-3.5">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 font-display text-lg font-semibold text-on-surface">
+          <h3 className="line-clamp-2 font-display text-base font-semibold text-on-surface">
             {item.title}
           </h3>
           <Heart
@@ -105,7 +108,7 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
             size={18}
           />
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">
+        <p className="mt-2 line-clamp-2 text-sm leading-5 text-on-surface-variant">
           {item.description}
         </p>
         {remainingLabel ? (
@@ -114,7 +117,9 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
           </p>
         ) : null}
         {continueEpisode && allPlayback[continueEpisode.id]?.positionSeconds ? (
-          <p className="mt-2 font-mono text-xs uppercase text-primary-container">Continuar S{continueEpisode.season} E{continueEpisode.episode}</p>
+          <p className="mt-2 font-mono text-xs uppercase text-primary-container">
+            Continuar S{continueEpisode.season} E{continueEpisode.episode}
+          </p>
         ) : null}
       </div>
     </Link>

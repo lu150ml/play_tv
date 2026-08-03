@@ -1,4 +1,4 @@
-import { Clapperboard, Film, Grid2x2, Music2, Search, Tv } from "lucide-react";
+import { Clapperboard, Film, Grid2x2, Music2, Play, Search, Tv } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 
@@ -62,16 +62,33 @@ const sectionConfigs = {
 
 type SectionKey = keyof typeof sectionConfigs;
 
-interface CatalogPageProps { sectionOverride?: SectionKey }
+interface CatalogPageProps {
+  sectionOverride?: SectionKey;
+}
 
-export function HomeCatalogPage() { return <CatalogPage sectionOverride="all" />; }
-export function LiveTvCatalogPage() { return <CatalogPage sectionOverride="tv" />; }
-export function MusicCatalogPage() { return <CatalogPage sectionOverride="music" />; }
-export function MoviesCatalogPage() { return <CatalogPage sectionOverride="movies" />; }
-export function SeriesCatalogPage() { return <CatalogPage sectionOverride="series" />; }
-export function GlobalSearchPage() { return <CatalogPage sectionOverride="all" forceSearch />; }
+export function HomeCatalogPage() {
+  return <CatalogPage sectionOverride="all" />;
+}
+export function LiveTvCatalogPage() {
+  return <CatalogPage sectionOverride="tv" />;
+}
+export function MusicCatalogPage() {
+  return <CatalogPage sectionOverride="music" />;
+}
+export function MoviesCatalogPage() {
+  return <CatalogPage sectionOverride="movies" />;
+}
+export function SeriesCatalogPage() {
+  return <CatalogPage sectionOverride="series" />;
+}
+export function GlobalSearchPage() {
+  return <CatalogPage sectionOverride="all" forceSearch />;
+}
 
-export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPageProps & { forceSearch?: boolean }) {
+export function CatalogPage({
+  sectionOverride,
+  forceSearch = false
+}: CatalogPageProps & { forceSearch?: boolean }) {
   const { section, categorySlug } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -92,10 +109,7 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
   const removeProgress = useLibraryStore((state) => state.removeProgress);
   const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
-  const sectionItems = useMemo(
-    () => filterBySection(catalog, sectionKey),
-    [catalog, sectionKey]
-  );
+  const sectionItems = useMemo(() => filterBySection(catalog, sectionKey), [catalog, sectionKey]);
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -115,7 +129,9 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
     [sectionConfig.broadCategories, sectionItems]
   );
   const selectedCategory = categorySlug
-    ? categoryGroups.find((group) => group.slug === categorySlug || slugify(group.title) === categorySlug)
+    ? categoryGroups.find(
+        (group) => group.slug === categorySlug || slugify(group.title) === categorySlug
+      )
     : undefined;
   const isUnknownCategory = Boolean(categorySlug && !selectedCategory);
   const effectiveFilters = useMemo(
@@ -168,18 +184,33 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
   useEffect(() => {
     const key = `catalog-view:${location.pathname}${location.search}`;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as
-        | { filters?: CatalogFilter; scrollY?: number; focusId?: string }
-        | null;
-      if (saved?.filters) setFilters((current) => ({ ...current, ...saved.filters, type: sectionType }));
+      const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
+        filters?: CatalogFilter;
+        scrollY?: number;
+        focusId?: string;
+      } | null;
+      if (saved?.filters)
+        setFilters((current) => ({ ...current, ...saved.filters, type: sectionType }));
       window.requestAnimationFrame(() => {
         window.scrollTo(0, saved?.scrollY ?? 0);
-        if (saved?.focusId) document.querySelector<HTMLElement>(`[data-content-id="${CSS.escape(saved.focusId)}"]`)?.focus();
+        if (saved?.focusId)
+          document
+            .querySelector<HTMLElement>(`[data-content-id="${CSS.escape(saved.focusId)}"]`)
+            ?.focus();
       });
-    } catch { /* Ignore invalid navigation state. */ }
+    } catch {
+      /* Ignore invalid navigation state. */
+    }
     return () => {
       const focused = document.activeElement as HTMLElement | null;
-      sessionStorage.setItem(key, JSON.stringify({ filters: navigationStateRef.current.filters, scrollY: window.scrollY, focusId: focused?.dataset.contentId }));
+      sessionStorage.setItem(
+        key,
+        JSON.stringify({
+          filters: navigationStateRef.current.filters,
+          scrollY: window.scrollY,
+          focusId: focused?.dataset.contentId
+        })
+      );
     };
   }, [location.pathname, location.search, sectionType]);
 
@@ -190,7 +221,7 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
   const pageTitle = selectedCategory
     ? `${sectionConfig.title}: ${selectedCategory.title}`
     : sectionKey === "all"
-      ? "Home"
+      ? "Início"
       : sectionConfig.title;
   const showSearch = forceSearch || searchParams.get("search") === "open" || selectedCategory;
   const isSearchResult = Boolean(filters.query?.trim());
@@ -199,19 +230,18 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
     <div className="mx-auto max-w-canvas">
       {!selectedCategory && recommendedHero ? <FeaturedHero item={recommendedHero} /> : null}
 
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
-          {catalogSource === "xtream" ? "Xtream server catalog" : "Demo catalog"}
+      <div className="mb-6 flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-[0.14em] text-on-surface-variant">
+        <span>
+          {catalogSource === "xtream" ? "Catálogo conectado" : "Catálogo de demonstração"}
         </span>
-        <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
-          {catalog.length} items loaded
-        </span>
+        <span className="h-1 w-1 rounded-full bg-secondary" />
+        <span>{catalog.length} itens carregados</span>
       </div>
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-xs uppercase text-primary-container">Navegacao</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-primary">Explore</p>
             <h1 className="mt-1 font-display text-3xl font-bold text-on-surface lg:text-4xl">
               {pageTitle}
             </h1>
@@ -270,7 +300,12 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
           filters={effectiveFilters}
           catalog={sectionItems}
           onChange={(nextFilters) =>
-            setFilters({ ...nextFilters, type: sectionType, category: selectedCategory?.title, providerCategoryId: selectedCategory?.providerCategoryId })
+            setFilters({
+              ...nextFilters,
+              type: sectionType,
+              category: selectedCategory?.title,
+              providerCategoryId: selectedCategory?.providerCategoryId
+            })
           }
         />
       ) : null}
@@ -285,16 +320,23 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
           ) : null}
           <CatalogGrid items={results.slice(0, visibleResults)} />
           {results.length > visibleResults ? (
-            <button type="button" data-focusable="true" onClick={() => setVisibleResults((count) => count + SEARCH_PAGE_SIZE)} className="focus-card mx-auto mt-6 block rounded-lg border border-white/10 bg-surface-container px-5 py-3 font-semibold">Carregar mais ({results.length - visibleResults})</button>
+            <button
+              type="button"
+              data-focusable="true"
+              onClick={() => setVisibleResults((count) => count + SEARCH_PAGE_SIZE)}
+              className="focus-card mx-auto mt-6 block rounded-lg border border-white/10 bg-surface-container px-5 py-3 font-semibold"
+            >
+              Carregar mais ({results.length - visibleResults})
+            </button>
           ) : null}
         </section>
       ) : (
         <>
           {sectionKey === "all" && recommendations.length > 0 ? (
-            <CatalogRail title="Baseado no que voce assiste" items={recommendations.slice(0, 5)} />
+            <CatalogRail title="Baseado no que você assiste" items={recommendations.slice(0, 5)} />
           ) : null}
           <CatalogRail
-            title="Continue Watching"
+            title="Continue assistindo"
             items={continueWatching.slice(0, RAIL_LIMIT)}
             onRemoveItem={(contentId) => {
               const content = catalog.find((item) => item.id === contentId);
@@ -306,7 +348,7 @@ export function CatalogPage({ sectionOverride, forceSearch = false }: CatalogPag
               else removeProgress(contentId);
             }}
           />
-          <CatalogRail title="Favorites" items={favoritesList.slice(0, RAIL_LIMIT)} />
+          <CatalogRail title="Favoritos" items={favoritesList.slice(0, RAIL_LIMIT)} />
 
           {sectionKey === "all" ? (
             <HomeRails catalog={catalog} />
@@ -334,11 +376,23 @@ function FeaturedHero({ item }: { item: ContentItem }) {
       data-focusable="true"
       aria-label={`Abrir ${item.title}`}
       className={[
-        "focus-card group mb-8 block overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl transition duration-200 hover:border-primary-container/45 lg:p-8",
+        "focus-card group relative mb-10 block min-h-[25rem] overflow-hidden rounded-lg border border-white/10 bg-gradient-to-br shadow-2xl transition duration-200 hover:border-primary/70",
         item.backdropTone
       ].join(" ")}
     >
-      <div className="max-w-3xl">
+      {item.imageUrl ? (
+        <img
+          src={item.imageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover opacity-50 transition duration-700 group-hover:scale-[1.02]"
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-r from-black via-black/75 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+      <div className="relative flex min-h-[25rem] max-w-3xl flex-col justify-end p-6 lg:p-10">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+          Em destaque
+        </p>
         <div className="mb-4 flex flex-wrap gap-2">
           {item.quality.map((quality) => (
             <span
@@ -349,12 +403,15 @@ function FeaturedHero({ item }: { item: ContentItem }) {
             </span>
           ))}
         </div>
-        <h1 className="font-display text-4xl font-bold text-on-surface lg:text-6xl">
+        <h1 className="font-display text-4xl font-semibold leading-none tracking-tight text-on-surface lg:text-6xl">
           {item.title}
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-on-surface-variant lg:text-lg">
           {item.description}
         </p>
+        <span className="mt-6 inline-flex w-fit items-center gap-3 rounded-md bg-primary px-6 py-3 font-semibold text-on-primary">
+          <Play aria-hidden="true" size={19} fill="currentColor" /> Assistir
+        </span>
       </div>
     </Link>
   );
@@ -373,9 +430,9 @@ function HomeRails({ catalog }: { catalog: ContentItem[] }) {
   return (
     <>
       <CatalogRail title="TV ao vivo" items={liveTv.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/tv" />
-      <CatalogRail title="Musica" items={music.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/music" />
+      <CatalogRail title="Música" items={music.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/music" />
       <CatalogRail title="Filmes" items={movies.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/movies" />
-      <CatalogRail title="Series" items={series.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/series" />
+      <CatalogRail title="Séries" items={series.slice(0, RAIL_LIMIT)} viewAllTo="/catalog/series" />
     </>
   );
 }
@@ -447,10 +504,10 @@ function TypeLink({ label, count, isActive, icon, to }: TypeLinkProps) {
       to={to}
       data-focusable="true"
       className={[
-        "focus-card flex items-center justify-between rounded-xl border p-4 text-left",
+        "focus-card flex items-center justify-between rounded-lg border p-4 text-left",
         isActive
-          ? "border-primary-container bg-primary-container/15 text-primary shadow-glow"
-          : "border-white/10 bg-surface-container/70 text-on-surface hover:bg-surface-container"
+          ? "border-primary bg-primary/10 text-on-surface"
+          : "border-white/5 bg-surface-container/50 text-on-surface hover:bg-surface-container"
       ].join(" ")}
       aria-current={isActive ? "page" : undefined}
     >
@@ -475,7 +532,13 @@ interface CategoryGroup {
 }
 
 function getSectionKey(section?: string): SectionKey {
-  if (section === "tv" || section === "music" || section === "movies" || section === "series" || section === "all") {
+  if (
+    section === "tv" ||
+    section === "music" ||
+    section === "movies" ||
+    section === "series" ||
+    section === "all"
+  ) {
     return section;
   }
 
@@ -487,7 +550,8 @@ function filterBySection(items: ContentItem[], section: SectionKey): ContentItem
     return items;
   }
   if (section === "music") return items.filter(isMusicChannel);
-  if (section === "tv") return items.filter((item) => item.type === "channel" && !isMusicChannel(item));
+  if (section === "tv")
+    return items.filter((item) => item.type === "channel" && !isMusicChannel(item));
   const type: ContentType = section === "movies" ? "movie" : "series";
   return items.filter((item) => item.type === type);
 }
@@ -496,7 +560,10 @@ function groupByDisplayCategory(
   items: ContentItem[],
   broadCategories: readonly string[]
 ): CategoryGroup[] {
-  const groups = new Map<string, { title: string; items: ContentItem[]; providerCategoryId?: string }>();
+  const groups = new Map<
+    string,
+    { title: string; items: ContentItem[]; providerCategoryId?: string }
+  >();
 
   for (const item of items) {
     const displayCategories = unique(item.categories).filter(
@@ -506,14 +573,23 @@ function groupByDisplayCategory(
 
     for (const category of unique(categories)) {
       const key = item.providerCategoryId ? `${item.providerCategoryId}:${category}` : category;
-      const group = groups.get(key) ?? { title: category, items: [], providerCategoryId: item.providerCategoryId };
+      const group = groups.get(key) ?? {
+        title: category,
+        items: [],
+        providerCategoryId: item.providerCategoryId
+      };
       group.items.push(item);
       groups.set(key, group);
     }
   }
 
   return Array.from(groups.values())
-    .map((group) => ({ ...group, slug: group.providerCategoryId ? `${slugify(group.title)}-${group.providerCategoryId}` : slugify(group.title) }))
+    .map((group) => ({
+      ...group,
+      slug: group.providerCategoryId
+        ? `${slugify(group.title)}-${group.providerCategoryId}`
+        : slugify(group.title)
+    }))
     .sort((left, right) => left.title.localeCompare(right.title));
 }
 
