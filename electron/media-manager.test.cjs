@@ -31,6 +31,19 @@ test("preflight classifies denied and missing streams", async () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("transcode preflight accepts media without Range and rejects fake HTML", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  try {
+    const manager = new MediaManager({ app: { getPath: () => root }, net: { fetch: async () => new Response("<html>not video</html>", { status: 200, headers: { "content-type": "text/html" } }) }, ffmpegPath: "missing" });
+    await assert.rejects(() => manager.preflight("https://example.test/episode.mp4"), (error) => error.code === "not-media");
+    manager.net.fetch = async (_url, options) => {
+      assert.equal(options.headers.Range, undefined);
+      return new Response(Buffer.from([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70]), { status: 200, headers: { "content-type": "video/mp4" } });
+    };
+    await manager.preflight("https://example.test/episode.mp4");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("stream probe rejects fake HTML success and accepts real HLS", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
   try {

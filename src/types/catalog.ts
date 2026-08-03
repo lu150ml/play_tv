@@ -40,6 +40,7 @@ export interface Episode {
   durationSeconds: number;
   description: string;
   streamUrl?: string;
+  streamCandidates?: string[];
 }
 
 export interface SubtitleResult {

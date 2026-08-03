@@ -148,13 +148,22 @@ class MediaManager {
 
   async preflight(url) {
     let response;
-    try { response = await this.net.fetch(url, { redirect: "follow", headers: { Range: "bytes=0-0", "User-Agent": "Play-TV-X/0.4.2" } }); }
+    try { response = await this.net.fetch(url, { redirect: "follow", headers: { "User-Agent": "Play-TV-X/0.4.4", Accept: "*/*" } }); }
     catch { throw publicError("network", "Nao foi possivel conectar ao servidor do episodio."); }
-    void response.body?.cancel().catch(() => {});
-    if (response.status === 401 || response.status === 403) throw publicError("access-denied", "O servidor recusou o acesso ao episodio.");
-    if (response.status === 404 || response.status === 410) throw publicError("not-found", "O episodio nao existe mais no servidor.");
-    if (response.status >= 500) throw publicError("server", "O servidor falhou ao abrir o episodio.");
-    if (!response.ok && response.status !== 206) throw publicError("http", `O servidor respondeu com HTTP ${response.status}.`);
+    const reject = (code, message) => { void response.body?.cancel().catch(() => {}); throw publicError(code, message); };
+    if (response.status === 401 || response.status === 403) reject("access-denied", "O servidor recusou o acesso ao episodio.");
+    if (response.status === 404 || response.status === 410) reject("not-found", "O episodio nao existe mais no servidor.");
+    if (response.status >= 500) reject("server", "O servidor falhou ao abrir o episodio.");
+    if (!response.ok && response.status !== 206) reject("http", `O servidor respondeu com HTTP ${response.status}.`);
+    const reader = response.body?.getReader();
+    const chunk = reader ? await reader.read() : { value: undefined };
+    void reader?.cancel();
+    const bytes = Buffer.from(chunk.value ?? []);
+    const text = bytes.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
+    const type = (response.headers.get("content-type") || "").toLowerCase();
+    if (bytes.length === 0 || type.includes("text/html") || text.startsWith("<html") || text.startsWith("<!doctype")) {
+      throw publicError("not-media", "O servidor respondeu, mas nao entregou um arquivo de video.");
+    }
   }
 
   waitForPlaylist(session) {

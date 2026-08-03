@@ -94,7 +94,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function connectToCatalog(page: Page) {
-  await page.goto("/login");
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.locator('input[placeholder="http://host:port"]').fill("http://xtream.test");
   await page.locator('input[placeholder="Seu usuário Xtream"]').fill("demo-user");
   await page.locator('input[placeholder="Sua senha"]').fill("demo-pass");
@@ -130,14 +130,14 @@ test("reloads Xtream series episodes from remembered server connection", async (
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
   await expect(page.getByText("Pilot")).toBeVisible();
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("Pilot")).toBeVisible();
   await expect(page.getByText("Volte ao login")).not.toBeVisible();
 });
 
 test("filters catalog results", async ({ page }) => {
-  await page.goto("/catalog?search=open");
+  await page.goto("/catalog?search=open", { waitUntil: "domcontentloaded" });
   await page.locator('input[aria-label="Search catalog"]').fill("sports");
 
   await expect(page.getByRole("heading", { name: "Resultados da busca" })).toBeVisible();
@@ -160,7 +160,7 @@ test("keeps search state isolated between catalog screens", async ({ page }) => 
 });
 
 test("shows the installed version and updater availability in the footer", async ({ page }) => {
-  await page.goto("/catalog");
+  await page.goto("/catalog", { waitUntil: "domcontentloaded" });
   await expect(page.getByText(/Versao 0\.4\.0/)).toBeVisible();
   await expect(page.getByText(/Atualizacao automatica indisponivel/)).toBeVisible();
 });
@@ -187,7 +187,7 @@ test("personalizes hero and recommendations from watch history", async ({ page }
     );
   });
 
-  await page.goto("/catalog");
+  await page.goto("/catalog", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("link", { name: "Abrir Machine Heart" })).toBeVisible();
   const recommendations = page
@@ -199,7 +199,7 @@ test("personalizes hero and recommendations from watch history", async ({ page }
 });
 
 test("opens the clickable catalog hero using card routing rules", async ({ page }) => {
-  await page.goto("/catalog");
+  await page.goto("/catalog", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("link", { name: "Abrir Neon Genesis: The Awakening" }).click();
 
@@ -229,16 +229,16 @@ test("opens the clickable catalog hero using card routing rules", async ({ page 
   await page.goto("/catalog");
   await page.getByRole("link", { name: "Abrir Machine Heart" }).click();
 
-  await expect(page).toHaveURL(/\/series\/machine-heart$/);
+  await expect(page).toHaveURL(/\/watch\/machine-heart\/machine-heart-s1e1$/);
 
-  await page.goto("/catalog/tv");
+  await page.goto("/catalog/tv", { waitUntil: "domcontentloaded" });
   await page.getByRole("link", { name: "Abrir Cine Max Live" }).click();
 
   await expect(page).toHaveURL(/\/watch\/cine-max-live$/);
 });
 
 test("navigates catalog by content type shortcuts", async ({ page }) => {
-  await page.goto("/catalog/movies");
+  await page.goto("/catalog/movies", { waitUntil: "domcontentloaded" });
 
   await expect(page).toHaveURL(/\/catalog\/movies$/);
   await expect(page.getByRole("link", { name: "Filmes", exact: true })).toHaveAttribute(
@@ -259,7 +259,7 @@ test("navigates catalog by content type shortcuts", async ({ page }) => {
 });
 
 test("opens a dedicated category page from view all", async ({ page }) => {
-  await page.goto("/catalog/series");
+  await page.goto("/catalog/series", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("link", { name: "Ver todos" }).first().click();
 
@@ -268,7 +268,7 @@ test("opens a dedicated category page from view all", async ({ page }) => {
 });
 
 test("supports keyboard style navigation", async ({ page }) => {
-  await page.goto("/catalog");
+  await page.goto("/catalog", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("link", { name: "Neon Genesis: The Awakening movie" }).first().focus();
   await page.keyboard.press("Enter");
@@ -302,7 +302,7 @@ test("jumps to the next episode from player controls", async ({ page }) => {
 test("shows only current season episodes while watching a series", async ({ page }) => {
   await connectToCatalog(page);
 
-  await page.goto("/watch/xtream-series-30/xtream-episode-3003");
+  await page.goto("/watch/xtream-series-30/xtream-episode-3003", { waitUntil: "domcontentloaded" });
 
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3003$/);
   await expect(page.getByRole("heading", { name: "Temporada 2" })).toBeVisible();
@@ -311,7 +311,16 @@ test("shows only current season episodes while watching a series", async ({ page
 });
 
 test("hides player controls after inactivity and shows them on interaction", async ({ page }) => {
-  await page.goto("/watch/neon-genesis-awakening");
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: function (this: HTMLMediaElement) {
+        this.dispatchEvent(new Event("play", { bubbles: true }));
+        return Promise.resolve();
+      }
+    });
+  });
+  await page.goto("/watch/neon-genesis-awakening", { waitUntil: "domcontentloaded" });
 
   const controls = page.getByTestId("player-controls");
 
@@ -408,7 +417,7 @@ test("shows saved movie progress but not live tv progress", async ({ page }) => 
     );
   });
 
-  await page.goto("/catalog");
+  await page.goto("/catalog", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("1h 55min restantes").first()).toBeVisible();
   const sportsCards = page.getByRole("link", { name: "Sports Grid channel" });

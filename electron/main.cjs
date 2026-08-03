@@ -30,7 +30,7 @@ let mainWindow = null;
 let downloadManager;
 let updater;
 let mediaManager;
-const gotLock = app.requestSingleInstanceLock();
+const gotLock = process.env.PLAY_TV_E2E === "1" || app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
 async function createWindow() {

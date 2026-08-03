@@ -63,6 +63,7 @@ interface XtreamSeriesInfoEpisode {
   episode_num?: string | number;
   title?: string;
   container_extension?: string;
+  direct_source?: string;
   info?: {
     duration_secs?: string | number;
     plot?: string;
@@ -81,12 +82,15 @@ export interface XtreamCatalogResult {
   serverUrl: string;
 }
 
+const seriesDetailsCache = new Map<string, Promise<XtreamSeriesInfoResponse>>();
+
 // Limite por categoria (não por tipo). Um corte plano em N itens do início da
 // lista descartava categorias inteiras que o servidor retorna no fim (ex.:
 // Comédia, Netflix). Capando por categoria, toda categoria fica representada.
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
+  seriesDetailsCache.clear();
   const profile = await requestXtream<XtreamProfileResponse>(credentials);
   const auth = profile.user_info?.auth;
 
@@ -161,15 +165,20 @@ export async function loadXtreamSeriesEpisodes(
   credentials: XtreamCredentials,
   seriesId: string
 ): Promise<Episode[]> {
-  const response = await requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", {
-    series_id: seriesId
-  });
+  const response = await loadXtreamSeriesDetails(credentials, seriesId);
 
   return Object.entries(response.episodes ?? {}).flatMap(([seasonKey, episodes]) =>
     episodes.map((episode, index) => {
       const providerId = String(episode.id ?? `${seriesId}-${seasonKey}-${index + 1}`);
       const episodeNumber = parseNumber(episode.episode_num) ?? index + 1;
-      const extension = episode.container_extension || "mp4";
+      const extensions = episode.container_extension
+        ? [episode.container_extension]
+        : ["mp4", "m3u8", "ts", "mkv"];
+      const directSource = normalizeRemoteMediaUrl(episode.direct_source);
+      const streamCandidates = Array.from(new Set([
+        ...(directSource ? [directSource] : []),
+        ...extensions.map((extension) => buildStreamUrl(credentials, "series", providerId, extension))
+      ]));
 
       return {
         id: `xtream-episode-${providerId}`,
@@ -179,7 +188,8 @@ export async function loadXtreamSeriesEpisodes(
         episode: episodeNumber,
         durationSeconds: parseNumber(episode.info?.duration_secs) ?? 0,
         description: episode.info?.plot || "Episode from the connected IPTV server.",
-        streamUrl: buildStreamUrl(credentials, "series", providerId, extension)
+        streamUrl: streamCandidates[0],
+        streamCandidates
       };
     })
   );
@@ -189,13 +199,21 @@ export async function loadXtreamSeriesArtwork(
   credentials: XtreamCredentials,
   seriesId: string
 ): Promise<string | undefined> {
-  const response = await requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", {
-    series_id: seriesId
-  });
+  const response = await loadXtreamSeriesDetails(credentials, seriesId);
   const backdrop = Array.isArray(response.info?.backdrop_path)
     ? response.info?.backdrop_path[0]
     : response.info?.backdrop_path;
   return normalizeImage(response.info?.cover || response.info?.movie_image || backdrop, credentials.serverUrl);
+}
+
+function loadXtreamSeriesDetails(credentials: XtreamCredentials, seriesId: string) {
+  const key = `${normalizeServerUrl(credentials.serverUrl)}|${credentials.username}|${seriesId}`;
+  const cached = seriesDetailsCache.get(key);
+  if (cached) return cached;
+  const request = requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", { series_id: seriesId })
+    .catch((error) => { seriesDetailsCache.delete(key); throw error; });
+  seriesDetailsCache.set(key, request);
+  return request;
 }
 
 async function requestXtream<T>(
@@ -381,6 +399,16 @@ function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefin
     return new URL(normalized, serverUrl ? `${normalizeServerUrl(serverUrl)}/` : undefined).toString();
   } catch {
     return normalized;
+  }
+}
+
+function normalizeRemoteMediaUrl(value?: string): string | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const url = new URL(value.trim());
+    return new Set(["http:", "https:"]).has(url.protocol) ? url.toString() : undefined;
+  } catch {
+    return undefined;
   }
 }
 

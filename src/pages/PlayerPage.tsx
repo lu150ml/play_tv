@@ -16,7 +16,7 @@ import {
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
-import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "../services/streamService";
+import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates, shouldProbeBeforePlayback } from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
 import { useDownloadState } from "../hooks/useDesktopState";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -98,8 +98,12 @@ export function PlayerPage() {
   );
   const originalStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
   const streamCandidates = useMemo(
-    () => item?.type === "channel" ? getChannelStreamCandidates(originalStreamUrl) : getOnDemandStreamCandidates(originalStreamUrl),
-    [item?.type, originalStreamUrl]
+    () => item?.type === "channel"
+      ? getChannelStreamCandidates(originalStreamUrl)
+      : selectedEpisode?.streamCandidates?.length
+        ? selectedEpisode.streamCandidates
+        : getOnDemandStreamCandidates(originalStreamUrl),
+    [item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
   const activeStreamUrl = transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined);
@@ -290,6 +294,14 @@ export function PlayerPage() {
     let cancelled = false;
     if (completedDownload || !originalStreamUrl) {
       setIsStreamApproved(Boolean(completedDownload));
+      return;
+    }
+    // Filmes e episodios devem chegar primeiro ao player nativo. Alguns
+    // provedores recusam probes/Range, embora aceitem a requisicao do <video>.
+    // A verificacao antecipada fica restrita a TV ao vivo.
+    if (!shouldProbeBeforePlayback(item?.type)) {
+      setIsStreamApproved(true);
+      setIsProbingStream(false);
       return;
     }
     const bridge = getDesktopBridge();
@@ -777,7 +789,8 @@ export function PlayerPage() {
     setIsPreparingCompatibleFormat(true);
     setPlaybackMode("transcoding");
     try {
-      const session = await bridge.media.startTranscode(originalStreamUrl);
+      const compatibilitySource = streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] ?? originalStreamUrl;
+      const session = await bridge.media.startTranscode(compatibilitySource);
       setTranscodeSession({ id: session.id, url: session.url });
       setIsPlaying(true);
     } catch (error) {

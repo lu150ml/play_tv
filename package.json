@@ -1,7 +1,7 @@
 {
   "name": "play-tv-x",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Play TV X",
   "type": "module",
@@ -16,6 +16,7 @@
     "test": "vitest run && node --test --test-isolation=none electron/*.test.cjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:electron-e2e": "node --test tests/electron/*.test.cjs",
     "electron:dev": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never"
   },

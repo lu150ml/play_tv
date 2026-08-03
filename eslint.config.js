@@ -41,7 +41,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ["electron/**/*.cjs"],
+    files: ["electron/**/*.cjs", "tests/electron/**/*.cjs"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {

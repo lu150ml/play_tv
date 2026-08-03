@@ -1,3 +1,9 @@
+import type { ContentType } from "../types/catalog";
+
+export function shouldProbeBeforePlayback(type?: ContentType): boolean {
+  return type === "channel";
+}
+
 export function getChannelStreamCandidates(url?: string): string[] {
   if (!url) return [];
   const candidates = [url];
@@ -14,12 +20,14 @@ export function getOnDemandStreamCandidates(url?: string): string[] {
   if (!extension) return [url];
 
   const candidates = extension === "mkv"
-    ? [replaceExtension("mp4"), replaceExtension("m3u8"), url]
+    ? [replaceExtension("mp4"), replaceExtension("m3u8"), replaceExtension("ts"), url]
     : extension === "mp4"
-      ? [url, replaceExtension("m3u8")]
+      ? [url, replaceExtension("m3u8"), replaceExtension("ts"), replaceExtension("mkv")]
       : extension === "m3u8"
-        ? [url, replaceExtension("mp4")]
-        : [url, replaceExtension("mp4"), replaceExtension("m3u8")];
+        ? [url, replaceExtension("ts"), replaceExtension("mp4"), replaceExtension("mkv")]
+        : extension === "ts"
+          ? [url, replaceExtension("m3u8"), replaceExtension("mp4"), replaceExtension("mkv")]
+          : [url, replaceExtension("mp4"), replaceExtension("m3u8"), replaceExtension("ts"), replaceExtension("mkv")];
   return Array.from(new Set(candidates));
 }
 
