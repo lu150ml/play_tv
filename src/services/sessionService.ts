@@ -22,7 +22,7 @@ export async function connectServerSession(request: LoginRequest): Promise<Sessi
 
   return {
     displayName: request.username.trim() || "Editor Pro",
-    serverUrl: request.serverUrl.trim() || "mock://server-xtreme",
+    serverUrl: result.serverUrl,
     connectedAt: new Date().toISOString(),
     catalog: result.catalog,
     source: "xtream",

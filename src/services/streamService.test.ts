@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatResolution, getChannelStreamCandidates } from "./streamService";
+import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "./streamService";
 
 describe("streamService", () => {
   it("offers ts as a fallback for an HLS live URL", () => {
@@ -12,6 +12,14 @@ describe("streamService", () => {
   it("does not duplicate an unknown stream format", () => {
     expect(getChannelStreamCandidates("https://host/live/u/p/1.mp4")).toEqual([
       "https://host/live/u/p/1.mp4"
+    ]);
+  });
+
+  it("tries browser-compatible episode formats before a reported mkv", () => {
+    expect(getOnDemandStreamCandidates("https://host/series/u/p/1.mkv")).toEqual([
+      "https://host/series/u/p/1.mp4",
+      "https://host/series/u/p/1.m3u8",
+      "https://host/series/u/p/1.mkv"
     ]);
   });
 

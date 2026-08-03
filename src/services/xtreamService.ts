@@ -77,6 +77,7 @@ export interface XtreamCatalogResult {
   profile: XtreamProfileResponse;
   catalog: ContentItem[];
   warnings: string[];
+  serverUrl: string;
 }
 
 // Limite por categoria (não por tipo). Um corte plano em N itens do início da
@@ -138,7 +139,7 @@ export async function loadXtreamCatalog(
     mapVodStream(stream, vodCategoryMap, canonicalCredentials)
   );
   const seriesItems = seriesStreams.map((stream) =>
-    mapSeriesStream(stream, seriesCategoryMap)
+    mapSeriesStream(stream, seriesCategoryMap, canonicalCredentials)
   );
 
   const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
@@ -150,7 +151,8 @@ export async function loadXtreamCatalog(
   return {
     profile,
     catalog: catalog.map((item, index) => ({ ...item, isFeatured: index < 6 })),
-    warnings
+    warnings,
+    serverUrl: canonicalCredentials.serverUrl
   };
 }
 
@@ -269,7 +271,7 @@ function mapLiveStream(
     categories: ["Live TV", categoryName],
     providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
-    imageUrl: normalizeImage(stream.stream_icon),
+    imageUrl: normalizeImage(stream.stream_icon, credentials.serverUrl),
     streamUrl: buildStreamUrl(credentials, "live", providerId, "m3u8"),
     channelNumber: stream.num ?? (Number(providerId) || 0),
     currentProgram: "Live now",
@@ -306,7 +308,7 @@ function mapVodStream(
     quality: inferQuality(title),
     year: parseNumber(stream.year),
     durationSeconds: parseNumber(stream.duration_secs),
-    imageUrl: normalizeImage(stream.stream_icon),
+    imageUrl: normalizeImage(stream.stream_icon, credentials.serverUrl),
     streamUrl: buildStreamUrl(credentials, "movie", providerId, extension),
     director: "Unknown",
     cast: [],
@@ -316,7 +318,7 @@ function mapVodStream(
   };
 }
 
-function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>): ContentItem {
+function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>, credentials: XtreamCredentials): ContentItem {
   const providerId = String(stream.series_id ?? stream.name ?? crypto.randomUUID());
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Series";
   const categoryName = normalizeCategory(rawCategory);
@@ -336,7 +338,7 @@ function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, str
     providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
     year: parseNumber(stream.year),
-    imageUrl: normalizeImage(stream.cover),
+    imageUrl: normalizeImage(stream.cover, credentials.serverUrl),
     seasons: 0,
     episodes: [],
     backdropTone: toneFor(providerId),
@@ -376,12 +378,18 @@ function getCanonicalServerUrl(fallback: string, profile: XtreamProfileResponse)
   }
 }
 
-function normalizeImage(imageUrl?: string): string | undefined {
+function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefined {
   if (!imageUrl || imageUrl.trim().length === 0) {
     return undefined;
   }
 
-  return imageUrl.trim();
+  const normalized = imageUrl.trim().replace(/\\\//g, "/");
+  try {
+    if (normalized.startsWith("//")) return `${new URL(serverUrl ?? "https://localhost").protocol}${normalized}`;
+    return new URL(normalized, serverUrl ? `${normalizeServerUrl(serverUrl)}/` : undefined).toString();
+  } catch {
+    return normalized;
+  }
 }
 
 function parseNumber(value?: string | number): number | undefined {

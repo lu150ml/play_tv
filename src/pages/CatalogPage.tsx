@@ -384,6 +384,7 @@ function FeaturedHero({ item }: { item: ContentItem }) {
         <img
           src={item.imageUrl}
           alt=""
+          referrerPolicy="no-referrer"
           className="absolute inset-0 h-full w-full object-cover opacity-50 transition duration-700 group-hover:scale-[1.02]"
         />
       ) : null}

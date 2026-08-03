@@ -14,7 +14,7 @@ import {
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
-import { formatResolution, getChannelStreamCandidates } from "../services/streamService";
+import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
 import { useDownloadState } from "../hooks/useDesktopState";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -85,7 +85,7 @@ export function PlayerPage() {
   );
   const originalStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
   const streamCandidates = useMemo(
-    () => item?.type === "channel" ? getChannelStreamCandidates(originalStreamUrl) : originalStreamUrl ? [originalStreamUrl] : [],
+    () => item?.type === "channel" ? getChannelStreamCandidates(originalStreamUrl) : getOnDemandStreamCandidates(originalStreamUrl),
     [item?.type, originalStreamUrl]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
@@ -687,7 +687,7 @@ export function PlayerPage() {
 
   function handleStreamFailure() {
     if (!videoRef.current?.currentSrc) return;
-    if (content.type === "channel" && streamAttempt + 1 < streamCandidates.length) {
+    if (streamAttempt + 1 < streamCandidates.length) {
       setStreamAttempt((attempt) => attempt + 1);
       return;
     }
@@ -827,6 +827,7 @@ export function PlayerPage() {
           <img
             src={content.imageUrl}
             alt=""
+            referrerPolicy="no-referrer"
             className={[
               "absolute inset-0 h-full w-full object-cover opacity-50",
               activeStreamUrl ? "hidden" : ""
