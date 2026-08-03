@@ -5,6 +5,8 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
+import { SecureImage } from "../components/SecureImage";
+import { useSecureImageUrl } from "../hooks/useSecureImageUrl";
 import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
 import {
@@ -12,7 +14,7 @@ import {
   getRemainingSeconds,
   normalizePlaybackState
 } from "../services/playbackService";
-import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
+import { getNextEpisode, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
 import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
@@ -40,6 +42,7 @@ export function PlayerPage() {
   const storeProgress = useLibraryStore((state) => state.saveProgress);
   const markWatched = useLibraryStore((state) => state.markWatched);
   const cacheSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
+  const cacheSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const downloads = useDownloadState();
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
@@ -70,15 +73,21 @@ export function PlayerPage() {
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [activeResolution, setActiveResolution] = useState<string | undefined>();
   const [downloadActionError, setDownloadActionError] = useState<string | undefined>();
+  const [transcodeSession, setTranscodeSession] = useState<{ id: string; url: string } | undefined>();
+  const [isPreparingCompatibleFormat, setIsPreparingCompatibleFormat] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState<"native" | "fallback" | "transcoding">("native");
+  const securePosterUrl = useSecureImageUrl(item?.imageUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
   const bufferRecoveryTimeoutRef = useRef<number | undefined>(undefined);
   const bufferIndicatorTimeoutRef = useRef<number | undefined>(undefined);
   const networkRetryRef = useRef(0);
+  const mediaRetryRef = useRef(0);
   const playbackIntentRef = useRef(isPlaying);
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
+  const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
   const selectedEpisode = useMemo(
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
@@ -89,7 +98,7 @@ export function PlayerPage() {
     [item?.type, originalStreamUrl]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
-  const activeStreamUrl = completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)];
+  const activeStreamUrl = transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)]);
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -225,6 +234,9 @@ export function PlayerPage() {
 
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
+    void loadSeriesArtwork(series, connection)
+      .then((imageUrl) => { if (!isCancelled && imageUrl) cacheSeriesArtwork(series.id, imageUrl); })
+      .catch(() => {});
 
     void loadSeriesEpisodes(series, connection)
       .then((episodes) => {
@@ -258,12 +270,21 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [cacheSeriesEpisodes, connection, episodeId, series]);
+  }, [cacheSeriesArtwork, cacheSeriesEpisodes, connection, episodeId, series]);
 
   useEffect(() => {
     setStreamAttempt(0);
     setActiveResolution(undefined);
+    setPlaybackMode("native");
+    setTranscodeSession((current) => {
+      if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
+      return undefined;
+    });
   }, [originalStreamUrl]);
+
+  useEffect(() => () => {
+    if (transcodeSession) void getDesktopBridge()?.media.stopTranscode(transcodeSession.id);
+  }, [transcodeSession]);
 
   useEffect(() => {
     if (episodeId) {
@@ -300,6 +321,7 @@ export function PlayerPage() {
     setMediaDuration(undefined);
     setIsBuffering(false);
     setBufferedAheadSeconds(0);
+    mediaRetryRef.current = 0;
 
     let hls: Hls | undefined;
     let isDisposed = false;
@@ -361,16 +383,26 @@ export function PlayerPage() {
             }
 
             if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
-              hls?.recoverMediaError();
-              scheduleBufferRecovery();
-              return;
+              if (mediaRetryRef.current < 1) {
+                mediaRetryRef.current += 1;
+                hls?.recoverMediaError();
+                scheduleBufferRecovery();
+                return;
+              }
             }
 
-            if (isLiveContent && streamAttempt + 1 < streamCandidates.length) {
+            if (!transcodeSession && streamAttempt + 1 < streamCandidates.length) {
+              setPlaybackMode("fallback");
               setStreamAttempt((attempt) => attempt + 1);
               return;
             }
-            setMediaError("Este canal nao respondeu apos tentar os formatos disponiveis. Ele pode estar offline ou usar um codec nao suportado.");
+            if (!isLiveContent && !transcodeSession) {
+              void startCompatibilityTranscodeRef.current();
+              hls?.destroy();
+              hlsRef.current = undefined;
+              return;
+            }
+            setMediaError(isLiveContent ? "Este canal nao respondeu apos tentar os formatos disponiveis." : "Nao foi possivel decodificar este episodio, mesmo no modo compativel.");
             hls?.destroy();
             hlsRef.current = undefined;
             return;
@@ -394,7 +426,7 @@ export function PlayerPage() {
       video.removeAttribute("src");
       video.load();
     };
-  }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery, streamAttempt, streamCandidates.length]);
+  }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery, streamAttempt, streamCandidates.length, transcodeSession]);
 
   const activePlaybackRef = useRef(activePlayback);
   useEffect(() => {
@@ -687,16 +719,45 @@ export function PlayerPage() {
 
   function handleStreamFailure() {
     if (!videoRef.current?.currentSrc) return;
-    if (streamAttempt + 1 < streamCandidates.length) {
+    if (!transcodeSession && streamAttempt + 1 < streamCandidates.length) {
+      setPlaybackMode("fallback");
       setStreamAttempt((attempt) => attempt + 1);
       return;
     }
-    setMediaError("Este conteudo nao respondeu apos as tentativas de conexao. O stream pode estar offline ou usar um formato nao suportado.");
+    if (content.type !== "channel" && !transcodeSession) {
+      void startCompatibilityTranscode();
+      return;
+    }
+    setMediaError("Nao foi possivel reproduzir este conteudo. O servidor pode estar offline ou o arquivo pode estar corrompido.");
   }
+
+  async function startCompatibilityTranscode() {
+    if (!originalStreamUrl || isPreparingCompatibleFormat || transcodeSession || completedDownload) return;
+    const bridge = getDesktopBridge();
+    if (!bridge) {
+      setMediaError("Este formato exige o modo de compatibilidade do aplicativo instalado.");
+      return;
+    }
+    setMediaError(undefined);
+    setIsPreparingCompatibleFormat(true);
+    setPlaybackMode("transcoding");
+    try {
+      const session = await bridge.media.startTranscode(originalStreamUrl);
+      setTranscodeSession({ id: session.id, url: session.url });
+      setIsPlaying(true);
+    } catch (error) {
+      setPlaybackMode("fallback");
+      setMediaError(error instanceof Error ? error.message : "Nao foi possivel preparar um formato compativel.");
+    } finally {
+      setIsPreparingCompatibleFormat(false);
+    }
+  }
+  startCompatibilityTranscodeRef.current = startCompatibilityTranscode;
 
   function handleRetryStream() {
     setMediaError(undefined);
     setStreamAttempt(0);
+    setPlaybackMode("native");
     const video = videoRef.current;
     if (video) {
       video.load();
@@ -798,7 +859,7 @@ export function PlayerPage() {
           <video
             ref={videoRef}
             className="absolute inset-0 h-full w-full bg-black object-contain"
-            poster={content.imageUrl}
+            poster={securePosterUrl}
             preload="auto"
             playsInline
             onCanPlay={handleBufferingEnd}
@@ -824,10 +885,9 @@ export function PlayerPage() {
           </video>
         ) : null}
         {content.imageUrl ? (
-          <img
+          <SecureImage
             src={content.imageUrl}
             alt=""
-            referrerPolicy="no-referrer"
             className={[
               "absolute inset-0 h-full w-full object-cover opacity-50",
               activeStreamUrl ? "hidden" : ""
@@ -843,12 +903,17 @@ export function PlayerPage() {
             shouldShowControls ? "opacity-100" : "opacity-0"
           ].join(" ")}
         >
-          {activeStreamUrl ? `Now Playing${activeResolution ? ` · ${activeResolution}` : ""}` : "Preview"}
+          {activeStreamUrl ? `Now Playing${activeResolution ? ` · ${activeResolution}` : ""}${playbackMode === "transcoding" ? " · modo compativel" : ""}` : "Preview"}
         </div>
         {mediaError ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-error/40 bg-error-container/70 p-4 text-sm leading-6 text-error backdrop-blur-xl">
             <span>{mediaError}</span>
             <button type="button" data-focusable="true" onClick={handleRetryStream} className="focus-card ml-3 rounded-lg border border-error/40 px-3 py-1 font-semibold">Tentar novamente</button>
+          </div>
+        ) : null}
+        {isPreparingCompatibleFormat ? (
+          <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
+            Preparando formato compativel... Isso pode levar alguns segundos.
           </div>
         ) : null}
         {content.type !== "channel" && isBuffering && !mediaError ? (

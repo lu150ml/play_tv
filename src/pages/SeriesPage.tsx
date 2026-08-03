@@ -8,6 +8,7 @@ import {
   getContinueEpisode,
   groupEpisodesBySeason,
   isSeries,
+  loadSeriesArtwork,
   loadSeriesEpisodes
 } from "../services/seriesService";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -21,6 +22,7 @@ export function SeriesPage() {
   const connection = useLibraryStore((state) => state.connection);
   const playback = useLibraryStore((state) => state.playback);
   const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
+  const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -37,6 +39,9 @@ export function SeriesPage() {
 
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
+    void loadSeriesArtwork(series, connection)
+      .then((imageUrl) => { if (!isCancelled && imageUrl) setSeriesArtwork(series.id, imageUrl); })
+      .catch(() => {});
 
     void loadSeriesEpisodes(series, connection)
       .then((nextEpisodes) => {
@@ -70,7 +75,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, series, setSeriesEpisodes]);
+  }, [connection, series, setSeriesArtwork, setSeriesEpisodes]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;

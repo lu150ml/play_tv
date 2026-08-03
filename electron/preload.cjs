@@ -31,5 +31,15 @@ contextBridge.exposeInMainWorld("serverXtreme", {
       ipcRenderer.on("downloads:state", listener);
       return () => ipcRenderer.removeListener("downloads:state", listener);
     }
+  },
+  media: {
+    registerImage: (url) => ipcRenderer.invoke("media:register-image", url),
+    startTranscode: (url) => ipcRenderer.invoke("media:start-transcode", url),
+    stopTranscode: (id) => ipcRenderer.invoke("media:stop-transcode", id),
+    onState: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("media:state", listener);
+      return () => ipcRenderer.removeListener("media:state", listener);
+    }
   }
 });

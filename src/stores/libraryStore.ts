@@ -52,6 +52,7 @@ interface LibraryState {
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
+  setSeriesArtwork: (seriesId: string, imageUrl: string) => void;
   activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
   disconnectServerAccount: () => void;
   setSessionName: (name: string) => void;
@@ -274,6 +275,11 @@ export const useLibraryStore = create<LibraryState>()(
               ? item
               : { ...item, episodes, seasons: new Set(episodes.map((episode) => episode.season)).size }
             : item
+        )
+      })),
+      setSeriesArtwork: (seriesId, imageUrl) => set((current) => ({
+        catalog: current.catalog.map((item) =>
+          item.id === seriesId && item.type === "series" ? { ...item, imageUrl } : item
         )
       })),
       activateServerAccount: (connection, remember) => {

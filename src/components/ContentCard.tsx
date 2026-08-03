@@ -8,6 +8,7 @@ import {
 } from "../services/playbackService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { getContinueEpisode } from "../services/seriesService";
+import { SecureImage } from "./SecureImage";
 import type { ContentItem } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
@@ -50,11 +51,10 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
         ].join(" ")}
       >
         {item.imageUrl ? (
-          <img
+          <SecureImage
             src={item.imageUrl}
             alt=""
             loading="lazy"
-            referrerPolicy="no-referrer"
             className="absolute inset-0 h-full w-full object-cover opacity-85 transition duration-500 group-hover:scale-[1.03]"
           />
         ) : null}

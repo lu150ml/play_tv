@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-r
 import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
 import { SearchOverlay } from "../components/SearchOverlay";
+import { SecureImage } from "../components/SecureImage";
 import { searchCatalog } from "../services/catalogService";
 import { isMusicChannel } from "../services/musicService";
 import {
@@ -381,10 +382,9 @@ function FeaturedHero({ item }: { item: ContentItem }) {
       ].join(" ")}
     >
       {item.imageUrl ? (
-        <img
+        <SecureImage
           src={item.imageUrl}
           alt=""
-          referrerPolicy="no-referrer"
           className="absolute inset-0 h-full w-full object-cover opacity-50 transition duration-700 group-hover:scale-[1.02]"
         />
       ) : null}

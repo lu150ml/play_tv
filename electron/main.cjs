@@ -13,6 +13,11 @@ const { autoUpdater } = require("electron-updater");
 const { handleProtocolRequest } = require("./server.cjs");
 const { DownloadManager } = require("./download-manager.cjs");
 const { setupUpdater } = require("./updater.cjs");
+const { MediaManager } = require("./media-manager.cjs");
+const bundledFfmpegPath = require("ffmpeg-static");
+const ffmpegPath = app?.isPackaged
+  ? bundledFfmpegPath.replace("app.asar", "app.asar.unpacked")
+  : bundledFfmpegPath;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -24,6 +29,7 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow = null;
 let downloadManager;
 let updater;
+let mediaManager;
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
@@ -76,9 +82,12 @@ app.whenReady().then(async () => {
     emit: (snapshot) => emit("downloads:state", snapshot)
   });
   updater = setupUpdater({ app, autoUpdater, emit: (state) => emit("updates:state", state) });
-  protocol.handle("app", (request) => {
+  mediaManager = new MediaManager({ app, net, ffmpegPath, emit: (state) => emit("media:state", state) });
+  protocol.handle("app", async (request) => {
     const downloadResponse = downloadManager.handleProtocolRequest(request);
-    return downloadResponse ?? handleProtocolRequest(request);
+    if (downloadResponse) return downloadResponse;
+    const mediaResponse = await mediaManager.handleProtocolRequest(request);
+    return mediaResponse ?? handleProtocolRequest(request);
   });
   ipcMain.handle("credentials:save", (_event, value) => {
     if (!safeStorage.isEncryptionAvailable()) return false;
@@ -117,6 +126,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("downloads:remove", (_event, id) => downloadManager.remove(id));
   ipcMain.handle("downloads:open", (_event, id) => downloadManager.open(id));
   ipcMain.handle("downloads:open-directory", () => downloadManager.openDirectory());
+  ipcMain.handle("media:register-image", (_event, url) => mediaManager.registerImage(url));
+  ipcMain.handle("media:start-transcode", (_event, url) => mediaManager.startTranscode(url));
+  ipcMain.handle("media:stop-transcode", (_event, id) => mediaManager.stopTranscode(id));
   await createWindow();
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {
     setTimeout(() => void updater.check(), 5000);
@@ -131,6 +143,8 @@ app.on("second-instance", () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("before-quit", () => mediaManager?.stopAll());
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();

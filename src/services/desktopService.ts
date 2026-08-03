@@ -62,6 +62,12 @@ interface DesktopBridge {
     openDirectory(): Promise<string>;
     onState(callback: (state: DownloadSnapshot) => void): () => void;
   };
+  media: {
+    registerImage(url: string): Promise<string>;
+    startTranscode(url: string): Promise<{ id: string; url: string; mode: "transcoding" }>;
+    stopTranscode(id: string): Promise<void>;
+    onState(callback: (state: { id: string; status: "ready" | "error"; error?: string }) => void): () => void;
+  };
 }
 
 declare global { interface Window { serverXtreme?: DesktopBridge } }

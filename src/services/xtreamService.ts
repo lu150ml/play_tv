@@ -71,6 +71,7 @@ interface XtreamSeriesInfoEpisode {
 
 interface XtreamSeriesInfoResponse {
   episodes?: Record<string, XtreamSeriesInfoEpisode[]>;
+  info?: { cover?: string; movie_image?: string; backdrop_path?: string[] | string };
 }
 
 export interface XtreamCatalogResult {
@@ -182,6 +183,19 @@ export async function loadXtreamSeriesEpisodes(
       };
     })
   );
+}
+
+export async function loadXtreamSeriesArtwork(
+  credentials: XtreamCredentials,
+  seriesId: string
+): Promise<string | undefined> {
+  const response = await requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", {
+    series_id: seriesId
+  });
+  const backdrop = Array.isArray(response.info?.backdrop_path)
+    ? response.info?.backdrop_path[0]
+    : response.info?.backdrop_path;
+  return normalizeImage(response.info?.cover || response.info?.movie_image || backdrop, credentials.serverUrl);
 }
 
 async function requestXtream<T>(
