@@ -77,8 +77,9 @@ export function PlayerPage() {
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [activeResolution, setActiveResolution] = useState<string | undefined>();
   const [downloadActionError, setDownloadActionError] = useState<string | undefined>();
-  const [transcodeSession, setTranscodeSession] = useState<{ id: string; url: string } | undefined>();
+  const [transcodeSession, setTranscodeSession] = useState<{ id: string; url: string; ready: boolean } | undefined>();
   const [isPreparingCompatibleFormat, setIsPreparingCompatibleFormat] = useState(false);
+  const [compatibilityStage, setCompatibilityStage] = useState<"checking-source" | "transcoding" | undefined>();
   const [playbackMode, setPlaybackMode] = useState<"native" | "fallback" | "transcoding">("native");
   const [isProbingStream, setIsProbingStream] = useState(false);
   const [isStreamApproved, setIsStreamApproved] = useState(false);
@@ -95,6 +96,9 @@ export function PlayerPage() {
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
+  const compatibilityRequestRef = useRef(false);
+  const compatibilitySessionIdRef = useRef<string | undefined>(undefined);
+  const transcodeSessionRef = useRef<{ id: string; url: string; ready: boolean } | undefined>(undefined);
   const connectionKey = connection ? getServerAccountKey(connection) : "";
   const seriesProviderId = series?.providerId;
   const seriesSource = series?.source;
@@ -114,7 +118,9 @@ export function PlayerPage() {
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
   const activeStreamUrl = episodeUnavailableReason
     ? undefined
-    : transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined);
+    : transcodeSession?.ready
+      ? transcodeSession.url
+      : completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined;
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -322,10 +328,14 @@ export function PlayerPage() {
     setStreamAttempt(0);
     setActiveResolution(undefined);
     setPlaybackMode("native");
-    setTranscodeSession((current) => {
-      if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
-      return undefined;
-    });
+    const current = transcodeSessionRef.current;
+    if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
+    transcodeSessionRef.current = undefined;
+    compatibilitySessionIdRef.current = undefined;
+    compatibilityRequestRef.current = false;
+    setTranscodeSession(undefined);
+    setIsPreparingCompatibleFormat(false);
+    setCompatibilityStage(undefined);
   }, [originalStreamUrl]);
 
   useEffect(() => {
@@ -368,8 +378,49 @@ export function PlayerPage() {
   }, [completedDownload, item?.id, item?.type, originalStreamUrl, probeRetry, setChannelHealth, streamCandidates]);
 
   useEffect(() => () => {
-    if (transcodeSession) void getDesktopBridge()?.media.stopTranscode(transcodeSession.id);
-  }, [transcodeSession]);
+    const current = transcodeSessionRef.current;
+    if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
+  }, []);
+
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge?.media) return undefined;
+    return bridge.media.onState((state) => {
+      if (state.id !== compatibilitySessionIdRef.current) return;
+      if (state.status === "checking-source") {
+        setCompatibilityStage("checking-source");
+        return;
+      }
+      if (state.status === "transcoding") {
+        setCompatibilityStage("transcoding");
+        return;
+      }
+      if (state.status === "ready") {
+        setTranscodeSession((current) => {
+          if (!current || current.id !== state.id) return current;
+          const ready = { ...current, ready: true };
+          transcodeSessionRef.current = ready;
+          return ready;
+        });
+        compatibilityRequestRef.current = false;
+        setIsPreparingCompatibleFormat(false);
+        setCompatibilityStage(undefined);
+        setIsPlaying(true);
+        return;
+      }
+      compatibilityRequestRef.current = false;
+      compatibilitySessionIdRef.current = undefined;
+      transcodeSessionRef.current = undefined;
+      setTranscodeSession(undefined);
+      setIsPreparingCompatibleFormat(false);
+      setCompatibilityStage(undefined);
+      setPlaybackMode("fallback");
+      const error = new Error(state.error ?? "Nao foi possivel preparar um formato compativel.");
+       const failure = selectedEpisode?.id ? recordEpisodeFailure(connectionKey, selectedEpisode.id, error) : undefined;
+      setEpisodeUnavailableReason(failure?.reason);
+      setMediaError(failure?.reason ?? error.message);
+    });
+   }, [connectionKey, selectedEpisode?.id]);
 
   useEffect(() => {
     if (episodeId) {
@@ -829,21 +880,26 @@ export function PlayerPage() {
   }
 
   async function startCompatibilityTranscode() {
-    if (!originalStreamUrl || isPreparingCompatibleFormat || transcodeSession || completedDownload) return;
+    if (!originalStreamUrl || compatibilityRequestRef.current || transcodeSessionRef.current || completedDownload) return;
     const bridge = getDesktopBridge();
     if (!bridge) {
       setMediaError("Este formato exige o modo de compatibilidade do aplicativo instalado.");
       return;
     }
+    compatibilityRequestRef.current = true;
     setMediaError(undefined);
     setIsPreparingCompatibleFormat(true);
+    setCompatibilityStage("checking-source");
     setPlaybackMode("transcoding");
     try {
-      const compatibilitySource = streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] ?? originalStreamUrl;
-      const session = await bridge.media.startTranscode(compatibilitySource);
-      setTranscodeSession({ id: session.id, url: session.url });
-      setIsPlaying(true);
+      const candidates = streamCandidates.length > 0 ? streamCandidates : [originalStreamUrl];
+      const session = await bridge.media.startTranscode(candidates);
+      const pending = { id: session.id, url: session.url, ready: false };
+      compatibilitySessionIdRef.current = session.id;
+      transcodeSessionRef.current = pending;
+      setTranscodeSession(pending);
     } catch (error) {
+      compatibilityRequestRef.current = false;
       setPlaybackMode("fallback");
       const message = error instanceof Error ? error.message : "Nao foi possivel preparar um formato compativel.";
       const failure = selectedEpisode
@@ -851,13 +907,21 @@ export function PlayerPage() {
         : undefined;
       setEpisodeUnavailableReason(failure?.reason);
       setMediaError(failure?.reason ?? message);
-    } finally {
       setIsPreparingCompatibleFormat(false);
+      setCompatibilityStage(undefined);
     }
   }
   startCompatibilityTranscodeRef.current = startCompatibilityTranscode;
 
   function handleRetryStream() {
+    const current = transcodeSessionRef.current;
+    if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
+    transcodeSessionRef.current = undefined;
+    compatibilitySessionIdRef.current = undefined;
+    compatibilityRequestRef.current = false;
+    setTranscodeSession(undefined);
+    setIsPreparingCompatibleFormat(false);
+    setCompatibilityStage(undefined);
     clearEpisodeFailure(connectionKey, selectedEpisode?.id);
     setEpisodeUnavailableReason(undefined);
     setMediaError(undefined);
@@ -1019,7 +1083,9 @@ export function PlayerPage() {
         ) : null}
         {isPreparingCompatibleFormat ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
-            Preparando formato compativel... Isso pode levar alguns segundos.
+            {compatibilityStage === "checking-source"
+              ? "Localizando stream valido..."
+              : "Preparando formato compativel... Isso pode levar alguns segundos."}
           </div>
         ) : null}
         {isProbingStream ? (

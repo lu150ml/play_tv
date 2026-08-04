@@ -19,6 +19,11 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
   ], { windowsHide: true });
   const episodeBytes = fs.readFileSync(episodePath);
   const server = http.createServer((request, response) => {
+    if (request.url === "/missing.mkv") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("missing");
+      return;
+    }
     if (request.url === "/episode.mkv") {
       response.writeHead(200, { "content-type": "video/x-matroska", "content-length": episodeBytes.length });
       response.end(episodeBytes);
@@ -38,16 +43,36 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
     await window.waitForLoadState("domcontentloaded");
     const result = await window.evaluate(async (url) => {
       const bridge = window.serverXtreme;
+      const ready = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("transcode state timeout")), 30000);
+        const unsubscribe = bridge.media.onState((state) => {
+          if (state.status === "ready") {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve(state);
+          } else if (state.status === "error") {
+            clearTimeout(timeout);
+            unsubscribe();
+            reject(new Error(state.error));
+          }
+        });
+      });
+      const transcode = await bridge?.media?.startTranscode([
+        url.replace("episode.m3u8", "missing.mkv"),
+        url.replace("episode.m3u8", "episode.mkv")
+      ]);
       return {
         hasMedia: Boolean(bridge?.media?.probeStream && bridge?.media?.startTranscode),
         probe: await bridge?.media?.probeStream([url]),
-        transcode: await bridge?.media?.startTranscode(url.replace("episode.m3u8", "episode.mkv"))
+        transcode,
+        state: await ready
       };
     }, `http://127.0.0.1:${port}/episode.m3u8`);
     assert.equal(result.hasMedia, true);
     assert.equal(result.probe.status, "available");
     assert.equal(result.probe.format, "m3u8");
     assert.equal(result.transcode.mode, "transcoding");
+    assert.equal(result.state.candidateIndex, 1);
     const playlist = await window.evaluate(async (url) => (await fetch(url)).text(), result.transcode.url);
     assert.match(playlist, /^#EXTM3U/m);
     await window.evaluate((id) => window.serverXtreme.media.stopTranscode(id), result.transcode.id);

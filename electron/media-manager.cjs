@@ -5,6 +5,8 @@ const { spawn: defaultSpawn } = require("node:child_process");
 
 const TOKEN_TTL = 6 * 60 * 60 * 1000;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const PREFLIGHT_TIMEOUT_MS = 5000;
+const PLAYLIST_TIMEOUT_MS = 20000;
 
 function publicError(code, message) {
   const error = new Error(message);
@@ -20,12 +22,14 @@ function validateRemoteUrl(value) {
 }
 
 class MediaManager {
-  constructor({ app, net, ffmpegPath, spawn = defaultSpawn, emit = () => {} }) {
+  constructor({ app, net, ffmpegPath, spawn = defaultSpawn, emit = () => {}, preflightTimeoutMs = PREFLIGHT_TIMEOUT_MS, playlistTimeoutMs = PLAYLIST_TIMEOUT_MS }) {
     this.app = app;
     this.net = net;
     this.ffmpegPath = ffmpegPath;
     this.spawn = spawn;
     this.emit = emit;
+    this.preflightTimeoutMs = preflightTimeoutMs;
+    this.playlistTimeoutMs = playlistTimeoutMs;
     this.images = new Map();
     this.imageTokensByUrl = new Map();
     this.transcodes = new Map();
@@ -112,57 +116,122 @@ class MediaManager {
     return last;
   }
 
-  async startTranscode(remoteUrl) {
-    const url = validateRemoteUrl(remoteUrl);
-    await this.preflight(url);
+  startTranscode(remoteUrls) {
+    const candidates = Array.isArray(remoteUrls)
+      ? [...new Set(remoteUrls.map(validateRemoteUrl))].slice(0, 4)
+      : [];
+    if (candidates.length === 0) throw publicError("invalid-url", "Nenhuma URL de episodio foi fornecida.");
     if (!this.ffmpegPath || !fs.existsSync(this.ffmpegPath)) throw publicError("transcoder-unavailable", "Conversor de video nao esta disponivel nesta instalacao.");
     const id = crypto.randomBytes(18).toString("hex");
     const directory = path.join(this.root, `transcode-${id}`);
     fs.mkdirSync(directory, { recursive: true });
     const playlist = path.join(directory, "index.m3u8");
+    const session = { id, child: undefined, controller: new AbortController(), directory, playlist, stderr: "", status: "checking-source", candidateIndex: undefined };
+    this.transcodes.set(id, session);
+    this.emit({ id, status: "checking-source" });
+    setImmediate(() => void this.prepareTranscode(session, candidates));
+    return { id, url: `app://server-xtreme/media/transcode/${id}/index.m3u8`, mode: "transcoding" };
+  }
+
+  async prepareTranscode(session, candidates) {
+    try {
+      const selected = await this.selectTranscodeSource(candidates, session.controller.signal);
+      if (session.status === "stopped") return;
+      session.candidateIndex = selected.candidateIndex;
+      session.status = "transcoding";
+      this.emit({ id: session.id, status: "transcoding", candidateIndex: selected.candidateIndex });
+      this.spawnTranscode(session, selected.url);
+      await this.waitForPlaylist(session);
+      if (session.status === "stopped") return;
+      session.status = "ready";
+      this.emit({ id: session.id, status: "ready", candidateIndex: selected.candidateIndex });
+    } catch (error) {
+      if (session.status === "stopped") return;
+      session.status = "error";
+      this.emit({
+        id: session.id,
+        status: "error",
+        errorCode: error?.code || "transcode-failed",
+        error: error instanceof Error ? error.message : "Nao foi possivel preparar o formato compativel."
+      });
+      this.stopTranscode(session.id);
+    }
+  }
+
+  async selectTranscodeSource(candidates, signal) {
+    const failures = [];
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+      if (signal.aborted) throw publicError("cancelled", "Preparacao cancelada.");
+      try {
+        await this.preflight(candidates[candidateIndex], signal);
+        return { url: candidates[candidateIndex], candidateIndex };
+      } catch (error) {
+        if (error?.code === "cancelled") throw error;
+        failures.push(error);
+      }
+    }
+    const temporary = failures.find((error) => new Set(["network", "timeout", "server"]).has(error?.code));
+    throw temporary ?? failures[failures.length - 1] ?? publicError("not-media", "Nenhum formato valido foi encontrado para este episodio.");
+  }
+
+  spawnTranscode(session, url) {
     const args = [
       "-hide_banner", "-loglevel", "warning", "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+      "-rw_timeout", "10000000",
       "-i", url,
       "-map", "0:v:0?", "-map", "0:a:0?",
       "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "160k", "-ac", "2",
-      "-f", "hls", "-hls_time", "4", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file",
-      "-hls_segment_filename", path.join(directory, "segment-%05d.ts"), playlist
+      "-f", "hls", "-hls_time", "2", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file",
+      "-hls_segment_filename", path.join(session.directory, "segment-%05d.ts"), session.playlist
     ];
     const child = this.spawn(this.ffmpegPath, args, { windowsHide: true });
-    const session = { id, child, directory, playlist, stderr: "", status: "preparing" };
-    this.transcodes.set(id, session);
+    session.child = child;
     child.stderr?.on("data", (chunk) => { session.stderr = `${session.stderr}${chunk}`.slice(-4000); });
     child.on("exit", (code) => {
       if (session.status !== "stopped" && code !== 0) {
+        const wasReady = session.status === "ready";
         session.status = "error";
-        this.emit({ id, status: "error", error: "Nao foi possivel converter este codec." });
+        if (wasReady) this.emit({ id: session.id, status: "error", errorCode: "codec", error: "Nao foi possivel converter este codec." });
       }
     });
-    await this.waitForPlaylist(session);
-    session.status = "ready";
-    this.emit({ id, status: "ready" });
-    return { id, url: `app://server-xtreme/media/transcode/${id}/index.m3u8`, mode: "transcoding" };
   }
 
-  async preflight(url) {
+  async preflight(url, externalSignal) {
+    const timeoutController = new AbortController();
+    const timeout = setTimeout(() => timeoutController.abort(), this.preflightTimeoutMs);
+    const signal = externalSignal
+      ? AbortSignal.any([externalSignal, timeoutController.signal])
+      : timeoutController.signal;
     let response;
-    try { response = await this.net.fetch(url, { redirect: "follow", headers: { "User-Agent": "Play-TV-X/0.4.4", Accept: "*/*" } }); }
-    catch { throw publicError("network", "Nao foi possivel conectar ao servidor do episodio."); }
+    try { response = await this.net.fetch(url, { redirect: "follow", signal, headers: { "User-Agent": "Play-TV-X/0.4.6", Accept: "*/*" } }); }
+    catch (error) {
+      if (externalSignal?.aborted) throw publicError("cancelled", "Preparacao cancelada.");
+      if (timeoutController.signal.aborted || error?.name === "AbortError") throw publicError("timeout", "O servidor demorou demais para abrir este formato.");
+      throw publicError("network", "Nao foi possivel conectar ao servidor do episodio.");
+    }
     const reject = (code, message) => { void response.body?.cancel().catch(() => {}); throw publicError(code, message); };
-    if (response.status === 401 || response.status === 403) reject("access-denied", "O servidor recusou o acesso ao episodio.");
-    if (response.status === 404 || response.status === 410) reject("not-found", "O episodio nao existe mais no servidor.");
-    if (response.status >= 500) reject("server", "O servidor falhou ao abrir o episodio.");
-    if (!response.ok && response.status !== 206) reject("http", `O servidor respondeu com HTTP ${response.status}.`);
-    const reader = response.body?.getReader();
-    const chunk = reader ? await reader.read() : { value: undefined };
-    void reader?.cancel();
-    const bytes = Buffer.from(chunk.value ?? []);
-    const text = bytes.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
-    const type = (response.headers.get("content-type") || "").toLowerCase();
-    if (bytes.length === 0 || type.includes("text/html") || text.startsWith("<html") || text.startsWith("<!doctype")) {
-      throw publicError("not-media", "O servidor respondeu, mas nao entregou um arquivo de video.");
+    try {
+      if (response.status === 401 || response.status === 403) reject("access-denied", "O servidor recusou o acesso ao episodio.");
+      if (response.status === 404 || response.status === 410) reject("not-found", "O episodio nao existe mais no servidor.");
+      if (response.status >= 500) reject("server", "O servidor falhou ao abrir o episodio.");
+      if (!response.ok && response.status !== 206) reject("http", `O servidor respondeu com HTTP ${response.status}.`);
+      const reader = response.body?.getReader();
+      const chunk = reader ? await reader.read() : { value: undefined };
+      void reader?.cancel();
+      const bytes = Buffer.from(chunk.value ?? []);
+      const text = bytes.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
+      const type = (response.headers.get("content-type") || "").toLowerCase();
+      if (bytes.length === 0 || type.includes("text/html") || text.startsWith("<html") || text.startsWith("<!doctype")) {
+        throw publicError("not-media", "O servidor respondeu, mas nao entregou um arquivo de video.");
+      }
+    } catch (error) {
+      if (externalSignal?.aborted) throw publicError("cancelled", "Preparacao cancelada.");
+      if (timeoutController.signal.aborted) throw publicError("timeout", "O servidor demorou demais para abrir este formato.");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -171,8 +240,9 @@ class MediaManager {
       const started = Date.now();
       const timer = setInterval(() => {
         if (fs.existsSync(session.playlist) && fs.statSync(session.playlist).size > 0) { clearInterval(timer); resolve(); return; }
-        if (session.status === "error" || Date.now() - started > 30000) {
-          clearInterval(timer); this.stopTranscode(session.id);
+        if (session.status === "error" || Date.now() - started > this.playlistTimeoutMs) {
+          clearInterval(timer);
+          session.child?.kill();
           reject(publicError("transcode-failed", session.stderr.trim() || "O formato compativel nao ficou pronto a tempo."));
         }
       }, 250);
@@ -183,7 +253,8 @@ class MediaManager {
     const session = this.transcodes.get(id);
     if (!session) return;
     session.status = "stopped";
-    session.child.kill();
+    session.controller?.abort();
+    session.child?.kill();
     this.transcodes.delete(id);
     setTimeout(() => fs.rm(session.directory, { recursive: true, force: true }, () => {}), 500);
   }

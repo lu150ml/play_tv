@@ -1,7 +1,7 @@
 {
   "name": "play-tv-x",
   "private": true,
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Play TV X",
   "type": "module",
