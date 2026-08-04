@@ -1,9 +1,3 @@
-import type { ContentType } from "../types/catalog";
-
-export function shouldProbeBeforePlayback(type?: ContentType): boolean {
-  return type === "channel";
-}
-
 export function getChannelStreamCandidates(url?: string): string[] {
   if (!url) return [];
   const candidates = [url];

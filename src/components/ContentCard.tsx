@@ -1,6 +1,5 @@
 import { Heart, Play, Tv, X } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useCallback, useEffect, useRef } from "react";
 
 import {
   getProgressRatio,
@@ -12,8 +11,6 @@ import { getContinueEpisode } from "../services/seriesService";
 import { SecureImage } from "./SecureImage";
 import type { ContentItem } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
-import { getDesktopBridge } from "../services/desktopService";
-import { getChannelStreamCandidates } from "../services/streamService";
 
 interface ContentCardProps {
   item: ContentItem;
@@ -34,44 +31,10 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
     : undefined;
   const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
   const isPoster = item.type !== "channel";
-  const cardRef = useRef<HTMLAnchorElement | null>(null);
-  const health = useLibraryStore((state) => state.getChannelHealth(item.id));
-  const setChannelHealth = useLibraryStore((state) => state.setChannelHealth);
-  const canProbe = item.type === "channel" && item.source === "xtream" && Boolean(getDesktopBridge()?.media);
-  const isBlocked = canProbe && health?.status !== "available";
-  const probeChannel = useCallback(() => {
-    const bridge = getDesktopBridge();
-    const candidates = getChannelStreamCandidates(item.streamUrl);
-    if (!bridge?.media || candidates.length === 0) return;
-    setChannelHealth(item.id, { status: "checking" });
-    void bridge.media.probeStream(candidates)
-      .then((result) => setChannelHealth(item.id, { status: result.status, reason: result.reason, httpStatus: result.httpStatus, candidateIndex: result.candidateIndex }))
-      .catch(() => setChannelHealth(item.id, { status: "network-error", reason: "Nao foi possivel verificar o canal." }));
-  }, [item.id, item.streamUrl, setChannelHealth]);
-
-  useEffect(() => {
-    const element = cardRef.current;
-    if (!element || !canProbe || health) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
-      probeChannel();
-    }, { rootMargin: "240px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [canProbe, health, probeChannel]);
-
   return (
     <Link
-      ref={cardRef}
       to={href}
       data-focusable="true"
-      aria-disabled={isBlocked || undefined}
-      onClick={(event) => {
-        if (!isBlocked) return;
-        event.preventDefault();
-        if (health?.status !== "checking") probeChannel();
-      }}
       data-content-id={item.id}
       aria-label={`${item.title} ${item.type}`}
       className={[
@@ -103,11 +66,6 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
             {item.quality[0]}
           </span>
         </div>
-        {canProbe && health?.status !== "available" ? (
-          <span className={["absolute bottom-3 left-3 rounded-md px-2 py-1 font-mono text-[10px] uppercase", health?.status === "checking" || !health ? "bg-black/70 text-on-surface" : "bg-error-container/90 text-error"].join(" ")}>
-            {!health || health.status === "checking" ? "Verificando" : "Indisponivel"}
-          </span>
-        ) : null}
         {onRemove ? (
           <button
             type="button"

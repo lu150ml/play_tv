@@ -16,7 +16,7 @@ import {
 } from "../services/playbackService";
 import { getNextEpisode, invalidateSeriesDetails, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
-import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates, shouldProbeBeforePlayback } from "../services/streamService";
+import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
 import { clearEpisodeFailure, getEpisodeFailure, recordEpisodeFailure } from "../services/episodeAvailabilityService";
 import { useDownloadState } from "../hooks/useDesktopState";
@@ -81,9 +81,6 @@ export function PlayerPage() {
   const [isPreparingCompatibleFormat, setIsPreparingCompatibleFormat] = useState(false);
   const [compatibilityStage, setCompatibilityStage] = useState<"checking-source" | "transcoding" | undefined>();
   const [playbackMode, setPlaybackMode] = useState<"native" | "fallback" | "transcoding">("native");
-  const [isProbingStream, setIsProbingStream] = useState(false);
-  const [isStreamApproved, setIsStreamApproved] = useState(false);
-  const [probeRetry, setProbeRetry] = useState(0);
   const securePosterUrl = useSecureImageUrl(item?.imageUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
@@ -120,7 +117,7 @@ export function PlayerPage() {
     ? undefined
     : transcodeSession?.ready
       ? transcodeSession.url
-      : completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined;
+      : completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)];
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -337,45 +334,6 @@ export function PlayerPage() {
     setIsPreparingCompatibleFormat(false);
     setCompatibilityStage(undefined);
   }, [originalStreamUrl]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (completedDownload || !originalStreamUrl) {
-      setIsStreamApproved(Boolean(completedDownload));
-      return;
-    }
-    // Filmes e episodios devem chegar primeiro ao player nativo. Alguns
-    // provedores recusam probes/Range, embora aceitem a requisicao do <video>.
-    // A verificacao antecipada fica restrita a TV ao vivo.
-    if (!shouldProbeBeforePlayback(item?.type)) {
-      setIsStreamApproved(true);
-      setIsProbingStream(false);
-      return;
-    }
-    const bridge = getDesktopBridge();
-    if (!bridge?.media) {
-      setIsStreamApproved(true);
-      return;
-    }
-    setIsStreamApproved(false);
-    setIsProbingStream(true);
-    setMediaError(undefined);
-    if (item?.type === "channel") setChannelHealth(item.id, { status: "checking" });
-    void bridge.media.probeStream(streamCandidates)
-      .then((result) => {
-        if (cancelled) return;
-        if (item?.type === "channel") setChannelHealth(item.id, { status: result.status, reason: result.reason, httpStatus: result.httpStatus, candidateIndex: result.candidateIndex });
-        if (result.status === "available") {
-          setStreamAttempt(result.candidateIndex ?? 0);
-          setIsStreamApproved(true);
-        } else {
-          setMediaError(result.reason ?? "Nao foi possivel verificar este stream.");
-        }
-      })
-      .catch(() => { if (!cancelled) setMediaError("Nao foi possivel conectar ao servidor."); })
-      .finally(() => { if (!cancelled) setIsProbingStream(false); });
-    return () => { cancelled = true; };
-  }, [completedDownload, item?.id, item?.type, originalStreamUrl, probeRetry, setChannelHealth, streamCandidates]);
 
   useEffect(() => () => {
     const current = transcodeSessionRef.current;
@@ -781,6 +739,7 @@ export function PlayerPage() {
 
   function handlePlaybackStarted() {
     clearEpisodeFailure(connectionKey, selectedEpisode?.id);
+    if (content.type === "channel") setChannelHealth(content.id, { status: "available", candidateIndex: streamAttempt });
     setEpisodeUnavailableReason(undefined);
     handleBufferingEnd();
   }
@@ -876,6 +835,9 @@ export function PlayerPage() {
       void startCompatibilityTranscode();
       return;
     }
+    if (content.type === "channel") {
+      setChannelHealth(content.id, { status: "unavailable", reason: "O canal nao respondeu durante a reproducao." });
+    }
     setMediaError("Nao foi possivel reproduzir este conteudo. O servidor pode estar offline ou o arquivo pode estar corrompido.");
   }
 
@@ -927,7 +889,6 @@ export function PlayerPage() {
     setMediaError(undefined);
     setStreamAttempt(0);
     setPlaybackMode("native");
-    setProbeRetry((value) => value + 1);
     const video = videoRef.current;
     if (video) {
       video.load();
@@ -1086,11 +1047,6 @@ export function PlayerPage() {
             {compatibilityStage === "checking-source"
               ? "Localizando stream valido..."
               : "Preparando formato compativel... Isso pode levar alguns segundos."}
-          </div>
-        ) : null}
-        {isProbingStream ? (
-          <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
-            Verificando disponibilidade do conteudo...
           </div>
         ) : null}
         {content.type !== "channel" && isBuffering && !mediaError ? (
