@@ -1,6 +1,6 @@
 import type { ContentItem, Episode, PlaybackState, Series } from "../types/catalog";
 import type { XtreamCredentials } from "./xtreamService";
-import { loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes } from "./xtreamService";
+import { invalidateXtreamSeriesDetails, loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes } from "./xtreamService";
 
 export interface SeasonGroup {
   season: number;
@@ -28,6 +28,12 @@ export async function loadSeriesArtwork(
 ): Promise<string | undefined> {
   if (series.imageUrl || series.source !== "xtream" || !series.providerId || !connection) return series.imageUrl;
   return loadXtreamSeriesArtwork(connection, series.providerId);
+}
+
+export function invalidateSeriesDetails(series: Series, connection?: XtreamCredentials) {
+  if (series.source === "xtream" && series.providerId && connection) {
+    invalidateXtreamSeriesDetails(connection, series.providerId);
+  }
 }
 
 export function isSeries(item?: ContentItem): item is Series {

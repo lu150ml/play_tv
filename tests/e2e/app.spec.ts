@@ -1,9 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+let seriesInfoRequests = 0;
+
 test.beforeEach(async ({ page }) => {
+  seriesInfoRequests = 0;
   await page.route("**/api/xtream", async (route) => {
     const payload = route.request().postDataJSON() as { action?: string };
     const action = payload.action;
+    if (action === "get_series_info") seriesInfoRequests += 1;
 
     if (!action) {
       await route.fulfill({
@@ -71,7 +75,14 @@ test.beforeEach(async ({ page }) => {
                 duration_secs: 1800,
                 plot: "The second episode returned by the Xtream server."
               }
-            }
+            },
+            ...Array.from({ length: 217 }, (_, index) => ({
+              id: 3100 + index,
+              episode_num: index + 3,
+              title: `Episode ${index + 3}`,
+              container_extension: "mp4",
+              info: { duration_secs: 1800, plot: "Synthetic scale test episode." }
+            }))
           ],
           "2": [
             {
@@ -279,11 +290,42 @@ test("supports keyboard style navigation", async ({ page }) => {
 test("automatically starts the first series episode", async ({ page }) => {
   await connectToCatalog(page);
 
+  const startedAt = Date.now();
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
-  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/, { timeout: 3000 });
+  expect(Date.now() - startedAt).toBeLessThan(3000);
   await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("shows a bounded series error and retries without a loading loop", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/api/xtream", async (route) => {
+    const payload = route.request().postDataJSON() as { action?: string };
+    if (payload.action !== "get_series_info") {
+      await route.fallback();
+      return;
+    }
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({ status: 504, body: "Servidor de episodios indisponivel." });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        episodes: {
+          "1": [{ id: 3001, episode_num: 1, title: "Pilot", container_extension: "mp4", info: { duration_secs: 1800 } }]
+        }
+      }
+    });
+  });
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await expect(page.getByText("Servidor de episodios indisponivel.")).toBeVisible();
+  await page.getByRole("button", { name: "Tentar novamente" }).click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+  expect(attempts).toBe(2);
 });
 
 test("jumps to the next episode from player controls", async ({ page }) => {
@@ -291,12 +333,13 @@ test("jumps to the next episode from player controls", async ({ page }) => {
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
-  await expect(page.getByRole("button", { name: /S1 E1/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "Next episode" }).click();
 
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3002$/);
-  await expect(page.getByRole("button", { name: /S1 E2/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^S1 E2 / })).toHaveAttribute("aria-pressed", "true");
+  expect(seriesInfoRequests).toBe(1);
 });
 
 test("shows only current season episodes while watching a series", async ({ page }) => {
@@ -306,8 +349,8 @@ test("shows only current season episodes while watching a series", async ({ page
 
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3003$/);
   await expect(page.getByRole("heading", { name: "Temporada 2" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /S2 E1/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /S1 E1/ })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /^S2 E1 / })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^S1 E1 / })).not.toBeVisible();
 });
 
 test("hides player controls after inactivity and shows them on interaction", async ({ page }) => {

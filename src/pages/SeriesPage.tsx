@@ -7,11 +7,12 @@ import { getProgressRatio, getRemainingSeconds } from "../services/playbackServi
 import {
   getContinueEpisode,
   groupEpisodesBySeason,
+  invalidateSeriesDetails,
   isSeries,
   loadSeriesArtwork,
   loadSeriesEpisodes
 } from "../services/seriesService";
-import { useLibraryStore } from "../stores/libraryStore";
+import { getServerAccountKey, useLibraryStore } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
@@ -25,36 +26,65 @@ export function SeriesPage() {
   const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>(() => series?.episodes ?? []);
   const [selectedSeason, setSelectedSeason] = useState<number | undefined>();
-  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(
+    () => Boolean(series?.source === "xtream" && series.episodes.length === 0)
+  );
   const [episodeError, setEpisodeError] = useState<string | undefined>();
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const connectionKey = connection ? getServerAccountKey(connection) : "";
+  const providerId = series?.providerId;
+  const source = series?.source;
 
   useEffect(() => {
     let isCancelled = false;
 
-    if (!series) {
+    if (!seriesId) return undefined;
+
+    const currentItem = getContentById(seriesId, useLibraryStore.getState().catalog);
+    const currentSeries = isSeries(currentItem) ? currentItem : undefined;
+    if (!currentSeries) return undefined;
+
+    const openEpisode = (nextEpisodes: Episode[]) => {
+      const target = getContinueEpisode(nextEpisodes, useLibraryStore.getState().playback);
+      if (target) void navigate(`/watch/${currentSeries.id}/${target.id}`, { replace: true });
+    };
+
+    if (!providerId || source !== "xtream") {
+      setEpisodes(currentSeries.episodes);
+      openEpisode(currentSeries.episodes);
+      return undefined;
+    }
+
+    if (currentSeries.episodes.length > 0 && loadAttempt === 0) {
+      setEpisodes(currentSeries.episodes);
+      openEpisode(currentSeries.episodes);
       return undefined;
     }
 
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
-    void loadSeriesArtwork(series, connection)
-      .then((imageUrl) => { if (!isCancelled && imageUrl) setSeriesArtwork(series.id, imageUrl); })
-      .catch(() => {});
+    if (!currentSeries.imageUrl) {
+      void loadSeriesArtwork(currentSeries, connection)
+        .then((imageUrl) => { if (!isCancelled && imageUrl) setSeriesArtwork(currentSeries.id, imageUrl); })
+        .catch(() => {});
+    }
 
-    void loadSeriesEpisodes(series, connection)
+    void loadSeriesEpisodes(currentSeries, connection)
       .then((nextEpisodes) => {
         if (isCancelled) {
           return;
         }
 
         setEpisodes(nextEpisodes);
-        setSeriesEpisodes(series.id, nextEpisodes);
+        setSeriesEpisodes(currentSeries.id, nextEpisodes);
         setSelectedSeason((currentSeason) => currentSeason ?? nextEpisodes[0]?.season);
 
         if (nextEpisodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
+        } else {
+          openEpisode(nextEpisodes);
         }
       })
       .catch((error) => {
@@ -75,7 +105,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, series, setSeriesArtwork, setSeriesEpisodes]);
+  }, [connection, connectionKey, loadAttempt, navigate, providerId, seriesId, setSeriesArtwork, setSeriesEpisodes, source]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;
@@ -88,18 +118,43 @@ export function SeriesPage() {
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
   const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
 
-  useEffect(() => {
-    if (!isLoadingEpisodes && continueEpisode && series) {
-      void navigate(`/watch/${series.id}/${continueEpisode.id}`, { replace: true });
-    }
-  }, [continueEpisode, isLoadingEpisodes, navigate, series]);
-
   if (!item) {
     return <Navigate to="/catalog/series" replace />;
   }
 
   if (!series) {
     return <Navigate to={`/watch/${item.id}`} replace />;
+  }
+
+  if (isLoadingEpisodes && episodes.length === 0) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-canvas items-center justify-center">
+        <div className="rounded-xl border border-white/10 bg-surface-container px-6 py-5 font-mono text-sm uppercase text-on-surface-variant">
+          Carregando episodios...
+        </div>
+      </div>
+    );
+  }
+
+  if (episodeError && episodes.length === 0) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-canvas items-center justify-center">
+        <div className="max-w-lg rounded-xl border border-error/40 bg-error-container/30 p-5 text-error">
+          <p>{episodeError}</p>
+          <button
+            type="button"
+            data-focusable="true"
+            onClick={() => {
+              invalidateSeriesDetails(series, connection);
+              setLoadAttempt((attempt) => attempt + 1);
+            }}
+            className="focus-card mt-4 rounded-lg border border-error/40 px-4 py-2 font-semibold"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

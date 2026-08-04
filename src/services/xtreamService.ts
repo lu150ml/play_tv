@@ -210,30 +210,49 @@ function loadXtreamSeriesDetails(credentials: XtreamCredentials, seriesId: strin
   const key = `${normalizeServerUrl(credentials.serverUrl)}|${credentials.username}|${seriesId}`;
   const cached = seriesDetailsCache.get(key);
   if (cached) return cached;
-  const request = requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", { series_id: seriesId })
+  const request = requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", { series_id: seriesId }, 10_000)
     .catch((error) => { seriesDetailsCache.delete(key); throw error; });
   seriesDetailsCache.set(key, request);
   return request;
 }
 
+export function invalidateXtreamSeriesDetails(credentials: XtreamCredentials, seriesId: string) {
+  const key = `${normalizeServerUrl(credentials.serverUrl)}|${credentials.username}|${seriesId}`;
+  seriesDetailsCache.delete(key);
+}
+
 async function requestXtream<T>(
   credentials: XtreamCredentials,
   action?: string,
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  timeoutMs?: number
 ): Promise<T> {
   // Credenciais vão no corpo do POST, não na query string: assim não vazam para
   // a coluna de URL do DevTools, logs de proxy ou histórico baseado em URL.
-  const response = await fetch("/api/xtream", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      serverUrl: credentials.serverUrl,
-      username: credentials.username,
-      password: credentials.password,
-      action,
-      params
-    })
-  });
+  const controller = timeoutMs ? new AbortController() : undefined;
+  const timeout = timeoutMs ? window.setTimeout(() => controller?.abort(), timeoutMs) : undefined;
+  let response: Response;
+  try {
+    response = await fetch("/api/xtream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller?.signal,
+      body: JSON.stringify({
+        serverUrl: credentials.serverUrl,
+        username: credentials.username,
+        password: credentials.password,
+        action,
+        params
+      })
+    });
+  } catch (error) {
+    if (controller?.signal.aborted) {
+      throw new Error("O servidor demorou mais de 10 segundos para retornar os episodios.");
+    }
+    throw error;
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const message = await response.text();

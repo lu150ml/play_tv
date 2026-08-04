@@ -118,6 +118,28 @@ function withCurrentAccount(state: LibraryState): Record<string, ServerAccountDa
   return { ...state.serverAccounts, [state.activeAccountKey]: accountDataFromState(state) };
 }
 
+function sameStringArray(left?: string[], right?: string[]) {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function sameEpisode(left: Episode, right: Episode) {
+  return left.id === right.id &&
+    left.providerId === right.providerId &&
+    left.title === right.title &&
+    left.season === right.season &&
+    left.episode === right.episode &&
+    left.durationSeconds === right.durationSeconds &&
+    left.description === right.description &&
+    left.streamUrl === right.streamUrl &&
+    sameStringArray(left.streamCandidates, right.streamCandidates);
+}
+
+function sameEpisodes(left: Episode[], right: Episode[]) {
+  return left === right || (left.length === right.length && left.every((episode, index) => sameEpisode(episode, right[index])));
+}
+
 type PersistedLibraryState = Partial<LibraryState>;
 
 export function migrateLibraryState(persisted: unknown, version: number): PersistedLibraryState {
@@ -275,20 +297,26 @@ export const useLibraryStore = create<LibraryState>()(
       },
 
       setCatalog: (catalog, source) => set({ catalog, catalogSource: source }),
-      setSeriesEpisodes: (seriesId, episodes) => set((current) => ({
-        catalog: current.catalog.map((item) =>
-          item.id === seriesId && item.type === "series"
-            ? item.episodes.length === episodes.length && item.episodes.every((episode, index) => episode.id === episodes[index]?.id)
-              ? item
-              : { ...item, episodes, seasons: new Set(episodes.map((episode) => episode.season)).size }
-            : item
-        )
-      })),
-      setSeriesArtwork: (seriesId, imageUrl) => set((current) => ({
-        catalog: current.catalog.map((item) =>
-          item.id === seriesId && item.type === "series" ? { ...item, imageUrl } : item
-        )
-      })),
+      setSeriesEpisodes: (seriesId, episodes) => set((current) => {
+        const series = current.catalog.find((item) => item.id === seriesId);
+        if (!series || series.type !== "series" || sameEpisodes(series.episodes, episodes)) return current;
+        return {
+          catalog: current.catalog.map((item) =>
+            item.id === seriesId && item.type === "series"
+              ? { ...item, episodes, seasons: new Set(episodes.map((episode) => episode.season)).size }
+              : item
+          )
+        };
+      }),
+      setSeriesArtwork: (seriesId, imageUrl) => set((current) => {
+        const series = current.catalog.find((item) => item.id === seriesId);
+        if (!series || series.type !== "series" || series.imageUrl === imageUrl) return current;
+        return {
+          catalog: current.catalog.map((item) =>
+            item.id === seriesId && item.type === "series" ? { ...item, imageUrl } : item
+          )
+        };
+      }),
       getChannelHealth: (contentId) => {
         const current = get();
         const accountKey = current.activeAccountKey ?? "session";

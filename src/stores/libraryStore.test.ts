@@ -24,6 +24,32 @@ beforeEach(() => {
 });
 
 describe("libraryStore server accounts", () => {
+  it("does not recreate a series when artwork and episodes are unchanged", () => {
+    const initialSeries = useLibraryStore.getState().catalog.find((item) => item.type === "series");
+    expect(initialSeries?.type).toBe("series");
+    if (initialSeries?.type !== "series") return;
+    const imageUrl = initialSeries.imageUrl ?? "https://images.test/series.jpg";
+    useLibraryStore.getState().setSeriesArtwork(initialSeries.id, imageUrl);
+    const afterArtwork = useLibraryStore.getState().catalog.find((item) => item.id === initialSeries.id);
+    useLibraryStore.getState().setSeriesArtwork(initialSeries.id, imageUrl);
+    expect(useLibraryStore.getState().catalog.find((item) => item.id === initialSeries.id)).toBe(afterArtwork);
+
+    useLibraryStore.getState().setSeriesEpisodes(initialSeries.id, initialSeries.episodes);
+    expect(useLibraryStore.getState().catalog.find((item) => item.id === initialSeries.id)).toBe(afterArtwork);
+  });
+
+  it("updates episode metadata even when provider ids stay the same", () => {
+    const initialSeries = useLibraryStore.getState().catalog.find((item) => item.type === "series");
+    expect(initialSeries?.type).toBe("series");
+    if (initialSeries?.type !== "series" || initialSeries.episodes.length === 0) return;
+    const updated = initialSeries.episodes.map((episode, index) =>
+      index === 0 ? { ...episode, title: `${episode.title} atualizado` } : episode
+    );
+    useLibraryStore.getState().setSeriesEpisodes(initialSeries.id, updated);
+    const series = useLibraryStore.getState().catalog.find((item) => item.id === initialSeries.id);
+    expect(series?.type === "series" ? series.episodes[0]?.title : undefined).toContain("atualizado");
+  });
+
   it("keeps channel health isolated by Xtream account", () => {
     const store = useLibraryStore.getState();
     store.activateServerAccount(accountA, true);

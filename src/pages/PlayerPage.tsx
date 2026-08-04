@@ -14,12 +14,13 @@ import {
   getRemainingSeconds,
   normalizePlaybackState
 } from "../services/playbackService";
-import { getNextEpisode, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
+import { getNextEpisode, invalidateSeriesDetails, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
 import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates, shouldProbeBeforePlayback } from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
+import { clearEpisodeFailure, getEpisodeFailure, recordEpisodeFailure } from "../services/episodeAvailabilityService";
 import { useDownloadState } from "../hooks/useDesktopState";
-import { useLibraryStore } from "../stores/libraryStore";
+import { getServerAccountKey, useLibraryStore } from "../stores/libraryStore";
 import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
@@ -59,6 +60,8 @@ export function PlayerPage() {
   const [mediaError, setMediaError] = useState<string | undefined>();
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [episodeError, setEpisodeError] = useState<string | undefined>();
+  const [episodeUnavailableReason, setEpisodeUnavailableReason] = useState<string | undefined>();
+  const [episodeLoadAttempt, setEpisodeLoadAttempt] = useState(0);
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now());
   const [isBuffering, setIsBuffering] = useState(false);
   const [bufferedAheadSeconds, setBufferedAheadSeconds] = useState(0);
@@ -92,6 +95,9 @@ export function PlayerPage() {
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
+  const connectionKey = connection ? getServerAccountKey(connection) : "";
+  const seriesProviderId = series?.providerId;
+  const seriesSource = series?.source;
   const selectedEpisode = useMemo(
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
@@ -106,7 +112,9 @@ export function PlayerPage() {
     [item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
-  const activeStreamUrl = transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined);
+  const activeStreamUrl = episodeUnavailableReason
+    ? undefined
+    : transcodeSession?.url ?? (completedDownload ? getDownloadedMediaUrl(completedDownload.id) : isStreamApproved ? streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)] : undefined);
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -233,28 +241,58 @@ export function PlayerPage() {
   useEffect(() => {
     let isCancelled = false;
 
-    if (!series) {
+    if (!seriesId) {
       setSeriesEpisodes([]);
       setSelectedEpisodeId(undefined);
       setEpisodeError(undefined);
       return undefined;
     }
 
+    const currentItem = getContentById(seriesId, useLibraryStore.getState().catalog);
+    const currentSeries = isSeries(currentItem) ? currentItem : undefined;
+    if (!currentSeries) return undefined;
+
+    const applyEpisodes = (episodes: Episode[]) => {
+      setSeriesEpisodes(episodes);
+      setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
+    };
+
+    if (!seriesProviderId || seriesSource !== "xtream") {
+      applyEpisodes(currentSeries.episodes);
+      setIsLoadingEpisodes(false);
+      setEpisodeError(undefined);
+      return undefined;
+    }
+
+    if (currentSeries.episodes.length > 0 && episodeLoadAttempt === 0) {
+      applyEpisodes(currentSeries.episodes);
+      setIsLoadingEpisodes(false);
+      setEpisodeError(undefined);
+      if (!currentSeries.imageUrl) {
+        void loadSeriesArtwork(currentSeries, connection)
+          .then((imageUrl) => { if (!isCancelled && imageUrl) cacheSeriesArtwork(currentSeries.id, imageUrl); })
+          .catch(() => {});
+      }
+      return () => { isCancelled = true; };
+    }
+
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
-    void loadSeriesArtwork(series, connection)
-      .then((imageUrl) => { if (!isCancelled && imageUrl) cacheSeriesArtwork(series.id, imageUrl); })
-      .catch(() => {});
+    if (!currentSeries.imageUrl) {
+      void loadSeriesArtwork(currentSeries, connection)
+        .then((imageUrl) => { if (!isCancelled && imageUrl) cacheSeriesArtwork(currentSeries.id, imageUrl); })
+        .catch(() => {});
+    }
 
-    void loadSeriesEpisodes(series, connection)
+    void loadSeriesEpisodes(currentSeries, connection)
       .then((episodes) => {
         if (isCancelled) {
           return;
         }
 
-        setSeriesEpisodes(episodes);
-        cacheSeriesEpisodes(series.id, episodes);
-        setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
+        applyEpisodes(episodes);
+        cacheSeriesEpisodes(currentSeries.id, episodes);
+        setEpisodeLoadAttempt(0);
 
         if (episodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
@@ -278,7 +316,7 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [cacheSeriesArtwork, cacheSeriesEpisodes, connection, episodeId, series]);
+  }, [cacheSeriesArtwork, cacheSeriesEpisodes, connection, connectionKey, episodeId, episodeLoadAttempt, seriesId, seriesProviderId, seriesSource]);
 
   useEffect(() => {
     setStreamAttempt(0);
@@ -338,6 +376,12 @@ export function PlayerPage() {
       setSelectedEpisodeId(episodeId);
     }
   }, [episodeId]);
+
+  useEffect(() => {
+    const failure = getEpisodeFailure(connectionKey, selectedEpisode?.id);
+    setEpisodeUnavailableReason(failure?.reason);
+    if (failure) setMediaError(failure.reason);
+  }, [connectionKey, selectedEpisode?.id]);
 
   useEffect(() => {
     playbackIntentRef.current = isPlaying;
@@ -684,6 +728,12 @@ export function PlayerPage() {
     setIsBuffering(false);
   }
 
+  function handlePlaybackStarted() {
+    clearEpisodeFailure(connectionKey, selectedEpisode?.id);
+    setEpisodeUnavailableReason(undefined);
+    handleBufferingEnd();
+  }
+
   function handleNextEpisode() {
     if (!nextEpisode) {
       return;
@@ -795,7 +845,12 @@ export function PlayerPage() {
       setIsPlaying(true);
     } catch (error) {
       setPlaybackMode("fallback");
-      setMediaError(error instanceof Error ? error.message : "Nao foi possivel preparar um formato compativel.");
+      const message = error instanceof Error ? error.message : "Nao foi possivel preparar um formato compativel.";
+      const failure = selectedEpisode
+        ? recordEpisodeFailure(connectionKey, selectedEpisode.id, error)
+        : undefined;
+      setEpisodeUnavailableReason(failure?.reason);
+      setMediaError(failure?.reason ?? message);
     } finally {
       setIsPreparingCompatibleFormat(false);
     }
@@ -803,6 +858,8 @@ export function PlayerPage() {
   startCompatibilityTranscodeRef.current = startCompatibilityTranscode;
 
   function handleRetryStream() {
+    clearEpisodeFailure(connectionKey, selectedEpisode?.id);
+    setEpisodeUnavailableReason(undefined);
     setMediaError(undefined);
     setStreamAttempt(0);
     setPlaybackMode("native");
@@ -914,7 +971,7 @@ export function PlayerPage() {
             onCanPlay={handleBufferingEnd}
             onCanPlayThrough={handleBufferingEnd}
             onLoadedMetadata={handleLoadedMetadata}
-            onPlaying={handleBufferingEnd}
+            onPlaying={handlePlaybackStarted}
             onProgress={handleBufferingProgress}
             onStalled={handleBufferingStart}
             onTimeUpdate={handleTimeUpdate}
@@ -1169,7 +1226,18 @@ export function PlayerPage() {
               </div>
               {episodeError ? (
                 <div className="rounded-xl border border-error/40 bg-error-container/30 p-4 text-sm leading-6 text-error">
-                  {episodeError}
+                  <span>{episodeError}</span>
+                  <button
+                    type="button"
+                    data-focusable="true"
+                    onClick={() => {
+                      if (series) invalidateSeriesDetails(series, connection);
+                      setEpisodeLoadAttempt((attempt) => attempt + 1);
+                    }}
+                    className="focus-card ml-3 rounded-lg border border-error/40 px-3 py-1 font-semibold"
+                  >
+                    Tentar novamente
+                  </button>
                 </div>
               ) : null}
               {seasonEpisodes.length > 0 ? (
