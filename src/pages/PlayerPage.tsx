@@ -450,12 +450,12 @@ export function PlayerPage() {
           maxMaxBufferLength: isLiveContent ? 20 : 40,
           maxBufferSize: isLiveContent ? 15 * 1000 * 1000 : 30 * 1000 * 1000,
           backBufferLength: isLiveContent ? 5 : 10,
-          fragLoadingTimeOut: 20_000,
-          manifestLoadingTimeOut: 20_000,
-          levelLoadingTimeOut: 20_000,
-          fragLoadingMaxRetry: 6,
-          manifestLoadingMaxRetry: 4,
-          levelLoadingMaxRetry: 4
+          fragLoadingTimeOut: isLiveContent ? 10_000 : 20_000,
+          manifestLoadingTimeOut: isLiveContent ? 5_000 : 20_000,
+          levelLoadingTimeOut: isLiveContent ? 5_000 : 20_000,
+          fragLoadingMaxRetry: isLiveContent ? 2 : 6,
+          manifestLoadingMaxRetry: isLiveContent ? 1 : 4,
+          levelLoadingMaxRetry: isLiveContent ? 1 : 4
         });
         hlsRef.current = hls;
         hls.loadSource(activeStreamUrl);
@@ -496,7 +496,7 @@ export function PlayerPage() {
               setStreamAttempt((attempt) => attempt + 1);
               return;
             }
-            if (!isLiveContent && !transcodeSession) {
+            if (!transcodeSession) {
               void startCompatibilityTranscodeRef.current();
               hls?.destroy();
               hlsRef.current = undefined;
@@ -831,7 +831,7 @@ export function PlayerPage() {
       setStreamAttempt((attempt) => attempt + 1);
       return;
     }
-    if (content.type !== "channel" && !transcodeSession) {
+    if (!transcodeSession) {
       void startCompatibilityTranscode();
       return;
     }
@@ -855,7 +855,7 @@ export function PlayerPage() {
     setPlaybackMode("transcoding");
     try {
       const candidates = streamCandidates.length > 0 ? streamCandidates : [originalStreamUrl];
-      const session = await bridge.media.startTranscode(candidates);
+      const session = await bridge.media.startTranscode(candidates, { live: content.type === "channel" });
       const pending = { id: session.id, url: session.url, ready: false };
       compatibilitySessionIdRef.current = session.id;
       transcodeSessionRef.current = pending;

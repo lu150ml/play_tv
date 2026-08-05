@@ -116,7 +116,7 @@ class MediaManager {
     return last;
   }
 
-  startTranscode(remoteUrls) {
+  startTranscode(remoteUrls, options = {}) {
     const candidates = Array.isArray(remoteUrls)
       ? [...new Set(remoteUrls.map(validateRemoteUrl))].slice(0, 4)
       : [];
@@ -126,7 +126,7 @@ class MediaManager {
     const directory = path.join(this.root, `transcode-${id}`);
     fs.mkdirSync(directory, { recursive: true });
     const playlist = path.join(directory, "index.m3u8");
-    const session = { id, child: undefined, controller: new AbortController(), directory, playlist, stderr: "", status: "checking-source", candidateIndex: undefined };
+    const session = { id, child: undefined, controller: new AbortController(), directory, playlist, stderr: "", status: "checking-source", candidateIndex: undefined, live: options?.live === true };
     this.transcodes.set(id, session);
     this.emit({ id, status: "checking-source" });
     setImmediate(() => void this.prepareTranscode(session, candidates));
@@ -175,15 +175,18 @@ class MediaManager {
   }
 
   spawnTranscode(session, url) {
+    const hlsOptions = session.live
+      ? ["-hls_time", "2", "-hls_list_size", "6", "-hls_delete_threshold", "2", "-hls_flags", "delete_segments+independent_segments+temp_file"]
+      : ["-hls_time", "2", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file"];
     const args = [
       "-hide_banner", "-loglevel", "warning", "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
       "-rw_timeout", "10000000",
       "-i", url,
       "-map", "0:v:0?", "-map", "0:a:0?",
       "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+      "-c:v", "libx264", "-preset", session.live ? "ultrafast" : "veryfast", "-crf", session.live ? "25" : "22", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "160k", "-ac", "2",
-      "-f", "hls", "-hls_time", "2", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file",
+      "-f", "hls", ...hlsOptions,
       "-hls_segment_filename", path.join(session.directory, "segment-%05d.ts"), session.playlist
     ];
     const child = this.spawn(this.ffmpegPath, args, { windowsHide: true });

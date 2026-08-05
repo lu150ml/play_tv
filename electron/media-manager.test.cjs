@@ -104,6 +104,38 @@ test("transcode selects the first valid candidate and passes only it to ffmpeg",
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("live transcode keeps only a short rolling HLS window", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  let spawnedArgs;
+  try {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {};
+    const manager = new MediaManager({
+      app: { getPath: () => root },
+      net: { fetch() {} },
+      ffmpegPath: process.execPath,
+      spawn: (_executable, args) => {
+        spawnedArgs = args;
+        return child;
+      }
+    });
+    manager.spawnTranscode({
+      id: "live-test",
+      directory: root,
+      playlist: path.join(root, "index.m3u8"),
+      stderr: "",
+      status: "transcoding",
+      live: true
+    }, "https://example.test/live.ts");
+
+    assert.equal(spawnedArgs[spawnedArgs.indexOf("-preset") + 1], "ultrafast");
+    assert.equal(spawnedArgs[spawnedArgs.indexOf("-hls_list_size") + 1], "6");
+    assert.equal(spawnedArgs[spawnedArgs.indexOf("-hls_delete_threshold") + 1], "2");
+    assert.match(spawnedArgs[spawnedArgs.indexOf("-hls_flags") + 1], /delete_segments/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("candidate selection skips HTML and times out a stalled response", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
   try {

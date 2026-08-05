@@ -65,7 +65,7 @@ interface DesktopBridge {
   media: {
     registerImage(url: string): Promise<string>;
     probeStream(candidates: string[]): Promise<StreamProbeResult>;
-    startTranscode(candidates: string[]): Promise<{ id: string; url: string; mode: "transcoding" }>;
+    startTranscode(candidates: string[], options?: { live?: boolean }): Promise<{ id: string; url: string; mode: "transcoding" }>;
     stopTranscode(id: string): Promise<void>;
     onState(callback: (state: MediaTranscodeState) => void): () => void;
   };

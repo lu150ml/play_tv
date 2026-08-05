@@ -128,7 +128,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("downloads:open-directory", () => downloadManager.openDirectory());
   ipcMain.handle("media:register-image", (_event, url) => mediaManager.registerImage(url));
   ipcMain.handle("media:probe-stream", (_event, candidates) => mediaManager.probeStream(candidates));
-  ipcMain.handle("media:start-transcode", (_event, candidates) => mediaManager.startTranscode(candidates));
+  ipcMain.handle("media:start-transcode", (_event, candidates, options) => mediaManager.startTranscode(candidates, options));
   ipcMain.handle("media:stop-transcode", (_event, id) => mediaManager.stopTranscode(id));
   await createWindow();
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {

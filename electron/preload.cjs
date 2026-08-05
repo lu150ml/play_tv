@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld("serverXtreme", {
   media: {
     registerImage: (url) => ipcRenderer.invoke("media:register-image", url),
     probeStream: (candidates) => ipcRenderer.invoke("media:probe-stream", candidates),
-    startTranscode: (candidates) => ipcRenderer.invoke("media:start-transcode", candidates),
+    startTranscode: (candidates, options) => ipcRenderer.invoke("media:start-transcode", candidates, options),
     stopTranscode: (id) => ipcRenderer.invoke("media:stop-transcode", id),
     onState: (callback) => {
       const listener = (_event, state) => callback(state);
