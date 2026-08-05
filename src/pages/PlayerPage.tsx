@@ -157,12 +157,46 @@ export function PlayerPage() {
     durationSeconds > INTRO_SKIP_TO_SECONDS &&
     positionSeconds < INTRO_SKIP_TO_SECONDS;
 
+  const focusSeriesPlayer = useCallback(() => {
+    const playerShell = playerShellRef.current;
+    if (!playerShell) {
+      return;
+    }
+
+    playerShell.scrollIntoView({ block: "start", behavior: "smooth" });
+    playerShell.focus({ preventScroll: true });
+  }, []);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     video.volume = volume;
     video.muted = muted || volume === 0;
   }, [activeStreamUrl, muted, volume]);
+
+  useEffect(() => {
+    if (!episodeId || isReleasingPrevious) {
+      return;
+    }
+
+    if (!activeStreamUrl && !isPreparingCompatibleFormat && !mediaError && !episodeUnavailableReason) {
+      return;
+    }
+
+    const focusTimer = window.setTimeout(() => {
+      focusSeriesPlayer();
+    }, 0);
+
+    return () => window.clearTimeout(focusTimer);
+  }, [
+    activeStreamUrl,
+    episodeId,
+    episodeUnavailableReason,
+    focusSeriesPlayer,
+    isPreparingCompatibleFormat,
+    isReleasingPrevious,
+    mediaError
+  ]);
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -1000,6 +1034,9 @@ export function PlayerPage() {
 
       <section
         ref={playerShellRef}
+        data-focusable="true"
+        data-testid="player-shell"
+        tabIndex={-1}
         onClick={revealControls}
         onFocusCapture={() => {
           revealControls();

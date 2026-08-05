@@ -116,6 +116,12 @@ async function connectToCatalog(page: Page) {
   await expect(page).toHaveURL(/\/catalog$/);
 }
 
+async function expectSeriesPlayerFocused(page: Page) {
+  const player = page.getByTestId("player-shell");
+  await expect(player).toBeInViewport();
+  await expect(player).toBeFocused();
+}
+
 test("connects to catalog and opens a title", async ({ page }) => {
   await connectToCatalog(page);
 
@@ -297,6 +303,7 @@ test("automatically starts the first series episode", async ({ page }) => {
   expect(Date.now() - startedAt).toBeLessThan(3000);
   await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
+  await expectSeriesPlayerFocused(page);
 });
 
 test("shows a bounded series error and retries without a loading loop", async ({ page }) => {
@@ -339,7 +346,21 @@ test("jumps to the next episode from player controls", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3002$/);
   await expect(page.getByRole("button", { name: /^S1 E2 / })).toHaveAttribute("aria-pressed", "true");
+  await expectSeriesPlayerFocused(page);
   expect(seriesInfoRequests).toBe(1);
+});
+
+test("focuses the player after selecting another series episode", async ({ page }) => {
+  await connectToCatalog(page);
+
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+
+  await page.getByRole("button", { name: /^S1 E2 / }).click();
+
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3002$/);
+  await expect(page.getByRole("button", { name: /^S1 E2 / })).toHaveAttribute("aria-pressed", "true");
+  await expectSeriesPlayerFocused(page);
 });
 
 test("shows only current season episodes while watching a series", async ({ page }) => {
