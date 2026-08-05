@@ -128,6 +128,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("downloads:open-directory", () => downloadManager.openDirectory());
   ipcMain.handle("media:register-image", (_event, url) => mediaManager.registerImage(url));
   ipcMain.handle("media:probe-stream", (_event, candidates) => mediaManager.probeStream(candidates));
+  ipcMain.handle("media:prepare-playback", () => mediaManager.stopAll());
   ipcMain.handle("media:start-transcode", (_event, candidates, options) => mediaManager.startTranscode(candidates, options));
   ipcMain.handle("media:stop-transcode", (_event, id) => mediaManager.stopTranscode(id));
   await createWindow();
@@ -145,7 +146,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => mediaManager?.stopAll());
+app.on("before-quit", () => { void mediaManager?.stopAll(); });
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();

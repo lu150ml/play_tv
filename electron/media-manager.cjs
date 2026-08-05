@@ -22,7 +22,7 @@ function validateRemoteUrl(value) {
 }
 
 class MediaManager {
-  constructor({ app, net, ffmpegPath, spawn = defaultSpawn, emit = () => {}, preflightTimeoutMs = PREFLIGHT_TIMEOUT_MS, playlistTimeoutMs = PLAYLIST_TIMEOUT_MS }) {
+  constructor({ app, net, ffmpegPath, spawn = defaultSpawn, emit = () => {}, preflightTimeoutMs = PREFLIGHT_TIMEOUT_MS, playlistTimeoutMs = PLAYLIST_TIMEOUT_MS, stopTimeoutMs = 3000 }) {
     this.app = app;
     this.net = net;
     this.ffmpegPath = ffmpegPath;
@@ -30,9 +30,11 @@ class MediaManager {
     this.emit = emit;
     this.preflightTimeoutMs = preflightTimeoutMs;
     this.playlistTimeoutMs = playlistTimeoutMs;
+    this.stopTimeoutMs = stopTimeoutMs;
     this.images = new Map();
     this.imageTokensByUrl = new Map();
     this.transcodes = new Map();
+    this.transcodeGeneration = 0;
     this.probeQueue = Promise.resolve();
     this.root = path.join(app.getPath("userData"), "media-cache");
     fs.mkdirSync(this.root, { recursive: true });
@@ -126,11 +128,22 @@ class MediaManager {
     const directory = path.join(this.root, `transcode-${id}`);
     fs.mkdirSync(directory, { recursive: true });
     const playlist = path.join(directory, "index.m3u8");
-    const session = { id, child: undefined, controller: new AbortController(), directory, playlist, stderr: "", status: "checking-source", candidateIndex: undefined, live: options?.live === true };
+    const session = { id, child: undefined, controller: new AbortController(), directory, playlist, stderr: "", status: "checking-source", candidateIndex: undefined, live: options?.live === true, sequence: ++this.transcodeGeneration, exited: false, stopPromise: undefined };
     this.transcodes.set(id, session);
     this.emit({ id, status: "checking-source" });
-    setImmediate(() => void this.prepareTranscode(session, candidates));
+    setImmediate(() => void this.prepareExclusiveTranscode(session, candidates));
     return { id, url: `app://server-xtreme/media/transcode/${id}/index.m3u8`, mode: "transcoding" };
+  }
+
+  async prepareExclusiveTranscode(session, candidates) {
+    if (session.status === "stopped") return;
+    if (session.sequence !== this.transcodeGeneration) {
+      await this.stopTranscode(session.id);
+      return;
+    }
+    await this.stopAll(session.id);
+    if (session.status === "stopped" || session.sequence !== this.transcodeGeneration) return;
+    await this.prepareTranscode(session, candidates);
   }
 
   async prepareTranscode(session, candidates) {
@@ -154,7 +167,7 @@ class MediaManager {
         errorCode: error?.code || "transcode-failed",
         error: error instanceof Error ? error.message : "Nao foi possivel preparar o formato compativel."
       });
-      this.stopTranscode(session.id);
+      await this.stopTranscode(session.id);
     }
   }
 
@@ -193,6 +206,7 @@ class MediaManager {
     session.child = child;
     child.stderr?.on("data", (chunk) => { session.stderr = `${session.stderr}${chunk}`.slice(-4000); });
     child.on("exit", (code) => {
+      session.exited = true;
       if (session.status !== "stopped" && code !== 0) {
         const wasReady = session.status === "ready";
         session.status = "error";
@@ -243,6 +257,11 @@ class MediaManager {
       const started = Date.now();
       const timer = setInterval(() => {
         if (fs.existsSync(session.playlist) && fs.statSync(session.playlist).size > 0) { clearInterval(timer); resolve(); return; }
+        if (session.status === "stopped") {
+          clearInterval(timer);
+          reject(publicError("cancelled", "Preparacao cancelada."));
+          return;
+        }
         if (session.status === "error" || Date.now() - started > this.playlistTimeoutMs) {
           clearInterval(timer);
           session.child?.kill();
@@ -254,15 +273,44 @@ class MediaManager {
 
   stopTranscode(id) {
     const session = this.transcodes.get(id);
-    if (!session) return;
+    if (!session) return Promise.resolve();
+    if (session.stopPromise) return session.stopPromise;
     session.status = "stopped";
     session.controller?.abort();
-    session.child?.kill();
-    this.transcodes.delete(id);
-    setTimeout(() => fs.rm(session.directory, { recursive: true, force: true }, () => {}), 500);
+    session.stopPromise = (async () => {
+      const child = session.child;
+      if (child && !session.exited) {
+        await new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            resolve();
+          };
+          const timeout = setTimeout(() => {
+            try { child.kill(); } catch { /* Process may already be gone. */ }
+            finish();
+          }, this.stopTimeoutMs);
+          child.once?.("exit", finish);
+          try {
+            if (!child.kill()) finish();
+          } catch {
+            finish();
+          }
+        });
+      }
+      if (this.transcodes.get(id) === session) this.transcodes.delete(id);
+      await fs.promises.rm(session.directory, { recursive: true, force: true }).catch(() => {});
+    })();
+    return session.stopPromise;
   }
 
-  stopAll() { for (const id of [...this.transcodes.keys()]) this.stopTranscode(id); }
+  stopAll(exceptId) {
+    return Promise.all([...this.transcodes.keys()]
+      .filter((id) => id !== exceptId)
+      .map((id) => this.stopTranscode(id))).then(() => undefined);
+  }
 
   async handleProtocolRequest(request) {
     const url = new URL(request.url);

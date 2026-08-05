@@ -100,7 +100,7 @@ test("transcode selects the first valid candidate and passes only it to ffmpeg",
     });
     assert.equal(inputUrl, "https://example.test/working.mp4");
     assert.equal(states.find((state) => state.status === "ready")?.candidateIndex, 1);
-    manager.stopTranscode(session.id);
+    await manager.stopTranscode(session.id);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -193,9 +193,95 @@ test("stopping source selection cancels silently and removes the session", async
       emit: (state) => states.push(state)
     });
     const session = manager.startTranscode(["https://example.test/stalled.mp4"]);
-    manager.stopTranscode(session.id);
+    await manager.stopTranscode(session.id);
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(manager.transcodes.has(session.id), false);
     assert.equal(states.some((state) => state.status === "error"), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("stopTranscode waits for ffmpeg to exit before releasing playback", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  try {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {
+      setTimeout(() => child.emit("exit", 0), 25);
+      return true;
+    };
+    const manager = new MediaManager({
+      app: { getPath: () => root },
+      net: { fetch: async () => new Response(Buffer.from([0x47, 0, 0, 0]), { status: 200, headers: { "content-type": "video/mp2t" } }) },
+      ffmpegPath: process.execPath,
+      spawn: (_executable, args) => {
+        fs.writeFileSync(args.at(-1), "#EXTM3U\n");
+        return child;
+      },
+      stopTimeoutMs: 100
+    });
+    const session = manager.startTranscode(["https://example.test/live.ts"], { live: true });
+    while (!manager.transcodes.get(session.id)?.child) await new Promise((resolve) => setTimeout(resolve, 5));
+    const started = Date.now();
+    await manager.stopTranscode(session.id);
+    assert.ok(Date.now() - started >= 20);
+    assert.equal(manager.transcodes.has(session.id), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("stopTranscode releases a stuck ffmpeg after the bounded timeout", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  try {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => true;
+    const manager = new MediaManager({
+      app: { getPath: () => root },
+      net: { fetch() {} },
+      ffmpegPath: process.execPath,
+      stopTimeoutMs: 20
+    });
+    const directory = path.join(root, "stuck");
+    fs.mkdirSync(directory);
+    manager.transcodes.set("stuck", {
+      id: "stuck",
+      child,
+      controller: new AbortController(),
+      directory,
+      status: "ready",
+      exited: false
+    });
+    const started = Date.now();
+    await manager.stopAll();
+    assert.ok(Date.now() - started >= 15);
+    assert.equal(manager.transcodes.size, 0);
+    assert.equal(fs.existsSync(directory), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a newer transcode cancels an older pending session", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-media-"));
+  const spawnedInputs = [];
+  try {
+    const manager = new MediaManager({
+      app: { getPath: () => root },
+      net: { fetch: async () => new Response(Buffer.from([0x47, 0, 0, 0]), { status: 200, headers: { "content-type": "video/mp2t" } }) },
+      ffmpegPath: process.execPath,
+      spawn: (_executable, args) => {
+        spawnedInputs.push(args[args.indexOf("-i") + 1]);
+        const child = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = () => { child.emit("exit", 0); return true; };
+        fs.writeFileSync(args.at(-1), "#EXTM3U\n");
+        return child;
+      },
+      playlistTimeoutMs: 500
+    });
+    const oldSession = manager.startTranscode(["https://example.test/old.ts"], { live: true });
+    const newSession = manager.startTranscode(["https://example.test/new.mp4"]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.deepEqual(spawnedInputs, ["https://example.test/new.mp4"]);
+    assert.equal(manager.transcodes.has(oldSession.id), false);
+    assert.equal(manager.transcodes.has(newSession.id), true);
+    await manager.stopAll();
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

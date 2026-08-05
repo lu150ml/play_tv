@@ -43,39 +43,54 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
     await window.waitForLoadState("domcontentloaded");
     const result = await window.evaluate(async (url) => {
       const bridge = window.serverXtreme;
-      const ready = new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("transcode state timeout")), 30000);
-        const unsubscribe = bridge.media.onState((state) => {
-          if (state.status === "ready") {
-            clearTimeout(timeout);
-            unsubscribe();
-            resolve(state);
-          } else if (state.status === "error") {
-            clearTimeout(timeout);
-            unsubscribe();
-            reject(new Error(state.error));
-          }
+      const startAndWait = async (candidates, options) => {
+        let transcode;
+        const ready = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("transcode state timeout")), 30000);
+          const unsubscribe = bridge.media.onState((state) => {
+            if (!transcode || state.id !== transcode.id) return;
+            if (state.status === "ready") {
+              clearTimeout(timeout);
+              unsubscribe();
+              resolve(state);
+            } else if (state.status === "error") {
+              clearTimeout(timeout);
+              unsubscribe();
+              reject(new Error(state.error));
+            }
+          });
         });
-      });
-      const transcode = await bridge?.media?.startTranscode([
+        transcode = await bridge.media.startTranscode(candidates, options);
+        return { transcode, state: await ready };
+      };
+      const live = await startAndWait([url.replace("episode.m3u8", "episode.mkv")], { live: true });
+      await bridge.media.preparePlayback();
+      const releasedLiveStatus = await fetch(live.transcode.url).then((response) => response.status);
+      const vod = await startAndWait([
         url.replace("episode.m3u8", "missing.mkv"),
         url.replace("episode.m3u8", "episode.mkv")
       ]);
       return {
-        hasMedia: Boolean(bridge?.media?.probeStream && bridge?.media?.startTranscode),
+        hasMedia: Boolean(bridge?.media?.probeStream && bridge?.media?.preparePlayback && bridge?.media?.startTranscode),
         probe: await bridge?.media?.probeStream([url]),
-        transcode,
-        state: await ready
+        live,
+        releasedLiveStatus,
+        transcode: vod.transcode,
+        state: vod.state
       };
     }, `http://127.0.0.1:${port}/episode.m3u8`);
     assert.equal(result.hasMedia, true);
     assert.equal(result.probe.status, "available");
     assert.equal(result.probe.format, "m3u8");
+    assert.equal(result.live.transcode.mode, "transcoding");
+    assert.equal(result.releasedLiveStatus, 404);
     assert.equal(result.transcode.mode, "transcoding");
     assert.equal(result.state.candidateIndex, 1);
     const playlist = await window.evaluate(async (url) => (await fetch(url)).text(), result.transcode.url);
     assert.match(playlist, /^#EXTM3U/m);
-    await window.evaluate((id) => window.serverXtreme.media.stopTranscode(id), result.transcode.id);
+    await window.evaluate(() => window.serverXtreme.media.preparePlayback());
+    const releasedStatus = await window.evaluate(async (url) => (await fetch(url)).status, result.transcode.url);
+    assert.equal(releasedStatus, 404);
   } finally {
     await application.close();
     server.closeAllConnections();

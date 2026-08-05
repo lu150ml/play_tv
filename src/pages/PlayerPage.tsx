@@ -81,6 +81,8 @@ export function PlayerPage() {
   const [isPreparingCompatibleFormat, setIsPreparingCompatibleFormat] = useState(false);
   const [compatibilityStage, setCompatibilityStage] = useState<"checking-source" | "transcoding" | undefined>();
   const [playbackMode, setPlaybackMode] = useState<"native" | "fallback" | "transcoding">("native");
+  const [isReleasingPrevious, setIsReleasingPrevious] = useState(Boolean(getDesktopBridge()?.media));
+  const [showReleasingPrevious, setShowReleasingPrevious] = useState(false);
   const securePosterUrl = useSecureImageUrl(item?.imageUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
@@ -113,7 +115,7 @@ export function PlayerPage() {
     [item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
-  const activeStreamUrl = episodeUnavailableReason
+  const activeStreamUrl = isReleasingPrevious || episodeUnavailableReason
     ? undefined
     : transcodeSession?.ready
       ? transcodeSession.url
@@ -322,9 +324,12 @@ export function PlayerPage() {
   }, [cacheSeriesArtwork, cacheSeriesEpisodes, connection, connectionKey, episodeId, episodeLoadAttempt, seriesId, seriesProviderId, seriesSource]);
 
   useEffect(() => {
+    let cancelled = false;
+    const bridge = getDesktopBridge();
     setStreamAttempt(0);
     setActiveResolution(undefined);
     setPlaybackMode("native");
+    setMediaError(undefined);
     const current = transcodeSessionRef.current;
     if (current) void getDesktopBridge()?.media.stopTranscode(current.id);
     transcodeSessionRef.current = undefined;
@@ -333,6 +338,28 @@ export function PlayerPage() {
     setTranscodeSession(undefined);
     setIsPreparingCompatibleFormat(false);
     setCompatibilityStage(undefined);
+    if (!bridge?.media) {
+      setIsReleasingPrevious(false);
+      setShowReleasingPrevious(false);
+      return undefined;
+    }
+    setIsReleasingPrevious(true);
+    setShowReleasingPrevious(false);
+    const messageTimer = window.setTimeout(() => {
+      if (!cancelled) setShowReleasingPrevious(true);
+    }, 300);
+    void bridge.media.preparePlayback()
+      .catch(() => undefined)
+      .finally(() => {
+        if (cancelled) return;
+        window.clearTimeout(messageTimer);
+        setShowReleasingPrevious(false);
+        setIsReleasingPrevious(false);
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(messageTimer);
+    };
   }, [originalStreamUrl]);
 
   useEffect(() => () => {
@@ -842,7 +869,7 @@ export function PlayerPage() {
   }
 
   async function startCompatibilityTranscode() {
-    if (!originalStreamUrl || compatibilityRequestRef.current || transcodeSessionRef.current || completedDownload) return;
+    if (!originalStreamUrl || isReleasingPrevious || compatibilityRequestRef.current || transcodeSessionRef.current || completedDownload) return;
     const bridge = getDesktopBridge();
     if (!bridge) {
       setMediaError("Este formato exige o modo de compatibilidade do aplicativo instalado.");
@@ -1040,6 +1067,11 @@ export function PlayerPage() {
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-error/40 bg-error-container/70 p-4 text-sm leading-6 text-error backdrop-blur-xl">
             <span>{mediaError}</span>
             <button type="button" data-focusable="true" onClick={handleRetryStream} className="focus-card ml-3 rounded-lg border border-error/40 px-3 py-1 font-semibold">Tentar novamente</button>
+          </div>
+        ) : null}
+        {showReleasingPrevious ? (
+          <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
+            Encerrando reproducao anterior...
           </div>
         ) : null}
         {isPreparingCompatibleFormat ? (
