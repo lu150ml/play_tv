@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+declare global {
+  interface Window {
+    playCalls: number;
+  }
+}
+
 let seriesInfoRequests = 0;
 
 test.beforeEach(async ({ page }) => {
@@ -294,6 +300,17 @@ test("supports keyboard style navigation", async ({ page }) => {
 });
 
 test("automatically starts the first series episode", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "playCalls", { configurable: true, value: 0, writable: true });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: function (this: HTMLMediaElement) {
+        window.playCalls += 1;
+        this.dispatchEvent(new Event("play", { bubbles: true }));
+        return Promise.resolve();
+      }
+    });
+  });
   await connectToCatalog(page);
 
   const startedAt = Date.now();
@@ -304,6 +321,7 @@ test("automatically starts the first series episode", async ({ page }) => {
   await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
   await expectSeriesPlayerFocused(page);
+  await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
 });
 
 test("shows a bounded series error and retries without a loading loop", async ({ page }) => {

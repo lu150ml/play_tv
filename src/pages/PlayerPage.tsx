@@ -192,11 +192,19 @@ export function PlayerPage() {
       return;
     }
 
+    let frameId = 0;
     const focusTimer = window.setTimeout(() => {
-      focusSeriesPlayer();
+      frameId = window.requestAnimationFrame(() => {
+        frameId = window.requestAnimationFrame(() => {
+          focusSeriesPlayer();
+        });
+      });
     }, 0);
 
-    return () => window.clearTimeout(focusTimer);
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
   }, [
     activeStreamUrl,
     episodeId,
@@ -640,7 +648,7 @@ export function PlayerPage() {
     }
 
     video.pause();
-  }, [isPlaying]);
+  }, [activeStreamUrl, isPlaying]);
 
   useEffect(() => {
     if (!isPlaying || mediaError) {
