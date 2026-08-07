@@ -16,7 +16,12 @@ import {
 } from "../services/playbackService";
 import { getNextEpisode, invalidateSeriesDetails, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
 import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
-import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "../services/streamService";
+import {
+  formatResolution,
+  getChannelStreamCandidates,
+  getOnDemandStreamCandidates,
+  isTwentyFourHourChannel
+} from "../services/streamService";
 import { getDesktopBridge, getDownloadedMediaUrl } from "../services/desktopService";
 import { clearEpisodeFailure, getEpisodeFailure, recordEpisodeFailure } from "../services/episodeAvailabilityService";
 import { useDownloadState } from "../hooks/useDesktopState";
@@ -110,11 +115,13 @@ export function PlayerPage() {
     () => item?.type === "channel"
       ? item.streamCandidates?.length
         ? item.streamCandidates
-        : getChannelStreamCandidates(originalStreamUrl)
+        : getChannelStreamCandidates(originalStreamUrl, {
+            preferTransportStream: isTwentyFourHourChannel(item.title, item.categories)
+          })
       : selectedEpisode?.streamCandidates?.length
         ? selectedEpisode.streamCandidates
         : getOnDemandStreamCandidates(originalStreamUrl),
-    [item?.streamCandidates, item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
+    [item?.categories, item?.streamCandidates, item?.title, item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
   const activeStreamUrl = isReleasingPrevious || episodeUnavailableReason
