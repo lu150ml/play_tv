@@ -458,11 +458,8 @@ test("preloads video without revealing hidden controls while buffering", async (
 });
 
 test("never shows the buffering banner for live TV", async ({ page }) => {
+  await mockMediaPlay(page);
   await page.addInitScript(() => {
-    Object.defineProperty(HTMLMediaElement.prototype, "play", {
-      configurable: true,
-      value: () => Promise.resolve()
-    });
     Object.defineProperty(HTMLMediaElement.prototype, "pause", {
       configurable: true,
       value: () => undefined
@@ -470,6 +467,8 @@ test("never shows the buffering banner for live TV", async ({ page }) => {
   });
   await connectToCatalog(page);
   await page.getByRole("link", { name: "World News HD channel" }).first().click();
+  await expectSeriesPlayerFocused(page);
+  await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
   await page
     .locator("video")
     .evaluate((element) => element.dispatchEvent(new Event("waiting", { bubbles: true })));

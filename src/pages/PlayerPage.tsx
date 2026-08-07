@@ -176,7 +176,7 @@ export function PlayerPage() {
     playerShell.focus({ preventScroll: true });
   }, []);
 
-  const shouldAutoFocusPlayer = Boolean(item && item.type !== "channel");
+  const shouldAutoFocusPlayer = Boolean(item);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -186,7 +186,7 @@ export function PlayerPage() {
   }, [activeStreamUrl, muted, volume]);
 
   useEffect(() => {
-    if (!activeStreamUrl || item?.type === "channel") {
+    if (!activeStreamUrl) {
       return;
     }
 
@@ -652,7 +652,7 @@ export function PlayerPage() {
 
     if (isPlaying) {
       void video.play().catch(() => {
-        if (item?.type !== "channel" && !video.muted) {
+        if (!video.muted) {
           video.muted = true;
           setMuted(true);
           void video.play().catch(() => {
