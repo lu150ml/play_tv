@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
+import { useBackgroundChannelValidation } from "../hooks/useBackgroundChannelValidation";
 import { connectServerSession } from "../services/sessionService";
 import { clearRememberedPassword, loadRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -50,6 +51,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
+  useBackgroundChannelValidation();
   const currentPath = `${location.pathname}${location.search}`;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSwitchAccountOpen, setIsSwitchAccountOpen] = useState(false);

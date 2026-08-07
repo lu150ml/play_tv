@@ -8,11 +8,12 @@ import { SearchOverlay } from "../components/SearchOverlay";
 import { SecureImage } from "../components/SecureImage";
 import { searchCatalog } from "../services/catalogService";
 import { isMusicChannel } from "../services/musicService";
+import { isTwentyFourHourChannel } from "../services/streamService";
 import {
   getPersonalizedRecommendations,
   getRecommendedHero
 } from "../services/recommendationService";
-import { useLibraryStore } from "../stores/libraryStore";
+import { useLibraryStore, type ChannelHealth } from "../stores/libraryStore";
 import type { CatalogFilter, ContentItem, ContentType } from "../types/catalog";
 
 const RAIL_LIMIT = 10;
@@ -109,8 +110,13 @@ export function CatalogPage({
   const playback = useLibraryStore((state) => state.playback);
   const removeProgress = useLibraryStore((state) => state.removeProgress);
   const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
+  const streamHealth = useLibraryStore((state) => state.streamHealth);
+  const getChannelHealth = useLibraryStore((state) => state.getChannelHealth);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
-  const sectionItems = useMemo(() => filterBySection(catalog, sectionKey), [catalog, sectionKey]);
+  const sectionItems = useMemo(
+    () => filterUnavailable24hChannels(filterBySection(catalog, sectionKey), getChannelHealth, streamHealth),
+    [catalog, getChannelHealth, sectionKey, streamHealth]
+  );
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -555,6 +561,27 @@ function filterBySection(items: ContentItem[], section: SectionKey): ContentItem
     return items.filter((item) => item.type === "channel" && !isMusicChannel(item));
   const type: ContentType = section === "movies" ? "movie" : "series";
   return items.filter((item) => item.type === type);
+}
+
+function filterUnavailable24hChannels(
+  items: ContentItem[],
+  getChannelHealth: (contentId: string) => ChannelHealth | undefined,
+  healthSnapshot: Record<string, ChannelHealth>
+): ContentItem[] {
+  void healthSnapshot;
+  return items.filter((item) => {
+    if (item.type !== "channel" || !isTwentyFourHourChannel(item.title, item.categories)) {
+      return true;
+    }
+
+    return !isDefinitivelyUnavailable(getChannelHealth(item.id));
+  });
+}
+
+function isDefinitivelyUnavailable(health?: ChannelHealth) {
+  if (!health) return false;
+  if (health.status === "access-denied") return true;
+  return health.status === "unavailable" && new Set([401, 403, 404, 410]).has(health.httpStatus ?? 0);
 }
 
 function groupByDisplayCategory(
