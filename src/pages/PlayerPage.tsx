@@ -55,7 +55,7 @@ export function PlayerPage() {
   const isFavorite = useLibraryStore((state) =>
     routeContentId ? state.isFavorite(routeContentId) : false
   );
-  const [isPlaying, setIsPlaying] = useState(Boolean(episodeId));
+  const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(() => {
     const saved = Number(localStorage.getItem("server-xtreme-volume") ?? 1);
     return Number.isFinite(saved) ? Math.min(Math.max(saved, 0), 1) : 1;
@@ -166,7 +166,7 @@ export function PlayerPage() {
     durationSeconds > INTRO_SKIP_TO_SECONDS &&
     positionSeconds < INTRO_SKIP_TO_SECONDS;
 
-  const focusSeriesPlayer = useCallback(() => {
+  const focusPlayer = useCallback(() => {
     const playerShell = playerShellRef.current;
     if (!playerShell) {
       return;
@@ -176,6 +176,8 @@ export function PlayerPage() {
     playerShell.focus({ preventScroll: true });
   }, []);
 
+  const shouldAutoFocusPlayer = Boolean(item && item.type !== "channel");
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -184,7 +186,15 @@ export function PlayerPage() {
   }, [activeStreamUrl, muted, volume]);
 
   useEffect(() => {
-    if (!episodeId || isReleasingPrevious) {
+    if (!activeStreamUrl || item?.type === "channel") {
+      return;
+    }
+
+    setIsPlaying(true);
+  }, [activePlaybackId, activeStreamUrl, item?.type]);
+
+  useEffect(() => {
+    if (!shouldAutoFocusPlayer || isReleasingPrevious) {
       return;
     }
 
@@ -196,7 +206,7 @@ export function PlayerPage() {
     const focusTimer = window.setTimeout(() => {
       frameId = window.requestAnimationFrame(() => {
         frameId = window.requestAnimationFrame(() => {
-          focusSeriesPlayer();
+          focusPlayer();
         });
       });
     }, 0);
@@ -207,12 +217,12 @@ export function PlayerPage() {
     };
   }, [
     activeStreamUrl,
-    episodeId,
     episodeUnavailableReason,
-    focusSeriesPlayer,
+    focusPlayer,
     isPreparingCompatibleFormat,
     isReleasingPrevious,
-    mediaError
+    mediaError,
+    shouldAutoFocusPlayer
   ]);
 
   const clearBufferRecovery = useCallback(() => {
@@ -642,13 +652,21 @@ export function PlayerPage() {
 
     if (isPlaying) {
       void video.play().catch(() => {
+        if (item?.type !== "channel" && !video.muted) {
+          video.muted = true;
+          setMuted(true);
+          void video.play().catch(() => {
+            setIsPlaying(false);
+          });
+          return;
+        }
         setIsPlaying(false);
       });
       return;
     }
 
     video.pause();
-  }, [activeStreamUrl, isPlaying]);
+  }, [activeStreamUrl, isPlaying, item?.type]);
 
   useEffect(() => {
     if (!isPlaying || mediaError) {

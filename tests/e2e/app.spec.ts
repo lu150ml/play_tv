@@ -128,13 +128,30 @@ async function expectSeriesPlayerFocused(page: Page) {
   await expect(player).toBeFocused();
 }
 
+async function mockMediaPlay(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "playCalls", { configurable: true, value: 0, writable: true });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: function (this: HTMLMediaElement) {
+        window.playCalls += 1;
+        this.dispatchEvent(new Event("play", { bubbles: true }));
+        return Promise.resolve();
+      }
+    });
+  });
+}
+
 test("connects to catalog and opens a title", async ({ page }) => {
+  await mockMediaPlay(page);
   await connectToCatalog(page);
 
   await expect(page.getByText("Catálogo conectado")).toBeVisible();
   await expect(page.getByText("3 itens carregados")).toBeVisible();
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
   await expect(page.getByText("Now Playing")).toBeVisible();
+  await expectSeriesPlayerFocused(page);
+  await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
 });
 
 test("uses connected Xtream catalog on dedicated navigation pages", async ({ page }) => {
@@ -300,17 +317,7 @@ test("supports keyboard style navigation", async ({ page }) => {
 });
 
 test("automatically starts the first series episode", async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "playCalls", { configurable: true, value: 0, writable: true });
-    Object.defineProperty(HTMLMediaElement.prototype, "play", {
-      configurable: true,
-      value: function (this: HTMLMediaElement) {
-        window.playCalls += 1;
-        this.dispatchEvent(new Event("play", { bubbles: true }));
-        return Promise.resolve();
-      }
-    });
-  });
+  await mockMediaPlay(page);
   await connectToCatalog(page);
 
   const startedAt = Date.now();
@@ -434,7 +441,6 @@ test("preloads video without revealing hidden controls while buffering", async (
   const controls = page.getByTestId("player-controls");
 
   await expect(video).toHaveAttribute("preload", "auto");
-  await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(controls).toHaveCSS("opacity", "0", { timeout: 6500 });
 
   await video.evaluate((element) => {
