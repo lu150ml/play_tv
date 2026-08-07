@@ -1,8 +1,55 @@
 import { expect, test, type Page } from "@playwright/test";
 
+type TestDesktopBridge = {
+  credentials: {
+    save(value: string): Promise<boolean>;
+    load(): Promise<string | undefined>;
+    clear(): Promise<void>;
+  };
+  updates: {
+    getState(): Promise<{
+      status: "unsupported";
+      version: string;
+      supported: false;
+      environment: "development";
+      lastResult: "not-checked";
+    }>;
+    check(): Promise<{
+      status: "unsupported";
+      version: string;
+      supported: false;
+      environment: "development";
+      lastResult: "not-checked";
+    }>;
+    install(): Promise<void>;
+    onState(): () => void;
+  };
+  downloads: {
+    getState(): Promise<{ directory: string; jobs: never[] }>;
+    chooseDirectory(): Promise<{ directory: string; jobs: never[] }>;
+    enqueue(): Promise<never>;
+    pause(): Promise<void>;
+    resume(): Promise<void>;
+    cancel(): Promise<void>;
+    remove(): Promise<void>;
+    open(): Promise<string>;
+    openDirectory(): Promise<string>;
+    onState(): () => void;
+  };
+  media: {
+    registerImage(url: string): Promise<string>;
+    probeStream(): Promise<{ status: "available"; candidateIndex: number; format: "m3u8" }>;
+    preparePlayback(): Promise<void>;
+    startTranscode(): Promise<{ id: string; url: string; mode: "transcoding" }>;
+    stopTranscode(): Promise<void>;
+    onState(): () => void;
+  };
+};
+
 declare global {
   interface Window {
     playCalls: number;
+    probeCalls: number;
   }
 }
 
@@ -26,7 +73,10 @@ test.beforeEach(async ({ page }) => {
     }
 
     const payloads: Record<string, unknown> = {
-      get_live_categories: [{ category_id: "1", category_name: "News" }],
+      get_live_categories: [
+        { category_id: "1", category_name: "News" },
+        { category_id: "4", category_name: "24H - Anime" }
+      ],
       get_vod_categories: [{ category_id: "2", category_name: "Movies" }],
       get_series_categories: [{ category_id: "3", category_name: "Series" }],
       get_live_streams: [
@@ -37,6 +87,14 @@ test.beforeEach(async ({ page }) => {
           stream_icon: "",
           added: 1717200000,
           num: 10
+        },
+        {
+          stream_id: 11,
+          name: "24H Anime Classics",
+          category_id: "4",
+          stream_icon: "",
+          added: 1717200000,
+          num: 11
         }
       ],
       get_vod_streams: [
@@ -142,16 +200,83 @@ async function mockMediaPlay(page: Page) {
   });
 }
 
+async function mockElectronBridge(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "probeCalls", { configurable: true, value: 0, writable: true });
+    (window as unknown as { serverXtreme: TestDesktopBridge }).serverXtreme = {
+      credentials: {
+        save: () => Promise.resolve(true),
+        load: () => Promise.resolve(undefined),
+        clear: () => Promise.resolve()
+      },
+      updates: {
+        getState: () => Promise.resolve({
+          status: "unsupported",
+          version: "0.4.10",
+          supported: false,
+          environment: "development",
+          lastResult: "not-checked"
+        }),
+        check: () => Promise.resolve({
+          status: "unsupported",
+          version: "0.4.10",
+          supported: false,
+          environment: "development",
+          lastResult: "not-checked"
+        }),
+        install: () => Promise.resolve(),
+        onState: () => () => undefined
+      },
+      downloads: {
+        getState: () => Promise.resolve({ directory: "", jobs: [] }),
+        chooseDirectory: () => Promise.resolve({ directory: "", jobs: [] }),
+        enqueue: () => Promise.reject(new Error("download not mocked")),
+        pause: () => Promise.resolve(),
+        resume: () => Promise.resolve(),
+        cancel: () => Promise.resolve(),
+        remove: () => Promise.resolve(),
+        open: () => Promise.resolve(""),
+        openDirectory: () => Promise.resolve(""),
+        onState: () => () => undefined
+      },
+      media: {
+        registerImage: (url: string) => Promise.resolve(url),
+        probeStream: () => {
+          window.probeCalls += 1;
+          return Promise.resolve({ status: "available", candidateIndex: 0, format: "m3u8" });
+        },
+        preparePlayback: () => Promise.resolve(),
+        startTranscode: () => Promise.resolve({ id: "mock-transcode", url: "app://server-xtreme/media/transcode/mock/index.m3u8", mode: "transcoding" }),
+        stopTranscode: () => Promise.resolve(),
+        onState: () => () => undefined
+      }
+    };
+  });
+}
+
 test("connects to catalog and opens a title", async ({ page }) => {
   await mockMediaPlay(page);
   await connectToCatalog(page);
 
   await expect(page.getByText("Catálogo conectado")).toBeVisible();
-  await expect(page.getByText("3 itens carregados")).toBeVisible();
+  await expect(page.getByText("4 itens carregados")).toBeVisible();
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
   await expect(page.getByText("Now Playing")).toBeVisible();
   await expectSeriesPlayerFocused(page);
   await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
+});
+
+test("does not probe 24h live channels while browsing Electron catalog", async ({ page }) => {
+  await mockElectronBridge(page);
+  await connectToCatalog(page);
+
+  await expect(page.getByText("24H Anime Classics").first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.probeCalls)).toBe(0);
+
+  await page.getByRole("link", { name: "TV", exact: true }).first().click();
+  await expect(page.getByText("24H Anime Classics").first()).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect.poll(() => page.evaluate(() => window.probeCalls)).toBe(0);
 });
 
 test("uses connected Xtream catalog on dedicated navigation pages", async ({ page }) => {

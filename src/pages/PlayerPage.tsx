@@ -561,17 +561,6 @@ export function PlayerPage() {
         });
         hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
           if (data.fatal) {
-            if (
-              isLiveContent &&
-              data.details === HlsPlayer.ErrorDetails.MANIFEST_PARSING_ERROR &&
-              !transcodeSession
-            ) {
-              void startCompatibilityTranscodeRef.current();
-              hls?.destroy();
-              hlsRef.current = undefined;
-              return;
-            }
-
             if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
               if (networkRetryRef.current < 2) {
                 networkRetryRef.current += 1;
@@ -933,15 +922,6 @@ export function PlayerPage() {
 
   function handleStreamFailure() {
     if (!videoRef.current?.currentSrc) return;
-    if (
-      content.type === "channel" &&
-      /\.ts(?:$|\?)/i.test(activeStreamUrl ?? "") &&
-      getDesktopBridge()?.media &&
-      !transcodeSession
-    ) {
-      void startCompatibilityTranscode();
-      return;
-    }
     if (!transcodeSession && streamAttempt + 1 < streamCandidates.length) {
       setPlaybackMode("fallback");
       setStreamAttempt((attempt) => attempt + 1);

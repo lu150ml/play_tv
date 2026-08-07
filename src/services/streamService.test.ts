@@ -14,11 +14,11 @@ describe("streamService", () => {
     ]);
   });
 
-  it("tries transport stream first for 24h channels", () => {
+  it("keeps HLS first for 24h channels and uses transport stream only as fallback", () => {
     expect(isTwentyFourHourChannel("Anime HD", ["24H - ANIMES"])).toBe(true);
     expect(getChannelStreamCandidates("https://host/live/u/p/1.m3u8", { preferTransportStream: true })).toEqual([
-      "https://host/live/u/p/1.ts",
-      "https://host/live/u/p/1.m3u8"
+      "https://host/live/u/p/1.m3u8",
+      "https://host/live/u/p/1.ts"
     ]);
   });
 

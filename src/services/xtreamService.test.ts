@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes, normalizeCategory } from "./xtreamService";
+import { loadXtreamCatalog, loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes, normalizeCategory } from "./xtreamService";
 
 describe("Xtream category names", () => {
   it("preserves the exact hierarchy supplied by the provider", () => {
@@ -19,6 +19,41 @@ describe("Xtream category names", () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(artwork).toBe("https://images.test/cover.jpg");
     expect(episodes[0]?.streamCandidates?.map((url) => url.split(".").pop())).toEqual(["mp4", "m3u8", "ts", "mkv"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps live 24h HLS URLs first and stores TS only as fallback", async () => {
+    const responses: Record<string, unknown> = {
+      profile: { user_info: { auth: 1 } },
+      get_live_categories: [{ category_id: "24h", category_name: "24H - Anime" }],
+      get_vod_categories: [],
+      get_series_categories: [],
+      get_live_streams: [{ stream_id: 123, name: "24H Anime Classics", category_id: "24h" }],
+      get_vod_streams: [],
+      get_series: []
+    };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      const rawBody = typeof init?.body === "string" ? init.body : "{}";
+      const body = JSON.parse(rawBody) as { action?: string };
+      const action = body.action ?? "profile";
+      return Promise.resolve(new Response(JSON.stringify(responses[action]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }));
+    }));
+
+    const result = await loadXtreamCatalog({
+      serverUrl: "https://xtream.example",
+      username: "viewer",
+      password: "secret"
+    });
+    const live = result.catalog.find((item) => item.id === "xtream-live-123");
+
+    expect(live?.streamUrl).toBe("https://xtream.example/live/viewer/secret/123.m3u8");
+    expect(live?.streamCandidates).toEqual([
+      "https://xtream.example/live/viewer/secret/123.m3u8",
+      "https://xtream.example/live/viewer/secret/123.ts"
+    ]);
     vi.unstubAllGlobals();
   });
 });

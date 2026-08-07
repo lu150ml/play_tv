@@ -14,9 +14,8 @@ export function getChannelStreamCandidates(url?: string, options: ChannelStreamO
     : /\.ts(?:$|\?)/i.test(url)
       ? url.replace(/\.ts(?=$|\?)/i, ".m3u8")
       : undefined;
-  const candidates: string[] = options.preferTransportStream && alternate?.includes(".ts")
-    ? [alternate, url]
-    : alternate ? [url, alternate] : [url];
+  void options;
+  const candidates: string[] = alternate ? [url, alternate] : [url];
   return Array.from(new Set(candidates));
 }
 
