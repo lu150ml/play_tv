@@ -21,6 +21,7 @@ export interface BaseContent {
   posterTone: string;
   imageUrl?: string;
   streamUrl?: string;
+  streamCandidates?: string[];
   isFeatured?: boolean;
   addedAt: string;
 }

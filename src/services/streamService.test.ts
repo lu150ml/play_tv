@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { formatResolution, getChannelStreamCandidates, getOnDemandStreamCandidates } from "./streamService";
+import {
+  formatResolution,
+  getChannelStreamCandidates,
+  getOnDemandStreamCandidates,
+  isTwentyFourHourChannel
+} from "./streamService";
 
 describe("streamService", () => {
   it("offers ts as a fallback for an HLS live URL", () => {
     expect(getChannelStreamCandidates("https://host/live/u/p/1.m3u8")).toEqual([
       "https://host/live/u/p/1.m3u8",
       "https://host/live/u/p/1.ts"
+    ]);
+  });
+
+  it("tries transport stream first for 24h channels", () => {
+    expect(isTwentyFourHourChannel("Anime HD", ["24H - ANIMES"])).toBe(true);
+    expect(getChannelStreamCandidates("https://host/live/u/p/1.m3u8", { preferTransportStream: true })).toEqual([
+      "https://host/live/u/p/1.ts",
+      "https://host/live/u/p/1.m3u8"
     ]);
   });
 

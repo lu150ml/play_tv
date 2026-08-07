@@ -1,8 +1,22 @@
-export function getChannelStreamCandidates(url?: string): string[] {
+interface ChannelStreamOptions {
+  preferTransportStream?: boolean;
+}
+
+export function isTwentyFourHourChannel(title?: string, categories: string[] = []): boolean {
+  const text = [title, ...categories].filter(Boolean).join(" ");
+  return /(^|\b)(24\s*h|24\s*horas|24\/7|24hs)(\b|$)/i.test(text);
+}
+
+export function getChannelStreamCandidates(url?: string, options: ChannelStreamOptions = {}): string[] {
   if (!url) return [];
-  const candidates = [url];
-  if (/\.m3u8(?:$|\?)/i.test(url)) candidates.push(url.replace(/\.m3u8(?=$|\?)/i, ".ts"));
-  else if (/\.ts(?:$|\?)/i.test(url)) candidates.push(url.replace(/\.ts(?=$|\?)/i, ".m3u8"));
+  const alternate = /\.m3u8(?:$|\?)/i.test(url)
+    ? url.replace(/\.m3u8(?=$|\?)/i, ".ts")
+    : /\.ts(?:$|\?)/i.test(url)
+      ? url.replace(/\.ts(?=$|\?)/i, ".m3u8")
+      : undefined;
+  const candidates: string[] = options.preferTransportStream && alternate?.includes(".ts")
+    ? [alternate, url]
+    : alternate ? [url, alternate] : [url];
   return Array.from(new Set(candidates));
 }
 

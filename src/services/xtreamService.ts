@@ -1,4 +1,5 @@
 import type { ContentItem, Episode, Quality } from "../types/catalog";
+import { getChannelStreamCandidates, isTwentyFourHourChannel } from "./streamService";
 
 export interface XtreamCredentials {
   serverUrl: string;
@@ -286,6 +287,10 @@ function mapLiveStream(
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Live TV";
   const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Channel ${providerId}`;
+  const streamUrl = buildStreamUrl(credentials, "live", providerId, "m3u8");
+  const streamCandidates = getChannelStreamCandidates(streamUrl, {
+    preferTransportStream: isTwentyFourHourChannel(title, [rawCategory, categoryName])
+  });
 
   return {
     id: `xtream-live-${providerId}`,
@@ -301,7 +306,8 @@ function mapLiveStream(
     providerCategoryId: String(stream.category_id ?? "uncategorized"),
     quality: inferQuality(title),
     imageUrl: normalizeImage(stream.stream_icon, credentials.serverUrl),
-    streamUrl: buildStreamUrl(credentials, "live", providerId, "m3u8"),
+    streamUrl: streamCandidates[0] ?? streamUrl,
+    streamCandidates,
     channelNumber: stream.num ?? (Number(providerId) || 0),
     currentProgram: "Live now",
     nextProgram: "Up next",
