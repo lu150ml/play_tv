@@ -24,6 +24,7 @@ import { UpdateBanner } from "./UpdateBanner";
 import { DownloadStatusToast } from "./DownloadStatusToast";
 import { AppFooter } from "./AppFooter";
 import { useUpdateState } from "../hooks/useDesktopState";
+import type { XtreamCatalogSection } from "../services/xtreamService";
 
 const navItems = [
   { label: "Início", path: "/catalog", icon: Home },
@@ -45,6 +46,9 @@ export function AppShell() {
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
+  const catalogSections = useLibraryStore((state) => state.catalogSections);
   const disconnectServerAccount = useLibraryStore((state) => state.disconnectServerAccount);
   const activateServerAccount = useLibraryStore((state) => state.activateServerAccount);
   const location = useLocation();
@@ -57,7 +61,10 @@ export function AppShell() {
     !connection || Boolean(connection.password)
   );
   const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
-  const catalogReady = catalogSource !== "xtream" || hasXtreamCatalog;
+  const requiredSection = getRequiredCatalogSection(location.pathname);
+  const catalogReady = catalogSource !== "xtream" || (requiredSection
+    ? new Set(["ready", "error"]).has(catalogSections[requiredSection].status)
+    : hasXtreamCatalog || Object.values(catalogSections).some((entry) => new Set(["ready", "error"]).has(entry.status)));
 
   useEffect(() => {
     if (!connection || connection.password) {
@@ -91,13 +98,17 @@ export function AppShell() {
       catalogSource !== "xtream" ||
       !connection?.password ||
       hasXtreamCatalog ||
+      Object.values(catalogSections).some((entry) => entry.status === "loading") ||
       isRefetchingRef.current
     ) {
       return;
     }
 
     isRefetchingRef.current = true;
-    void connectServerSession({ ...connection, remember: true })
+    beginCatalogLoad();
+    void connectServerSession({ ...connection, remember: true }, {
+      onSection: (update) => setCatalogSection(update.section, update.items, update.status, update.warning)
+    })
       .then((session) => {
         setCatalog(session.catalog, session.source);
       })
@@ -107,7 +118,7 @@ export function AppShell() {
       .finally(() => {
         isRefetchingRef.current = false;
       });
-  }, [catalog, catalogSource, connection, hasXtreamCatalog, setCatalog]);
+  }, [beginCatalogLoad, catalog, catalogSections, catalogSource, connection, hasXtreamCatalog, setCatalog, setCatalogSection]);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -342,4 +353,11 @@ function isNavItemActive(path: string, currentPath: string): boolean {
   }
 
   return currentPath === path || (path !== "/catalog" && currentPath.startsWith(`${path}/`));
+}
+
+function getRequiredCatalogSection(pathname: string): XtreamCatalogSection | undefined {
+  if (/^\/catalog\/(tv|music)(?:\/|$)/.test(pathname) || /^\/watch\/xtream-live-/.test(pathname)) return "live";
+  if (/^\/catalog\/movies(?:\/|$)/.test(pathname) || /^\/watch\/xtream-movie-/.test(pathname)) return "vod";
+  if (/^\/catalog\/series(?:\/|$)/.test(pathname) || /^\/series\//.test(pathname) || /^\/watch\/[^/]+\/[^/]+/.test(pathname)) return "series";
+  return undefined;
 }

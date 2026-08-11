@@ -19,6 +19,8 @@ const ffmpegPath = app?.isPackaged
   ? bundledFfmpegPath.replace("app.asar", "app.asar.unpacked")
   : bundledFfmpegPath;
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",

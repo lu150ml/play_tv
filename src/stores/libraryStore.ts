@@ -4,8 +4,22 @@ import { persist } from "zustand/middleware";
 import { mockCatalog } from "../data/mockCatalog";
 import type { ContentItem, Episode, PlaybackState, Profile, WatchedState } from "../types/catalog";
 import type { StreamHealthStatus } from "../services/desktopService";
+import type { XtreamCatalogSection } from "../services/xtreamService";
 
 export interface ChannelHealth { contentId: string; accountKey: string; status: StreamHealthStatus; reason?: string; httpStatus?: number; candidateIndex?: number; checkedAt: string }
+export type CatalogSectionStatus = "idle" | "loading" | "ready" | "error";
+export type CatalogSectionStates = Record<XtreamCatalogSection, { status: CatalogSectionStatus; error?: string }>;
+
+const READY_CATALOG_SECTIONS: CatalogSectionStates = {
+  live: { status: "ready" },
+  vod: { status: "ready" },
+  series: { status: "ready" }
+};
+const IDLE_CATALOG_SECTIONS: CatalogSectionStates = {
+  live: { status: "idle" },
+  vod: { status: "idle" },
+  series: { status: "idle" }
+};
 
 export interface XtreamConnection {
   serverUrl: string;
@@ -31,6 +45,7 @@ export interface ServerAccountData {
 interface LibraryState {
   catalog: ContentItem[];
   catalogSource: "mock" | "xtream";
+  catalogSections: CatalogSectionStates;
   connection?: XtreamConnection;
   rememberConnection: boolean;
   serverAccounts: Record<string, ServerAccountData>;
@@ -55,6 +70,8 @@ interface LibraryState {
   markWatched: (contentId: string) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
+  beginCatalogLoad: () => void;
+  setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error", error?: string) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageUrl: string) => void;
   getChannelHealth: (contentId: string) => ChannelHealth | undefined;
@@ -173,6 +190,7 @@ export const useLibraryStore = create<LibraryState>()(
     (set, get) => ({
       catalog: mockCatalog,
       catalogSource: "mock",
+      catalogSections: IDLE_CATALOG_SECTIONS,
       rememberConnection: false,
       serverAccounts: {},
       activeAccountKey: null,
@@ -296,7 +314,40 @@ export const useLibraryStore = create<LibraryState>()(
         });
       },
 
-      setCatalog: (catalog, source) => set({ catalog, catalogSource: source }),
+      setCatalog: (catalog, source) => set({
+        catalog,
+        catalogSource: source,
+        catalogSections: READY_CATALOG_SECTIONS
+      }),
+      beginCatalogLoad: () => set({
+        catalog: [],
+        catalogSource: "xtream",
+        catalogSections: {
+          live: { status: "loading" },
+          vod: { status: "loading" },
+          series: { status: "loading" }
+        }
+      }),
+      setCatalogSection: (section, items, status = "ready", error) => set((current) => {
+        const belongsToSection = (item: ContentItem) => section === "live"
+          ? item.type === "channel"
+          : section === "vod"
+            ? item.type === "movie"
+            : item.type === "series";
+        const live = section === "live" ? items : current.catalog.filter((item) => item.type === "channel");
+        const vod = section === "vod" ? items : current.catalog.filter((item) => item.type === "movie");
+        const series = section === "series" ? items : current.catalog.filter((item) => item.type === "series");
+        const currentItems = current.catalog.filter(belongsToSection);
+        const sameItems = currentItems.length === items.length && currentItems.every((item, index) => item.id === items[index]?.id);
+        const nextSection = { status, error } as const;
+        const previousSection = current.catalogSections[section];
+        if (sameItems && previousSection.status === status && previousSection.error === error) return current;
+        return {
+          catalog: [...live, ...vod, ...series],
+          catalogSource: "xtream",
+          catalogSections: { ...current.catalogSections, [section]: nextSection }
+        };
+      }),
       setSeriesEpisodes: (seriesId, episodes) => set((current) => {
         const series = current.catalog.find((item) => item.id === seriesId);
         if (!series || series.type !== "series" || sameEpisodes(series.episodes, episodes)) return current;

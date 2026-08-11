@@ -106,6 +106,7 @@ export function CatalogPage({
   navigationStateRef.current = { filters };
   const catalog = useLibraryStore((state) => state.catalog);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
+  const catalogSections = useLibraryStore((state) => state.catalogSections);
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
   const removeProgress = useLibraryStore((state) => state.removeProgress);
@@ -117,6 +118,13 @@ export function CatalogPage({
     () => filterUnavailable24hChannels(filterBySection(catalog, sectionKey), getChannelHealth, streamHealth),
     [catalog, getChannelHealth, sectionKey, streamHealth]
   );
+  const loadingSection = sectionKey === "tv" || sectionKey === "music"
+    ? catalogSections.live
+    : sectionKey === "movies"
+      ? catalogSections.vod
+      : sectionKey === "series"
+        ? catalogSections.series
+        : undefined;
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -263,6 +271,16 @@ export function CatalogPage({
             </Link>
           ) : null}
         </div>
+        {loadingSection?.status === "loading" ? (
+          <p className="mb-4 rounded-lg border border-white/10 bg-surface-container/70 p-4 text-sm text-on-surface-variant">
+            Carregando esta secao do servidor...
+          </p>
+        ) : null}
+        {loadingSection?.status === "error" ? (
+          <p className="mb-4 rounded-lg border border-error/30 bg-error-container/30 p-4 text-sm text-error">
+            {loadingSection.error ?? "Nao foi possivel carregar esta secao."}
+          </p>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <TypeLink
             label="Todos"

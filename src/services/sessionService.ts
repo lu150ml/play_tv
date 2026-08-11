@@ -1,5 +1,6 @@
 import type { ContentItem } from "../types/catalog";
 import { loadXtreamCatalog } from "./xtreamService";
+import type { XtreamCatalogSectionUpdate } from "./xtreamService";
 
 export interface LoginRequest {
   serverUrl: string;
@@ -17,13 +18,30 @@ export interface Session {
   warnings: string[];
 }
 
-export async function connectServerSession(request: LoginRequest): Promise<Session> {
-  const result = await loadXtreamCatalog(request);
+export interface SessionLoadOptions {
+  onAuthenticated?: (session: Omit<Session, "catalog" | "warnings">) => void | Promise<void>;
+  onSection?: (update: XtreamCatalogSectionUpdate) => void;
+}
+
+export async function connectServerSession(
+  request: LoginRequest,
+  options: SessionLoadOptions = {}
+): Promise<Session> {
+  const connectedAt = new Date().toISOString();
+  const result = await loadXtreamCatalog(request, {
+    onAuthenticated: ({ serverUrl }) => options.onAuthenticated?.({
+      displayName: request.username.trim() || "Editor Pro",
+      serverUrl,
+      connectedAt,
+      source: "xtream"
+    }),
+    onSection: options.onSection
+  });
 
   return {
     displayName: request.username.trim() || "Editor Pro",
     serverUrl: result.serverUrl,
-    connectedAt: new Date().toISOString(),
+    connectedAt,
     catalog: result.catalog,
     source: "xtream",
     warnings: result.warnings

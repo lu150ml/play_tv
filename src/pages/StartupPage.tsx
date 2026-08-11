@@ -29,17 +29,19 @@ export function StartupPage() {
       }
       try {
         const connection = { ...state.connection, password };
-        const session = await connectServerSession({ ...connection, remember: true });
-        state.activateServerAccount(connection, true);
+        const session = await connectServerSession({ ...connection, remember: true }, {
+          onAuthenticated: (authenticated) => {
+            state.activateServerAccount(connection, true);
+            state.beginCatalogLoad();
+            state.setSessionName(authenticated.displayName);
+            state.setServerUrl(authenticated.serverUrl);
+            const restored = useLibraryStore.getState();
+            if (restored.profiles.length === 1) restored.setActiveProfile(restored.profiles[0].id);
+            if (!cancelled) void navigate(restored.profiles.length === 1 ? "/catalog" : "/profiles", { replace: true });
+          },
+          onSection: (update) => state.setCatalogSection(update.section, update.items, update.status, update.warning)
+        });
         state.setCatalog(session.catalog, session.source);
-        state.setSessionName(session.displayName);
-        state.setServerUrl(session.serverUrl);
-        const restored = useLibraryStore.getState();
-        if (restored.profiles.length === 1) {
-          restored.setActiveProfile(restored.profiles[0].id);
-        }
-        if (!cancelled)
-          void navigate(restored.profiles.length === 1 ? "/catalog" : "/profiles", { replace: true });
       } catch (error) {
         const text =
           error instanceof Error ? error.message : "Nao foi possivel restaurar a conexao.";

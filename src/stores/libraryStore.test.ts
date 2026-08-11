@@ -24,6 +24,25 @@ beforeEach(() => {
 });
 
 describe("libraryStore server accounts", () => {
+  it("merges progressive catalog sections without replacing sections already loaded", () => {
+    const initial = useLibraryStore.getState();
+    const channel = initial.catalog.find((item) => item.type === "channel");
+    const movie = initial.catalog.find((item) => item.type === "movie");
+    expect(channel && movie).toBeDefined();
+    if (!channel || !movie) return;
+    initial.beginCatalogLoad();
+    useLibraryStore.getState().setCatalogSection("live", [channel]);
+    const afterLive = useLibraryStore.getState().catalog;
+    expect(afterLive).toEqual([channel]);
+    expect(useLibraryStore.getState().catalogSections.live.status).toBe("ready");
+    useLibraryStore.getState().setCatalogSection("vod", [movie]);
+    expect(useLibraryStore.getState().catalog).toEqual([channel, movie]);
+    expect(useLibraryStore.getState().catalogSections.series.status).toBe("loading");
+    const beforeDuplicate = useLibraryStore.getState().catalog;
+    useLibraryStore.getState().setCatalogSection("live", [channel]);
+    expect(useLibraryStore.getState().catalog).toBe(beforeDuplicate);
+  });
+
   it("does not recreate a series when artwork and episodes are unchanged", () => {
     const initialSeries = useLibraryStore.getState().catalog.find((item) => item.type === "series");
     expect(initialSeries?.type).toBe("series");

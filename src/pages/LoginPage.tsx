@@ -13,6 +13,8 @@ export function LoginPage() {
   const setSessionName = useLibraryStore((state) => state.setSessionName);
   const setServerUrlInStore = useLibraryStore((state) => state.setServerUrl);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
   const activateServerAccount = useLibraryStore((state) => state.activateServerAccount);
   const [remember, setRemember] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
@@ -30,20 +32,25 @@ export function LoginPage() {
     setIsConnecting(true);
 
     try {
-      const session = await connectServerSession({ serverUrl, username, password, remember });
-      if (remember) await saveRememberedPassword(password);
-      else await clearRememberedPassword();
-      activateServerAccount({ serverUrl, username, password }, remember);
-      setSessionName(session.displayName);
-      setServerUrlInStore(session.serverUrl);
+      const session = await connectServerSession({ serverUrl, username, password, remember }, {
+        onAuthenticated: async (authenticated) => {
+          if (remember) await saveRememberedPassword(password);
+          else await clearRememberedPassword();
+          activateServerAccount({ serverUrl, username, password }, remember);
+          beginCatalogLoad();
+          setSessionName(authenticated.displayName);
+          setServerUrlInStore(authenticated.serverUrl);
+          const account = useLibraryStore.getState();
+          if (account.profiles.length === 1) {
+            account.setActiveProfile(account.profiles[0].id);
+            void navigate("/catalog");
+          } else {
+            void navigate("/profiles");
+          }
+        },
+        onSection: (update) => setCatalogSection(update.section, update.items, update.status, update.warning)
+      });
       setCatalog(session.catalog, session.source);
-      const account = useLibraryStore.getState();
-      if (account.profiles.length === 1) {
-        account.setActiveProfile(account.profiles[0].id);
-        void navigate("/catalog");
-      } else {
-        void navigate("/profiles");
-      }
     } catch (connectionError) {
       setError(
         connectionError instanceof Error

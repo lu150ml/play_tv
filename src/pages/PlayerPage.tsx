@@ -61,6 +61,8 @@ export function PlayerPage() {
     return Number.isFinite(saved) ? Math.min(Math.max(saved, 0), 1) : 1;
   });
   const [muted, setMuted] = useState(false);
+  const [autoplayMuted, setAutoplayMuted] = useState(false);
+  const [audioActivationRequired, setAudioActivationRequired] = useState<"activate" | "continue" | undefined>();
   const [mediaDuration, setMediaDuration] = useState<number | undefined>();
   const [mediaError, setMediaError] = useState<string | undefined>();
   const [areControlsVisible, setAreControlsVisible] = useState(true);
@@ -100,9 +102,11 @@ export function PlayerPage() {
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
+  const handleStreamFailureRef = useRef<() => void>(() => {});
   const compatibilityRequestRef = useRef(false);
   const compatibilitySessionIdRef = useRef<string | undefined>(undefined);
   const transcodeSessionRef = useRef<{ id: string; url: string; ready: boolean } | undefined>(undefined);
+  const hasActivatedAudioRef = useRef(false);
   const connectionKey = connection ? getServerAccountKey(connection) : "";
   const seriesProviderId = series?.providerId;
   const seriesSource = series?.source;
@@ -182,8 +186,13 @@ export function PlayerPage() {
     const video = videoRef.current;
     if (!video) return;
     video.volume = volume;
-    video.muted = muted || volume === 0;
-  }, [activeStreamUrl, muted, volume]);
+    video.muted = muted || autoplayMuted || volume === 0;
+  }, [activeStreamUrl, autoplayMuted, muted, volume]);
+
+  useEffect(() => {
+    setAutoplayMuted(false);
+    setAudioActivationRequired(undefined);
+  }, [activePlaybackId]);
 
   useEffect(() => {
     if (!activeStreamUrl) {
@@ -516,7 +525,7 @@ export function PlayerPage() {
     const isHlsStream = activeStreamUrl.includes(".m3u8");
     const isLiveContent = item?.type === "channel";
 
-    if (isHlsStream && video.canPlayType("application/vnd.apple.mpegurl")) {
+    if (isHlsStream && video.canPlayType("application/vnd.apple.mpegurl") && !getDesktopBridge()?.media) {
       video.src = activeStreamUrl;
       video.load();
     } else if (isHlsStream) {
@@ -561,6 +570,16 @@ export function PlayerPage() {
         });
         hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
           if (data.fatal) {
+            if (
+              isLiveContent &&
+              data.details === HlsPlayer.ErrorDetails.MANIFEST_PARSING_ERROR &&
+              getDesktopBridge()?.media
+            ) {
+              void startCompatibilityTranscodeRef.current();
+              hls?.destroy();
+              hlsRef.current = undefined;
+              return;
+            }
             if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
               if (networkRetryRef.current < 2) {
                 networkRetryRef.current += 1;
@@ -579,6 +598,12 @@ export function PlayerPage() {
               }
             }
 
+            if (isLiveContent && !transcodeSession && getDesktopBridge()?.media) {
+              void startCompatibilityTranscodeRef.current();
+              hls?.destroy();
+              hlsRef.current = undefined;
+              return;
+            }
             if (!transcodeSession && streamAttempt + 1 < streamCandidates.length) {
               setPlaybackMode("fallback");
               setStreamAttempt((attempt) => attempt + 1);
@@ -616,6 +641,26 @@ export function PlayerPage() {
     };
   }, [activeStreamUrl, clearBufferRecovery, item?.type, scheduleBufferRecovery, streamAttempt, streamCandidates.length, transcodeSession]);
 
+  useEffect(() => {
+    if (
+      item?.type !== "channel" ||
+      !activeStreamUrl ||
+      transcodeSession ||
+      isPreparingCompatibleFormat ||
+      !getDesktopBridge()?.media ||
+      activeStreamUrl.includes("/media/transcode/")
+    ) {
+      return undefined;
+    }
+    const startupTimeout = window.setTimeout(() => {
+      const video = videoRef.current;
+      if (video && video.currentTime <= 0.25 && video.readyState < 2) {
+        void startCompatibilityTranscodeRef.current();
+      }
+    }, 5000);
+    return () => window.clearTimeout(startupTimeout);
+  }, [activeStreamUrl, isPreparingCompatibleFormat, item?.type, transcodeSession]);
+
   const activePlaybackRef = useRef(activePlayback);
   useEffect(() => {
     activePlaybackRef.current = activePlayback;
@@ -640,14 +685,22 @@ export function PlayerPage() {
     }
 
     if (isPlaying) {
-      void video.play().catch(() => {
-        if (!video.muted) {
-          video.muted = true;
-          setMuted(true);
-          void video.play().catch(() => {
-            setIsPlaying(false);
-          });
+      void video.play().catch((error: unknown) => {
+        const name = error instanceof DOMException ? error.name : error instanceof Error ? error.name : "";
+        if (name === "AbortError") return;
+        if (name === "NotSupportedError") {
+          handleStreamFailureRef.current();
           return;
+        }
+        if (name === "NotAllowedError" && !getDesktopBridge()) {
+          if (!hasActivatedAudioRef.current) {
+            video.muted = true;
+            setAutoplayMuted(true);
+            setAudioActivationRequired("activate");
+            void video.play().catch(() => setIsPlaying(false));
+            return;
+          }
+          setAudioActivationRequired("continue");
         }
         setIsPlaying(false);
       });
@@ -868,6 +921,28 @@ export function PlayerPage() {
     revealControls();
   }
 
+  function handleActivateAudio() {
+    const video = videoRef.current;
+    hasActivatedAudioRef.current = true;
+    setMuted(false);
+    setAutoplayMuted(false);
+    setAudioActivationRequired(undefined);
+    if (volume === 0) {
+      setVolume(1);
+      localStorage.setItem("server-xtreme-volume", "1");
+    }
+    if (video) {
+      video.muted = false;
+      video.volume = volume === 0 ? 1 : volume;
+      setIsPlaying(true);
+      void video.play().catch(() => {
+        setIsPlaying(false);
+        setAudioActivationRequired("continue");
+      });
+    }
+    revealControls();
+  }
+
   function handleEnded() {
     markWatched(selectedEpisode?.id ?? content.id);
     if (selectedEpisode && !nextEpisode) markWatched(content.id);
@@ -922,6 +997,10 @@ export function PlayerPage() {
 
   function handleStreamFailure() {
     if (!videoRef.current?.currentSrc) return;
+    if (content.type === "channel" && !transcodeSession && getDesktopBridge()?.media) {
+      void startCompatibilityTranscode();
+      return;
+    }
     if (!transcodeSession && streamAttempt + 1 < streamCandidates.length) {
       setPlaybackMode("fallback");
       setStreamAttempt((attempt) => attempt + 1);
@@ -936,6 +1015,7 @@ export function PlayerPage() {
     }
     setMediaError("Nao foi possivel reproduzir este conteudo. O servidor pode estar offline ou o arquivo pode estar corrompido.");
   }
+  handleStreamFailureRef.current = handleStreamFailure;
 
   async function startCompatibilityTranscode() {
     if (!originalStreamUrl || isReleasingPrevious || compatibilityRequestRef.current || transcodeSessionRef.current || completedDownload) return;
@@ -1135,6 +1215,18 @@ export function PlayerPage() {
         >
           {activeStreamUrl ? `Now Playing${activeResolution ? ` · ${activeResolution}` : ""}${playbackMode === "transcoding" ? " · modo compativel" : ""}` : "Preview"}
         </div>
+        {audioActivationRequired ? (
+          <div className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 lg:bottom-32">
+            <button
+              type="button"
+              data-focusable="true"
+              onClick={handleActivateAudio}
+              className="focus-card rounded-lg border border-primary-container/60 bg-primary-container px-5 py-3 font-display text-sm font-bold text-on-primary shadow-glow"
+            >
+              {audioActivationRequired === "activate" ? "Ativar som" : "Continuar com som"}
+            </button>
+          </div>
+        ) : null}
         {mediaError ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-error/40 bg-error-container/70 p-4 text-sm leading-6 text-error backdrop-blur-xl">
             <span>{mediaError}</span>
@@ -1215,14 +1307,26 @@ export function PlayerPage() {
             void handleToggleCaptions();
           }}
           volume={volume}
-          muted={muted}
+          muted={muted || autoplayMuted || volume === 0}
           onToggleMute={() => {
-            setMuted((current) => !current);
+            const willMute = !(muted || autoplayMuted || volume === 0);
+            if (!willMute) {
+              handleActivateAudio();
+              return;
+            }
+            setMuted(true);
+            setAutoplayMuted(false);
+            setAudioActivationRequired(undefined);
           }}
           onVolumeChange={(next) => {
             const normalized = Math.min(Math.max(next, 0), 1);
             setVolume(normalized);
             setMuted(normalized === 0);
+            if (normalized > 0) {
+              hasActivatedAudioRef.current = true;
+              setAutoplayMuted(false);
+              setAudioActivationRequired(undefined);
+            }
             localStorage.setItem("server-xtreme-volume", String(normalized));
           }}
         />

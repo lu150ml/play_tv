@@ -83,13 +83,26 @@ export interface XtreamCatalogResult {
   serverUrl: string;
 }
 
+export type XtreamCatalogSection = "live" | "vod" | "series";
+export interface XtreamCatalogSectionUpdate {
+  section: XtreamCatalogSection;
+  items: ContentItem[];
+  status: "ready" | "error";
+  warning?: string;
+}
+export interface XtreamCatalogLoadOptions {
+  onAuthenticated?: (value: { profile: XtreamProfileResponse; serverUrl: string }) => void | Promise<void>;
+  onSection?: (update: XtreamCatalogSectionUpdate) => void;
+}
+
 const seriesDetailsCache = new Map<string, Promise<XtreamSeriesInfoResponse>>();
 
 // Limite por categoria (não por tipo). Um corte plano em N itens do início da
 // lista descartava categorias inteiras que o servidor retorna no fim (ex.:
 // Comédia, Netflix). Capando por categoria, toda categoria fica representada.
 export async function loadXtreamCatalog(
-  credentials: XtreamCredentials
+  credentials: XtreamCredentials,
+  options: XtreamCatalogLoadOptions = {}
 ): Promise<XtreamCatalogResult> {
   seriesDetailsCache.clear();
   const profile = await requestXtream<XtreamProfileResponse>(credentials);
@@ -99,54 +112,25 @@ export async function loadXtreamCatalog(
     throw new Error(profile.user_info?.message ?? "Server rejected the Xtream credentials.");
   }
 
-  const requests = await Promise.allSettled([
-    requestXtream<XtreamCategory[]>(credentials, "get_live_categories"),
-    requestXtream<XtreamCategory[]>(credentials, "get_vod_categories"),
-    requestXtream<XtreamCategory[]>(credentials, "get_series_categories"),
-    requestXtream<XtreamLiveStream[]>(credentials, "get_live_streams"),
-    requestXtream<XtreamVodStream[]>(credentials, "get_vod_streams"),
-    requestXtream<XtreamSeriesStream[]>(credentials, "get_series")
-  ]);
-  const labels = [
-    "categorias de TV",
-    "categorias de filmes",
-    "categorias de series",
-    "canais",
-    "filmes",
-    "series"
-  ];
-  const warnings = requests.flatMap((result, index) =>
-    result.status === "rejected" ? [`Nao foi possivel carregar ${labels[index]}.`] : []
-  );
-  const value = <T>(index: number): T[] =>
-    requests[index]?.status === "fulfilled" && Array.isArray(requests[index].value)
-      ? (requests[index].value as T[])
-      : [];
-  const liveCategories = value<XtreamCategory>(0);
-  const vodCategories = value<XtreamCategory>(1);
-  const seriesCategories = value<XtreamCategory>(2);
-  const liveStreams = value<XtreamLiveStream>(3);
-  const vodStreams = value<XtreamVodStream>(4);
-  const seriesStreams = value<XtreamSeriesStream>(5);
-
   const canonicalCredentials = {
     ...credentials,
     serverUrl: getCanonicalServerUrl(credentials.serverUrl, profile)
   };
+  await options.onAuthenticated?.({ profile, serverUrl: canonicalCredentials.serverUrl });
 
-  const liveCategoryMap = mapCategories(liveCategories);
-  const vodCategoryMap = mapCategories(vodCategories);
-  const seriesCategoryMap = mapCategories(seriesCategories);
-
-  const liveItems = liveStreams.map((stream) =>
-    mapLiveStream(stream, liveCategoryMap, canonicalCredentials)
-  );
-  const vodItems = vodStreams.map((stream) =>
-    mapVodStream(stream, vodCategoryMap, canonicalCredentials)
-  );
-  const seriesItems = seriesStreams.map((stream) =>
-    mapSeriesStream(stream, seriesCategoryMap, canonicalCredentials)
-  );
+  const sectionTasks = [
+    loadCatalogSection("live", canonicalCredentials),
+    loadCatalogSection("vod", canonicalCredentials),
+    loadCatalogSection("series", canonicalCredentials)
+  ].map((task) => task.then((update) => {
+    options.onSection?.(update);
+    return update;
+  }));
+  const sections = await Promise.all(sectionTasks);
+  const liveItems = sections.find((entry) => entry.section === "live")?.items ?? [];
+  const vodItems = sections.find((entry) => entry.section === "vod")?.items ?? [];
+  const seriesItems = sections.find((entry) => entry.section === "series")?.items ?? [];
+  const warnings = sections.flatMap((entry) => entry.warning ? [entry.warning] : []);
 
   const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
 
@@ -159,6 +143,44 @@ export async function loadXtreamCatalog(
     catalog: catalog.map((item, index) => ({ ...item, isFeatured: index < 6 })),
     warnings,
     serverUrl: canonicalCredentials.serverUrl
+  };
+}
+
+async function loadCatalogSection(
+  section: XtreamCatalogSection,
+  credentials: XtreamCredentials
+): Promise<XtreamCatalogSectionUpdate> {
+  const actions = section === "live"
+    ? ["get_live_categories", "get_live_streams"] as const
+    : section === "vod"
+      ? ["get_vod_categories", "get_vod_streams"] as const
+      : ["get_series_categories", "get_series"] as const;
+  const [categoryResult, itemResult] = await Promise.allSettled([
+    requestXtream<XtreamCategory[]>(credentials, actions[0]),
+    section === "live"
+      ? requestXtream<XtreamLiveStream[]>(credentials, actions[1])
+      : section === "vod"
+        ? requestXtream<XtreamVodStream[]>(credentials, actions[1])
+        : requestXtream<XtreamSeriesStream[]>(credentials, actions[1])
+  ]);
+  const categories = categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value)
+    ? categoryResult.value
+    : [];
+  if (itemResult.status === "rejected" || !Array.isArray(itemResult.value)) {
+    const label = section === "live" ? "canais" : section === "vod" ? "filmes" : "series";
+    return { section, items: [], status: "error", warning: `Nao foi possivel carregar ${label}.` };
+  }
+  const categoryMap = mapCategories(categories);
+  const items = section === "live"
+    ? (itemResult.value as XtreamLiveStream[]).map((item) => mapLiveStream(item, categoryMap, credentials))
+    : section === "vod"
+      ? (itemResult.value as XtreamVodStream[]).map((item) => mapVodStream(item, categoryMap, credentials))
+      : (itemResult.value as XtreamSeriesStream[]).map((item) => mapSeriesStream(item, categoryMap, credentials));
+  return {
+    section,
+    items,
+    status: "ready",
+    warning: categoryResult.status === "rejected" ? "As categorias desta secao nao puderam ser carregadas." : undefined
   };
 }
 

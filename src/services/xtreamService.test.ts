@@ -56,4 +56,28 @@ describe("Xtream category names", () => {
     ]);
     vi.unstubAllGlobals();
   });
+
+  it("emits live channels without waiting for slow VOD and series responses", async () => {
+    const pending = new Map<string, (value: Response) => void>();
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { action?: string };
+      const action = body.action ?? "profile";
+      if (action === "profile") return Promise.resolve(new Response(JSON.stringify({ user_info: { auth: 1 } }), { status: 200 }));
+      if (action.endsWith("_categories")) return Promise.resolve(new Response("[]", { status: 200 }));
+      return new Promise<Response>((resolve) => pending.set(action, resolve));
+    }));
+    const updates: string[] = [];
+    const load = loadXtreamCatalog(
+      { serverUrl: "https://progressive.example", username: "viewer", password: "secret" },
+      { onSection: (update) => updates.push(update.section) }
+    );
+    await vi.waitFor(() => expect(pending.has("get_live_streams")).toBe(true));
+    pending.get("get_live_streams")?.(new Response(JSON.stringify([{ stream_id: 7, name: "News" }]), { status: 200 }));
+    await vi.waitFor(() => expect(updates).toEqual(["live"]));
+    pending.get("get_vod_streams")?.(new Response("[]", { status: 200 }));
+    pending.get("get_series")?.(new Response("[]", { status: 200 }));
+    await load;
+    expect(updates).toEqual(["live", "vod", "series"]);
+    vi.unstubAllGlobals();
+  });
 });

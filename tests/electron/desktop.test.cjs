@@ -99,33 +99,31 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
   }
 });
 
-test("desktop plays a 24h live channel without probing before playback", { timeout: 90000 }, async () => {
+test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream", { timeout: 90000 }, async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-electron-live-"));
-  const hlsDirectory = path.join(temporaryDirectory, "hls");
-  fs.mkdirSync(hlsDirectory, { recursive: true });
+  const transportPath = path.join(temporaryDirectory, "stream.ts");
   execFileSync(ffmpegPath, [
     "-hide_banner", "-loglevel", "error", "-y",
-    "-f", "lavfi", "-i", "testsrc=size=320x180:rate=24:duration=4",
-    "-f", "lavfi", "-i", "sine=frequency=660:duration=4",
+    "-f", "lavfi", "-i", "testsrc=size=320x180:rate=24:duration=12",
+    "-f", "lavfi", "-i", "sine=frequency=660:duration=12",
     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "96k", "-shortest",
-    "-f", "hls", "-hls_time", "1", "-hls_list_size", "0",
-    "-hls_segment_filename", path.join(hlsDirectory, "segment-%03d.ts"),
-    path.join(hlsDirectory, "index.m3u8")
+    "-f", "mpegts", transportPath
   ], { windowsHide: true });
 
   const server = http.createServer((request, response) => {
-    const requestPath = request.url === "/" ? "/index.m3u8" : request.url;
-    const filePath = path.join(hlsDirectory, path.basename(requestPath));
-    if (!fs.existsSync(filePath)) {
-      response.writeHead(404, { "content-type": "text/plain" });
-      response.end("missing");
+    if (request.url === "/index.m3u8" || request.url === "/index.ts") {
+      response.writeHead(302, { location: "/stream.ts" });
+      response.end();
       return;
     }
-    response.writeHead(200, {
-      "content-type": requestPath.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t"
-    });
-    fs.createReadStream(filePath).pipe(response);
+    if (request.url === "/stream.ts") {
+      response.writeHead(200, { "content-type": "video/mp2t" });
+      fs.createReadStream(transportPath).pipe(response);
+      return;
+    }
+    response.writeHead(404, { "content-type": "text/plain" });
+    response.end("missing");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
@@ -200,13 +198,27 @@ test("desktop plays a 24h live channel without probing before playback", { timeo
     const video = window.locator("video");
     await video.waitFor({ state: "attached", timeout: 10000 });
     await video.evaluate((element) => element.play().catch(() => undefined));
-    await window.waitForFunction(() => {
-      const element = document.querySelector("video");
-      return Boolean(element && element.currentTime > 0.25 && element.readyState >= 2);
-    }, undefined, { timeout: 30000 });
+    try {
+      await window.waitForFunction(() => {
+        const element = document.querySelector("video");
+        return Boolean(element && element.currentTime > 0.25 && element.readyState >= 2);
+      }, undefined, { timeout: 45000 });
+    } catch (error) {
+      const diagnostic = await window.evaluate(() => {
+        const element = document.querySelector("video");
+        return {
+          currentTime: element?.currentTime,
+          readyState: element?.readyState,
+          currentSrc: element?.currentSrc?.replace(/\/media\/transcode\/[a-f0-9]+/, "/media/transcode/[id]"),
+          text: document.body.innerText.slice(0, 800)
+        };
+      });
+      throw new Error(`${error.message}\n${JSON.stringify(diagnostic)}`);
+    }
     const playback = await video.evaluate((element) => ({ currentTime: element.currentTime, readyState: element.readyState }));
     assert.ok(playback.currentTime > 0.25);
     assert.ok(playback.readyState >= 2);
+    assert.equal(await video.evaluate((element) => element.muted), false);
     const probeCalls = await window.evaluate(() => window.__probeCalls);
     assert.equal(probeCalls, 0);
   } finally {

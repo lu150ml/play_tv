@@ -266,6 +266,43 @@ test("connects to catalog and opens a title", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
 });
 
+test("does not mute playback when play is aborted by a source change", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("Source changed", "AbortError"))
+    });
+  });
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  const video = page.locator("video");
+  await expect(video).toBeVisible();
+  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).muted)).toBe(false);
+  await expect(page.getByRole("button", { name: "Ativar som" })).toHaveCount(0);
+});
+
+test("offers a one-click audio activation when browser autoplay is blocked", async ({ page }) => {
+  await page.addInitScript(() => {
+    let attempts = 0;
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: function (this: HTMLMediaElement) {
+        attempts += 1;
+        if (attempts === 1) return Promise.reject(new DOMException("Blocked", "NotAllowedError"));
+        this.dispatchEvent(new Event("play", { bubbles: true }));
+        return Promise.resolve();
+      }
+    });
+  });
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  const activate = page.locator("button").filter({ hasText: /^Ativar som$/ });
+  await expect(activate).toBeVisible();
+  await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).muted)).toBe(true);
+  await activate.click();
+  await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).muted)).toBe(false);
+});
+
 test("does not probe 24h live channels while browsing Electron catalog", async ({ page }) => {
   await mockElectronBridge(page);
   await connectToCatalog(page);
@@ -486,6 +523,7 @@ test("shows a bounded series error and retries without a loading loop", async ({
 });
 
 test("jumps to the next episode from player controls", async ({ page }) => {
+  await mockMediaPlay(page);
   await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
@@ -497,6 +535,7 @@ test("jumps to the next episode from player controls", async ({ page }) => {
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3002$/);
   await expect(page.getByRole("button", { name: /^S1 E2 / })).toHaveAttribute("aria-pressed", "true");
   await expectSeriesPlayerFocused(page);
+  await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).muted)).toBe(false);
   expect(seriesInfoRequests).toBe(1);
 });
 
