@@ -23,11 +23,27 @@ export function LoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const submittedServerUrl = readFormText(formData, "serverUrl", serverUrl);
+    const submittedUsername = readFormText(formData, "username", username);
+    const submittedPassword = readFormText(formData, "password", password);
+
+    // Alguns teclados e gerenciadores de senha do Android alteram o valor
+    // visível sem disparar o evento que atualiza o estado do React. Sincronizar
+    // com FormData evita enviar campos vazios e preserva tudo em caso de erro.
+    setServerUrl(submittedServerUrl);
+    setUsername(submittedUsername);
+    setPassword(submittedPassword);
     setError(undefined);
     setIsConnecting(true);
 
     try {
-      const session = await connectServerSession({ serverUrl, username, password, remember });
+      const session = await connectServerSession({
+        serverUrl: submittedServerUrl,
+        username: submittedUsername,
+        password: submittedPassword,
+        remember
+      });
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
       const connection = session.connection;
@@ -71,6 +87,7 @@ export function LoginPage() {
 
         <div className="space-y-5">
           <InputField
+            name="serverUrl"
             label="Server URL"
             value={serverUrl}
             onChange={setServerUrl}
@@ -78,6 +95,7 @@ export function LoginPage() {
             icon={<LinkIcon aria-hidden="true" size={20} />}
           />
           <InputField
+            name="username"
             label="Username"
             value={username}
             onChange={setUsername}
@@ -85,6 +103,7 @@ export function LoginPage() {
             icon={<UserRound aria-hidden="true" size={20} />}
           />
           <InputField
+            name="password"
             label="Password"
             value={password}
             onChange={setPassword}
@@ -147,7 +166,13 @@ export function LoginPage() {
   );
 }
 
+function readFormText(formData: FormData, name: string, fallback: string): string {
+  const value = formData.get(name);
+  return typeof value === "string" ? value : fallback;
+}
+
 interface InputFieldProps {
+  name: "serverUrl" | "username" | "password";
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -156,7 +181,7 @@ interface InputFieldProps {
   placeholder?: string;
 }
 
-function InputField({ label, value, onChange, icon, type = "text", placeholder }: InputFieldProps) {
+function InputField({ name, label, value, onChange, icon, type = "text", placeholder }: InputFieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block font-mono text-xs uppercase tracking-normal text-on-surface-variant">
@@ -166,7 +191,9 @@ function InputField({ label, value, onChange, icon, type = "text", placeholder }
         {icon}
         <input
           data-focusable="true"
+          name={name}
           type={type}
+          autoComplete={name === "password" ? "current-password" : name === "username" ? "username" : "url"}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}

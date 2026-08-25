@@ -105,7 +105,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Play TV
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.1.1</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.1.2</p>
           </div>
         </div>
 

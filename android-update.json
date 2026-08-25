@@ -1,7 +1,7 @@
 {
-    "versionCode":  3,
-    "versionName":  "1.1.1",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.1.1-release.apk",
-    "sha256":  "41C35112DE113818B00681C89713F853EBA44CD74B4E9E2C78308FF4DA15A442",
-    "releaseNotes":  "Correção do login ao copiar e colar, limpeza de caracteres invisíveis e diagnóstico mais preciso da conexão Xtream."
+    "versionCode":  4,
+    "versionName":  "1.1.2",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.1.2-release.apk",
+    "sha256":  "E1406A1088BEF43592B71F10336323F8877BFDABD9130415ACE1221FA821E4EE",
+    "releaseNotes":  "Corrige o formulário Android que enviava campos vazios após preenchimento automático ou colagem e mantém os dados quando o login falha."
 }
