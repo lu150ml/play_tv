@@ -4,6 +4,8 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { connectServerSession } from "../services/sessionService";
+import { getCatalog } from "../services/catalogService";
+import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
 export function LoginPage() {
@@ -28,7 +30,13 @@ export function LoginPage() {
       const session = await connectServerSession({ serverUrl, username, password, remember });
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
-      setConnection(remember ? { serverUrl, username, password } : undefined);
+      const connection = { serverUrl: serverUrl.trim(), username, password };
+      setConnection(connection);
+      if (remember) {
+        await credentialVault.save(connection);
+      } else {
+        await credentialVault.clear();
+      }
       setCatalog(session.catalog, session.source);
       void navigate("/profiles");
     } catch (connectionError) {
@@ -54,8 +62,8 @@ export function LoginPage() {
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
             <Server aria-hidden="true" size={34} />
           </div>
-          <h1 className="font-display text-3xl font-bold text-primary">Server Xtreme</h1>
-          <p className="mt-2 text-on-surface-variant">Secure connection gateway</p>
+          <h1 className="font-display text-3xl font-bold text-primary">Play TV</h1>
+          <p className="mt-2 text-on-surface-variant">Play TV · conexão Xtream</p>
         </header>
 
         <div className="space-y-5">
@@ -89,6 +97,12 @@ export function LoginPage() {
           </div>
         ) : null}
 
+        {serverUrl.trim().toLowerCase().startsWith("http://") ? (
+          <div className="mt-5 rounded-lg border border-tertiary-container/40 bg-tertiary-container/10 px-4 py-3 text-sm leading-6 text-tertiary">
+            Este servidor usa HTTP. Usuário, senha e conteúdo podem trafegar sem criptografia.
+          </div>
+        ) : null}
+
         <div className="my-6 flex items-center justify-between gap-4">
           <label className="flex items-center gap-3 text-sm text-on-surface-variant">
             <input
@@ -111,6 +125,19 @@ export function LoginPage() {
         >
           {isConnecting ? "Connecting..." : "Connect"}
           <ArrowRight aria-hidden="true" size={24} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setConnection(undefined);
+            setCatalog(getCatalog(), "mock");
+            setSessionName("Demonstração");
+            void navigate("/profiles");
+          }}
+          className="focus-card mt-3 flex min-h-12 w-full items-center justify-center rounded-lg border border-white/10 bg-surface-container px-6 py-3 font-semibold text-on-surface-variant"
+        >
+          Explorar demonstração
         </button>
       </form>
     </main>

@@ -18,6 +18,8 @@ export function SeriesPage() {
   const { seriesId } = useParams();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
+  const catalogSource = useLibraryStore((state) => state.catalogSource);
+  const catalogStatus = useLibraryStore((state) => state.catalogStatus);
   const playback = useLibraryStore((state) => state.playback);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
@@ -81,6 +83,9 @@ export function SeriesPage() {
   const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
 
   if (!item) {
+    if (catalogSource === "xtream" && catalogStatus !== "error") {
+      return <CatalogRestoreMessage />;
+    }
     return <Navigate to="/catalog/series" replace />;
   }
 
@@ -197,6 +202,16 @@ export function SeriesPage() {
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+function CatalogRestoreMessage() {
+  return (
+    <div className="flex min-h-[60dvh] items-center justify-center">
+      <p className="rounded-xl border border-white/10 bg-surface-container px-5 py-4 text-on-surface-variant">
+        Recarregando catálogo e episódios...
+      </p>
     </div>
   );
 }

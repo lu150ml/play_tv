@@ -54,7 +54,7 @@ export function ProfilesPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
           <MonitorPlay aria-hidden="true" size={22} />
         </div>
-        <p className="font-display text-xl font-bold text-primary">Server Xtreme</p>
+        <p className="font-display text-xl font-bold text-primary">Play TV</p>
       </div>
       <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">{sessionName}</p>
       <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">

@@ -1,10 +1,12 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Heart, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
+import { isNativeAndroid } from "../platform/platformInfo";
+import { playerGateway } from "../platform/playerGateway";
 import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
 import {
@@ -13,7 +15,7 @@ import {
   savePlaybackProgress
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
-import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
+import { cleanTitle, getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
@@ -23,6 +25,8 @@ export function PlayerPage() {
   const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
+  const catalogSource = useLibraryStore((state) => state.catalogSource);
+  const catalogStatus = useLibraryStore((state) => state.catalogStatus);
   const routeContentId = seriesId ?? contentId;
   const item = routeContentId ? getContentById(routeContentId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
@@ -49,6 +53,10 @@ export function PlayerPage() {
   const [subtitleError, setSubtitleError] = useState<string | undefined>();
   const [subtitleUrl, setSubtitleUrl] = useState<string | undefined>();
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
+  const [nativeLaunchToken, setNativeLaunchToken] = useState(0);
+  const [nativePlayerState, setNativePlayerState] = useState<"idle" | "opening" | "error">(
+    "idle"
+  );
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
@@ -84,6 +92,7 @@ export function PlayerPage() {
     : seriesEpisodes;
   const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+  const nativeLaunchKeyRef = useRef<string | undefined>(undefined);
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -371,7 +380,94 @@ export function PlayerPage() {
     return () => window.clearTimeout(timeoutId);
   }, [isPlaying, lastInteractionAt, mediaError]);
 
+  useEffect(() => {
+    if (!isNativeAndroid() || !item || !activeStreamUrl || (series && !selectedEpisode)) {
+      return;
+    }
+
+    const playbackId = selectedEpisode?.id ?? item.id;
+    const launchKey = `${playbackId}:${nativeLaunchToken}`;
+    if (nativeLaunchKeyRef.current === launchKey) return;
+    nativeLaunchKeyRef.current = launchKey;
+    setNativePlayerState("opening");
+    setMediaError(undefined);
+
+    const currentIndex = selectedEpisode
+      ? seriesEpisodes.findIndex((episode) => episode.id === selectedEpisode.id)
+      : -1;
+    const nextEpisodes = currentIndex >= 0
+      ? seriesEpisodes.slice(currentIndex + 1).map((episode) => ({
+          contentId: episode.id,
+          title: episode.title,
+          streamUrl: episode.streamUrl ?? "",
+          kind: "episode" as const,
+          startPositionMs: (playback[episode.id]?.positionSeconds ?? 0) * 1000
+        })).filter((episode) => episode.streamUrl.length > 0)
+      : undefined;
+
+    void playerGateway.open({
+      contentId: playbackId,
+      title: selectedEpisode?.title ?? item.title,
+      streamUrl: activeStreamUrl,
+      kind: item.type === "channel" ? "live" : selectedEpisode ? "episode" : "movie",
+      startPositionMs: (playback[playbackId]?.positionSeconds ?? 0) * 1000,
+      posterUrl: item.imageUrl,
+      nextEpisodes,
+      subtitleQuery: item.type === "channel" ? undefined : {
+        title: cleanTitle(item.title),
+        season: selectedEpisode?.season,
+        episode: selectedEpisode?.episode
+      },
+      subtitleApiBaseUrl: import.meta.env.VITE_SUBTITLE_API_BASE_URL
+    }).then((result) => {
+      for (const entry of result.progress ?? [result]) {
+        if (entry.durationMs <= 0) continue;
+        storeProgress(savePlaybackProgress({
+          contentId: entry.contentId,
+          positionSeconds: Math.floor(entry.positionMs / 1000),
+          durationSeconds: Math.floor(entry.durationMs / 1000)
+        }));
+      }
+
+      if (selectedEpisode && result.durationMs > 0) {
+        storeProgress(savePlaybackProgress({
+          contentId: item.id,
+          positionSeconds: Math.floor(result.positionMs / 1000),
+          durationSeconds: Math.floor(result.durationMs / 1000)
+        }));
+      }
+
+      if (result.reason === "error") {
+        setNativePlayerState("error");
+        setMediaError("Não foi possível reproduzir esta mídia neste aparelho.");
+        return;
+      }
+
+      void navigate(series ? `/series/${series.id}` : "/catalog", { replace: true });
+    }).catch(() => {
+      setNativePlayerState("error");
+      setMediaError("Não foi possível abrir o player nativo.");
+    });
+  }, [
+    activeStreamUrl,
+    item,
+    nativeLaunchToken,
+    navigate,
+    playback,
+    selectedEpisode,
+    series,
+    seriesEpisodes,
+    storeProgress
+  ]);
+
   if (!item) {
+    if (catalogSource === "xtream" && catalogStatus !== "error") {
+      return (
+        <div className="flex min-h-[60dvh] items-center justify-center text-on-surface-variant">
+          Recarregando catálogo...
+        </div>
+      );
+    }
     return <Navigate to="/catalog" replace />;
   }
 
@@ -380,6 +476,33 @@ export function PlayerPage() {
   }
 
   const content = item;
+
+  if (isNativeAndroid()) {
+    return (
+      <div className="mx-auto flex min-h-[70dvh] max-w-lg flex-col items-center justify-center px-4 text-center">
+        <div className="glass-panel w-full rounded-2xl p-8">
+          <h1 className="font-display text-2xl font-bold text-on-surface">{content.title}</h1>
+          <p className="mt-3 text-on-surface-variant">
+            {nativePlayerState === "error"
+              ? mediaError
+              : "Abrindo o player em tela cheia..."}
+          </p>
+          {nativePlayerState === "error" ? (
+            <button
+              type="button"
+              onClick={() => {
+                nativeLaunchKeyRef.current = undefined;
+                setNativeLaunchToken((value) => value + 1);
+              }}
+              className="focus-card mx-auto mt-6 flex min-h-12 items-center gap-2 rounded-xl bg-primary px-6 py-3 font-bold text-on-primary"
+            >
+              <Play size={20} /> Tentar novamente
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   function handleSeek(nextPosition: number) {
     if (videoRef.current && canSeek) {
@@ -789,12 +912,6 @@ export function PlayerPage() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <ActionButton label="Add to list">
-              <Plus aria-hidden="true" size={20} />
-            </ActionButton>
-            <ActionButton label="Share">
-              <Share2 aria-hidden="true" size={20} />
-            </ActionButton>
             <button
               type="button"
               data-focusable="true"
@@ -881,24 +998,6 @@ export function PlayerPage() {
 
       <CatalogRail title="Up Next" items={related} />
     </div>
-  );
-}
-
-interface ActionButtonProps {
-  label: string;
-  children: React.ReactNode;
-}
-
-function ActionButton({ label, children }: ActionButtonProps) {
-  return (
-    <button
-      type="button"
-      data-focusable="true"
-      className="focus-card flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"
-    >
-      {children}
-      {label}
-    </button>
   );
 }
 

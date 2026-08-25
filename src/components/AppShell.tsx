@@ -1,11 +1,9 @@
 import {
   Clapperboard,
-  Download,
   Film,
   Home,
   MonitorPlay,
   Search,
-  Settings,
   Tv,
   UserRound
 } from "lucide-react";
@@ -14,6 +12,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
+import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
 const navItems = [
@@ -22,9 +21,12 @@ const navItems = [
   { label: "TV", path: "/catalog/tv", icon: Tv },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search },
-  { label: "Downloads", path: "/catalog", icon: Download }
+  { label: "Search", path: "/catalog?search=open", icon: Search }
 ];
+
+const mobileNavItems = navItems.filter((item) =>
+  ["Home", "TV", "Filmes", "Séries", "Search"].includes(item.label)
+);
 
 export function AppShell() {
   const sessionName = useLibraryStore((state) => state.sessionName);
@@ -34,6 +36,8 @@ export function AppShell() {
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
+  const setConnection = useLibraryStore((state) => state.setConnection);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
@@ -43,6 +47,20 @@ export function AppShell() {
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
   // do servidor uma única vez.
   const isRefetchingRef = useRef(false);
+  const hasLoadedVaultRef = useRef(false);
+  useEffect(() => {
+    if (connection || hasLoadedVaultRef.current) return;
+    hasLoadedVaultRef.current = true;
+    if (catalogSource === "xtream") setCatalogStatus("loading");
+    void credentialVault.load().then((saved) => {
+      if (saved) {
+        setConnection(saved);
+      } else if (catalogSource === "xtream") {
+        setCatalogStatus("error");
+      }
+    });
+  }, [catalogSource, connection, setCatalogStatus, setConnection]);
+
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
 
@@ -56,17 +74,19 @@ export function AppShell() {
     }
 
     isRefetchingRef.current = true;
+    setCatalogStatus("loading");
     void connectServerSession({ ...connection, remember: true })
       .then((session) => {
         setCatalog(session.catalog, session.source);
       })
       .catch(() => {
         // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
+        setCatalogStatus("error");
       })
       .finally(() => {
         isRefetchingRef.current = false;
       });
-  }, [catalog, catalogSource, connection, setCatalog]);
+  }, [catalog, catalogSource, connection, setCatalog, setCatalogStatus]);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -76,16 +96,16 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
+      <aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
         <div className="mb-8 flex items-center gap-4 px-3">
           <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary-container/50 bg-primary-container/10 text-primary shadow-glow">
             <MonitorPlay aria-hidden="true" size={28} />
           </div>
-          <div>
+          <div className="brand-copy">
             <p className="font-display text-xl font-bold tracking-normal text-primary">
-              Server Xtreme
+              Play TV
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.1.0</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.0</p>
           </div>
         </div>
 
@@ -107,7 +127,7 @@ export function AppShell() {
                 ].join(" ")}
               >
                 <item.icon aria-hidden="true" size={20} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
               </Link>
             );
           })}
@@ -132,7 +152,7 @@ export function AppShell() {
               >
                 {activeProfile.name.charAt(0).toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="profile-copy min-w-0 flex-1">
                 <p className="truncate font-semibold text-on-surface">{activeProfile.name}</p>
                 <p className="font-mono text-[10px] uppercase text-primary-container">
                   Trocar perfil
@@ -153,8 +173,8 @@ export function AppShell() {
         </div>
       </aside>
 
-      <header className="fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
-        <p className="font-display text-xl font-bold text-primary lg:text-2xl">Server Xtreme</p>
+      <header className="app-header fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
+        <p className="font-display text-xl font-bold text-primary lg:text-2xl">Play TV</p>
         <div className="flex items-center gap-2">
           {activeProfile ? (
             <button
@@ -173,23 +193,15 @@ export function AppShell() {
               {activeProfile.name}
             </button>
           ) : null}
-          <button
-            type="button"
-            data-focusable="true"
-            className="focus-card flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-surface-container text-on-surface-variant"
-            aria-label="Open settings"
-          >
-            <Settings aria-hidden="true" size={20} />
-          </button>
         </div>
       </header>
 
-      <main className="min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
+      <main className="app-content min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
-        {navItems.slice(0, 4).map((item) => {
+      <nav className="app-bottom-nav fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
+        {mobileNavItems.map((item) => {
           const isActive = isNavItemActive(item.path, currentPath);
 
           return (
@@ -210,26 +222,6 @@ export function AppShell() {
             </Link>
           );
         })}
-        {/* Profile button in mobile nav */}
-        <button
-          type="button"
-          onClick={handleSwitchProfile}
-          className="focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border border-transparent text-[11px] font-semibold text-on-surface-variant"
-        >
-          {activeProfile ? (
-            <div
-              className={[
-                "flex h-5 w-5 items-center justify-center rounded-full font-display text-[10px] font-bold text-white",
-                activeProfile.avatarColor
-              ].join(" ")}
-            >
-              {activeProfile.name.charAt(0).toUpperCase()}
-            </div>
-          ) : (
-            <UserRound size={19} />
-          )}
-          Perfil
-        </button>
       </nav>
     </div>
   );

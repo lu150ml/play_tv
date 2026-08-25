@@ -2,6 +2,9 @@
 
 Player IPTV com interface estilo streaming para servidores compatíveis com **Xtream Codes**. Conecta ao seu servidor, baixa o catálogo completo (TV ao vivo, filmes e séries) e oferece navegação por categorias, perfis de usuário e progresso de reprodução persistido localmente.
 
+Também inclui uma versão Android para celular, tablet e Android TV, empacotada
+com Capacitor e com reprodução nativa por Media3.
+
 ---
 
 ## Funcionalidades
@@ -16,6 +19,8 @@ Player IPTV com interface estilo streaming para servidores compatíveis com **Xt
 - **Recomendações personalizadas** — sugere conteúdo com base no que foi assistido por perfil
 - **Página de detalhes de série** — temporadas, lista de episódios e navegação direta para cada um
 - **Navegação por controle remoto** — suporte a teclado e navegação direcional para uso em TV
+- **Android 7+** — APK para mobile e Android TV, credenciais protegidas pelo Android Keystore
+- **Player Android nativo** — Media3 para HLS, MP4, áudio focus, retomada e legendas WebVTT
 
 ---
 
@@ -74,7 +79,13 @@ npm run build        # Build de produção (type-check + Vite)
 npm run lint         # ESLint
 npm run test         # Testes unitários (Vitest)
 npm run test:e2e     # Testes E2E (Playwright)
+npm run android:apk:debug    # Gera APK Android de teste
+npm run android:apk:release  # Gera APK Android assinado
+npm run subtitles:serve      # Executa a API separada de legendas
 ```
+
+Consulte [docs/android.md](docs/android.md) para preparar o SDK, configurar a
+assinatura, instalar o APK e hospedar o serviço de legendas.
 
 ---
 

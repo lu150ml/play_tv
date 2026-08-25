@@ -1,4 +1,6 @@
 import type { ContentItem, Episode, Quality } from "../types/catalog";
+import { httpClient } from "../platform/httpClient";
+import { isNativeAndroid } from "../platform/platformInfo";
 
 export interface XtreamCredentials {
   serverUrl: string;
@@ -184,28 +186,48 @@ async function requestXtream<T>(
   action?: string,
   params: Record<string, string> = {}
 ): Promise<T> {
+  const url = buildXtreamRequestUrl(credentials, action, params, isNativeAndroid());
+
+  try {
+    const response = await httpClient.get<T>(url);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`status ${response.status}`);
+    }
+
+    return response.data;
+  } catch {
+    throw new Error(
+      "Nao foi possivel consultar o servidor Xtream. Verifique o endereco, a rede e as credenciais."
+    );
+  }
+}
+
+export function buildXtreamRequestUrl(
+  credentials: XtreamCredentials,
+  action?: string,
+  params: Record<string, string> = {},
+  native = false
+): string {
+  if (native) {
+    const target = new URL(normalizeServerUrl(credentials.serverUrl));
+    if (!target.pathname.endsWith("/player_api.php")) {
+      target.pathname = `${target.pathname.replace(/\/$/, "")}/player_api.php`;
+    }
+    target.searchParams.set("username", credentials.username);
+    target.searchParams.set("password", credentials.password);
+    if (action) target.searchParams.set("action", action);
+    for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
+    return target.toString();
+  }
+
   const query = new URLSearchParams({
     serverUrl: credentials.serverUrl,
     username: credentials.username,
     password: credentials.password
   });
-
-  if (action) {
-    query.set("action", action);
-  }
-
-  for (const [key, value] of Object.entries(params)) {
-    query.set(key, value);
-  }
-
-  const response = await fetch(`/api/xtream?${query.toString()}`);
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Xtream request failed with status ${response.status}.`);
-  }
-
-  return (await response.json()) as T;
+  if (action) query.set("action", action);
+  for (const [key, value] of Object.entries(params)) query.set(key, value);
+  return `/api/xtream?${query.toString()}`;
 }
 
 // "FILMES | DRAMA" → "Drama", "CANAIS | ESPN" → "ESPN", "SÉRIES | NETFLIX" → "Netflix"

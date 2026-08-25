@@ -4,9 +4,7 @@ import {
   Pause,
   Play,
   RotateCcw,
-  Settings,
   SkipForward,
-  Volume2
 } from "lucide-react";
 
 import { formatPlaybackTime } from "../utils/format";
@@ -94,9 +92,6 @@ export function PlayerControls({
               <SkipForward aria-hidden="true" size={20} />
             </IconButton>
           ) : null}
-          <IconButton label="Volume" onClick={() => undefined}>
-            <Volume2 aria-hidden="true" size={20} />
-          </IconButton>
         </div>
 
         <div className="flex items-center gap-3">
@@ -113,9 +108,6 @@ export function PlayerControls({
             onClick={onToggleCaptions ?? (() => undefined)}
           >
             <Captions aria-hidden="true" size={20} />
-          </IconButton>
-          <IconButton label="Player settings" onClick={() => undefined}>
-            <Settings aria-hidden="true" size={20} />
           </IconButton>
           <IconButton label="Fullscreen" onClick={onFullscreen}>
             <Expand aria-hidden="true" size={20} />

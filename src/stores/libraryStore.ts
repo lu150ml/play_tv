@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
+import { platformStorage } from "../platform/storageAdapter";
 import type { ContentItem, PlaybackState, Profile } from "../types/catalog";
 
 export interface XtreamConnection {
@@ -18,6 +19,7 @@ interface ProfileData {
 interface LibraryState {
   catalog: ContentItem[];
   catalogSource: "mock" | "xtream";
+  catalogStatus: "ready" | "loading" | "error";
   connection?: XtreamConnection;
   // Active profile state (swapped on profile switch)
   favorites: string[];
@@ -34,6 +36,7 @@ interface LibraryState {
   saveProgress: (state: PlaybackState) => void;
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
+  setCatalogStatus: (status: LibraryState["catalogStatus"]) => void;
   setConnection: (connection?: XtreamConnection) => void;
   setSessionName: (name: string) => void;
   setServerUrl: (serverUrl: string) => void;
@@ -57,6 +60,7 @@ export const useLibraryStore = create<LibraryState>()(
     (set, get) => ({
       catalog: mockCatalog,
       catalogSource: "mock",
+      catalogStatus: "ready",
       favorites: [],
       playback: {},
       profiles: [],
@@ -92,7 +96,8 @@ export const useLibraryStore = create<LibraryState>()(
         });
       },
 
-      setCatalog: (catalog, source) => set({ catalog, catalogSource: source }),
+      setCatalog: (catalog, source) => set({ catalog, catalogSource: source, catalogStatus: "ready" }),
+      setCatalogStatus: (catalogStatus) => set({ catalogStatus }),
       setConnection: (connection) => set({ connection }),
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
@@ -159,12 +164,14 @@ export const useLibraryStore = create<LibraryState>()(
     }),
     {
       name: "server-xtreme-library",
+      version: 1,
+      storage: createJSONStorage(() => platformStorage),
+      migrate: (persistedState) => persistedState as LibraryState,
       // O catálogo NÃO é persistido: pode passar de dezenas de milhares de itens
       // e estourar a cota (~5MB) do localStorage. É recarregado do servidor no
       // boot via AppShell quando há uma conexão salva (catalogSource === "xtream").
       partialize: (state) => ({
         catalogSource: state.catalogSource,
-        connection: state.connection,
         favorites: state.favorites,
         playback: state.playback,
         profiles: state.profiles,
