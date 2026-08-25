@@ -9,7 +9,7 @@ export interface XtreamCredentials {
 }
 
 interface XtreamUserInfo {
-  auth?: number | string;
+  auth?: number | string | boolean;
   status?: string;
   message?: string;
 }
@@ -110,15 +110,18 @@ function capPerCategory<T extends { category_id?: string | number }>(
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
-  const normalizedCredentials = {
-    ...credentials,
-    serverUrl: normalizeServerUrl(credentials.serverUrl)
-  };
+  const normalizedCredentials = normalizeXtreamCredentials(credentials);
   const profile = await requestXtream<XtreamProfileResponse>(normalizedCredentials);
-  const auth = profile.user_info?.auth;
-
-  if (auth !== 1 && auth !== "1") {
-    throw new Error(profile.user_info?.message ?? "Server rejected the Xtream credentials.");
+  if (!profile || typeof profile !== "object" || Array.isArray(profile) || !profile.user_info) {
+    throw new Error(
+      "O endereço respondeu, mas não parece ser uma API Xtream válida (player_api.php)."
+    );
+  }
+  if (!isXtreamAuthenticated(profile.user_info)) {
+    throw new Error(
+      profile.user_info?.message?.trim() ||
+        "Usuário ou senha recusados pelo servidor. Confira os dados da assinatura."
+    );
   }
 
   const requests = await Promise.allSettled([
@@ -156,7 +159,11 @@ export async function loadXtreamCatalog(
   const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
 
   if (catalog.length === 0) {
-    throw new Error("Connection worked, but the server returned an empty catalog.");
+    const streamFailure = requests.slice(3).find((request) => request.status === "rejected");
+    if (streamFailure?.status === "rejected" && streamFailure.reason instanceof Error) {
+      throw streamFailure.reason;
+    }
+    throw new Error("A conexão funcionou, mas o servidor retornou um catálogo vazio.");
   }
 
   return {
@@ -169,9 +176,12 @@ export async function loadXtreamSeriesEpisodes(
   credentials: XtreamCredentials,
   seriesId: string
 ): Promise<Episode[]> {
-  const response = await requestXtream<XtreamSeriesInfoResponse>(credentials, "get_series_info", {
-    series_id: seriesId
-  });
+  const normalizedCredentials = normalizeXtreamCredentials(credentials);
+  const response = await requestXtream<XtreamSeriesInfoResponse>(
+    normalizedCredentials,
+    "get_series_info",
+    { series_id: seriesId }
+  );
 
   return Object.entries(response.episodes ?? {}).flatMap(([seasonKey, episodes]) =>
     episodes.map((episode, index) => {
@@ -187,7 +197,7 @@ export async function loadXtreamSeriesEpisodes(
         episode: episodeNumber,
         durationSeconds: parseNumber(episode.info?.duration_secs) ?? 0,
         description: episode.info?.plot || "Episode from the connected IPTV server.",
-        streamUrl: buildStreamUrl(credentials, "series", providerId, extension)
+        streamUrl: buildStreamUrl(normalizedCredentials, "series", providerId, extension)
       };
     })
   );
@@ -218,26 +228,62 @@ export function buildXtreamRequestUrl(
   params: Record<string, string> = {},
   native = false
 ): string {
+  const normalizedCredentials = normalizeXtreamCredentials(credentials);
   if (native) {
-    const target = new URL(normalizeServerUrl(credentials.serverUrl));
+    const target = new URL(normalizedCredentials.serverUrl);
     if (!target.pathname.endsWith("/player_api.php")) {
       target.pathname = `${target.pathname.replace(/\/$/, "")}/player_api.php`;
     }
-    target.searchParams.set("username", credentials.username);
-    target.searchParams.set("password", credentials.password);
+    target.searchParams.set("username", normalizedCredentials.username);
+    target.searchParams.set("password", normalizedCredentials.password);
     if (action) target.searchParams.set("action", action);
     for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
     return target.toString();
   }
 
   const query = new URLSearchParams({
-    serverUrl: credentials.serverUrl,
-    username: credentials.username,
-    password: credentials.password
+    serverUrl: normalizedCredentials.serverUrl,
+    username: normalizedCredentials.username,
+    password: normalizedCredentials.password
   });
   if (action) query.set("action", action);
   for (const [key, value] of Object.entries(params)) query.set(key, value);
   return `/api/xtream?${query.toString()}`;
+}
+
+const INVISIBLE_CLIPBOARD_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/g;
+
+function cleanClipboardValue(value: string): string {
+  return value.replace(INVISIBLE_CLIPBOARD_CHARACTERS, "").trim();
+}
+
+export function normalizeXtreamCredentials(credentials: XtreamCredentials): XtreamCredentials {
+  const rawServerUrl = cleanClipboardValue(credentials.serverUrl).replace(/：/g, ":");
+  if (!rawServerUrl) throw new Error("Informe o endereço do servidor.");
+  const pastedUrl = parseServerUrl(rawServerUrl);
+  const username =
+    cleanClipboardValue(credentials.username) ||
+    cleanClipboardValue(pastedUrl.searchParams.get("username") ?? "");
+  const password =
+    cleanClipboardValue(credentials.password) ||
+    cleanClipboardValue(pastedUrl.searchParams.get("password") ?? "");
+
+  if (!username) throw new Error("Informe o usuário Xtream.");
+  if (!password) throw new Error("Informe a senha Xtream.");
+
+  return {
+    serverUrl: normalizeServerUrl(rawServerUrl),
+    username,
+    password
+  };
+}
+
+export function isXtreamAuthenticated(userInfo?: XtreamUserInfo): boolean {
+  const auth = userInfo?.auth;
+  if (auth === 1 || auth === "1" || auth === true) return true;
+  if (typeof auth === "string" && auth.toLowerCase() === "true") return true;
+
+  return auth == null && userInfo?.status?.trim().toLowerCase() === "active";
 }
 
 // "FILMES | DRAMA" → "Drama", "CANAIS | ESPN" → "ESPN", "SÉRIES | NETFLIX" → "Netflix"
@@ -391,13 +437,7 @@ function normalizeServerUrl(serverUrl: string): string {
     throw new Error("Informe o endereço do servidor.");
   }
 
-  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `http://${input}`;
-  let url: URL;
-  try {
-    url = new URL(withProtocol);
-  } catch {
-    throw new Error("Endereço do servidor inválido. Use host:porta ou http://host:porta.");
-  }
+  const url = parseServerUrl(input);
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("O endereço do servidor deve começar com http:// ou https://.");
@@ -409,6 +449,17 @@ function normalizeServerUrl(serverUrl: string): string {
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function parseServerUrl(serverUrl: string): URL {
+  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(serverUrl)
+    ? serverUrl
+    : `http://${serverUrl}`;
+  try {
+    return new URL(withProtocol);
+  } catch {
+    throw new Error("Endereço do servidor inválido. Use host:porta ou http://host:porta.");
+  }
 }
 
 function describeConnectionError(error: unknown): string {
@@ -428,6 +479,12 @@ function describeConnectionError(error: unknown): string {
   }
   if (message.includes("401") || message.includes("403")) {
     return "O servidor recusou o acesso. Confira usuário e senha.";
+  }
+  if (message.includes("404")) {
+    return "O servidor não encontrou player_api.php. Confira o endereço e a porta.";
+  }
+  if (message.includes("status 5")) {
+    return "O servidor IPTV está temporariamente indisponível. Tente novamente em instantes.";
   }
 
   return "Não foi possível consultar o servidor Xtream. Confira endereço, porta, rede, usuário e senha.";

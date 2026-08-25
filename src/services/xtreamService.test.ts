@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildXtreamRequestUrl } from "./xtreamService";
+import {
+  buildXtreamRequestUrl,
+  isXtreamAuthenticated,
+  normalizeXtreamCredentials
+} from "./xtreamService";
 
 const credentials = {
   serverUrl: "http://iptv.example:8080",
@@ -51,5 +55,67 @@ describe("buildXtreamRequestUrl", () => {
 
     expect(url.pathname).toBe("/player_api.php");
     expect(url.searchParams.has("old")).toBe(false);
+  });
+
+  it("removes whitespace and invisible clipboard characters around login fields", () => {
+    const normalized = normalizeXtreamCredentials({
+      serverUrl: "\uFEFF  http://iptv.example:8080/ \r\n",
+      username: "\u200B viewer \r\n",
+      password: "\u2060 secret-value \u00A0"
+    });
+
+    expect(normalized).toEqual({
+      serverUrl: "http://iptv.example:8080",
+      username: "viewer",
+      password: "secret-value"
+    });
+  });
+
+  it("preserves valid spaces and special characters inside credentials", () => {
+    const normalized = normalizeXtreamCredentials(credentials);
+
+    expect(normalized.username).toBe("demo user");
+    expect(normalized.password).toBe("secret&value");
+  });
+
+  it("extracts credentials when a complete M3U URL is pasted", () => {
+    const normalized = normalizeXtreamCredentials({
+      serverUrl: "http://iptv.example:8080/get.php?username=viewer&password=p%40ss%26word&type=m3u_plus",
+      username: "",
+      password: ""
+    });
+
+    expect(normalized.serverUrl).toBe("http://iptv.example:8080");
+    expect(normalized.username).toBe("viewer");
+    expect(normalized.password).toBe("p@ss&word");
+  });
+
+  it("normalizes a full-width colon copied with the host and port", () => {
+    const normalized = normalizeXtreamCredentials({
+      ...credentials,
+      serverUrl: "iptv.example：8080"
+    });
+
+    expect(normalized.serverUrl).toBe("http://iptv.example:8080");
+  });
+
+  it.each([
+    [{ auth: 1 }, true],
+    [{ auth: "1" }, true],
+    [{ auth: true }, true],
+    [{ auth: "TRUE" }, true],
+    [{ status: "Active" }, true],
+    [{ auth: 0, status: "Active" }, false],
+    [{ auth: "0", status: "Disabled" }, false]
+  ])("recognizes Xtream authentication variants %#", (userInfo, expected) => {
+    expect(isXtreamAuthenticated(userInfo)).toBe(expected);
+  });
+
+  it.each([
+    [{ ...credentials, serverUrl: "" }, "endereço"],
+    [{ ...credentials, username: " \r\n" }, "usuário"],
+    [{ ...credentials, password: "\u200B" }, "senha"]
+  ])("rejects incomplete pasted credentials %#", (value, expectedMessage) => {
+    expect(() => normalizeXtreamCredentials(value)).toThrow(expectedMessage);
   });
 });

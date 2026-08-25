@@ -1,5 +1,9 @@
 import type { ContentItem } from "../types/catalog";
-import { loadXtreamCatalog } from "./xtreamService";
+import {
+  loadXtreamCatalog,
+  normalizeXtreamCredentials,
+  type XtreamCredentials
+} from "./xtreamService";
 
 export interface LoginRequest {
   serverUrl: string;
@@ -14,16 +18,19 @@ export interface Session {
   connectedAt: string;
   catalog: ContentItem[];
   source: "xtream";
+  connection: XtreamCredentials;
 }
 
 export async function connectServerSession(request: LoginRequest): Promise<Session> {
-  const result = await loadXtreamCatalog(request);
+  const connection = normalizeXtreamCredentials(request);
+  const result = await loadXtreamCatalog(connection);
 
   return {
-    displayName: request.username.trim() || "Editor Pro",
-    serverUrl: request.serverUrl.trim() || "mock://server-xtreme",
+    displayName: connection.username,
+    serverUrl: connection.serverUrl,
     connectedAt: new Date().toISOString(),
     catalog: result.catalog,
-    source: "xtream"
+    source: "xtream",
+    connection
   };
 }

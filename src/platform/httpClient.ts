@@ -13,7 +13,14 @@ export interface HttpClient {
 
 function parseNativeData<T>(data: unknown): T {
   if (typeof data === "string") {
-    return JSON.parse(data.replace(/^\uFEFF/, "").trim()) as T;
+    const cleanData = data.replace(/^\uFEFF/, "").trim();
+    try {
+      return JSON.parse(cleanData) as T;
+    } catch {
+      // Mantém texto/HTML para que a camada de serviço consiga usar o status
+      // HTTP e mostrar o diagnóstico correto, sem vazar a URL autenticada.
+      return cleanData as T;
+    }
   }
 
   return data as T;

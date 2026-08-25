@@ -30,7 +30,10 @@ export function LoginPage() {
       const session = await connectServerSession({ serverUrl, username, password, remember });
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
-      const connection = { serverUrl: serverUrl.trim(), username, password };
+      const connection = session.connection;
+      setServerUrl(connection.serverUrl);
+      setUsername(connection.username);
+      setPassword(connection.password);
       setConnection(connection);
       if (remember) {
         await credentialVault.save(connection);
