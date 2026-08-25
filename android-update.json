@@ -1,0 +1,7 @@
+{
+    "versionCode":  2,
+    "versionName":  "1.1.0",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.1.0-release.apk",
+    "sha256":  "FCB81839230FD18F748E77823176F3BE437735D166794AA7BE18EF746120D536",
+    "releaseNotes":  "Verificação automática de atualizações, download seguro e instalação assistida no Android."
+}

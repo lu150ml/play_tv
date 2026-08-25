@@ -21,6 +21,18 @@ npm run android:apk:release
 The signed release APK is produced at
 `android/app/build/outputs/apk/release/app-release.apk`.
 
+## Updates
+
+The Android app checks `android-update.json` shortly after startup and again
+when returning to the foreground after six hours. A newer `versionCode` shows
+an update prompt. The native updater downloads the HTTPS APK, validates its
+SHA-256 value, and opens Android's package installer. Android always requires
+the user to approve installation; profiles and history remain in place because
+the package id and signing key do not change.
+
+For every release, increase `versionCode` and `versionName`, build with the same
+keystore, publish the APK, and then update the manifest URL and SHA-256.
+
 ## Signing key
 
 Run `npm run android:keystore` once to create a local release identity. Back up
@@ -40,7 +52,7 @@ available when the service is absent.
 Enable USB debugging, connect the device, and run:
 
 ```powershell
-.tools\android-sdk\platform-tools\adb.exe install -r artifacts\play-tv-1.0.0-release.apk
+.tools\android-sdk\platform-tools\adb.exe install -r artifacts\play-tv-1.1.0-release.apk
 ```
 
 HTTP IPTV servers are supported and produce an in-app security warning.

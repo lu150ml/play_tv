@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { CatalogPage } from "./pages/CatalogPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
@@ -15,7 +16,9 @@ export function App() {
   useAndroidBackButton();
 
   return (
-    <Routes>
+    <>
+      <UpdatePrompt />
+      <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/profiles" element={<ProfilesPage />} />
@@ -28,7 +31,8 @@ export function App() {
         <Route path="/watch/:contentId" element={<PlayerPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/catalog" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 
