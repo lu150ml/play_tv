@@ -164,6 +164,9 @@ function InputField({ label, value, onChange, icon, type = "text", placeholder }
         <input
           data-focusable="true"
           type={type}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}

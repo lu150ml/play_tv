@@ -29,4 +29,27 @@ describe("buildXtreamRequestUrl", () => {
     expect(url.searchParams.get("password")).toBe(credentials.password);
     expect(url.searchParams.get("action")).toBe("get_live_streams");
   });
+
+  it("accepts a host without protocol on Android", () => {
+    const url = new URL(
+      buildXtreamRequestUrl({ ...credentials, serverUrl: "iptv.example:8080" }, undefined, {}, true)
+    );
+
+    expect(url.origin).toBe("http://iptv.example:8080");
+    expect(url.pathname).toBe("/player_api.php");
+  });
+
+  it("accepts a complete player_api link without duplicating its path", () => {
+    const url = new URL(
+      buildXtreamRequestUrl(
+        { ...credentials, serverUrl: "http://iptv.example:8080/player_api.php?old=1" },
+        undefined,
+        {},
+        true
+      )
+    );
+
+    expect(url.pathname).toBe("/player_api.php");
+    expect(url.searchParams.has("old")).toBe(false);
+  });
 });

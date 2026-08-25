@@ -13,7 +13,7 @@ export interface HttpClient {
 
 function parseNativeData<T>(data: unknown): T {
   if (typeof data === "string") {
-    return JSON.parse(data) as T;
+    return JSON.parse(data.replace(/^\uFEFF/, "").trim()) as T;
   }
 
   return data as T;
@@ -24,6 +24,10 @@ export const httpClient: HttpClient = {
     if (isNativeAndroid()) {
       const response = await CapacitorHttp.get({
         url,
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          "User-Agent": "PlayTV-Android/1.0"
+        },
         connectTimeout: 15_000,
         readTimeout: 30_000
       });

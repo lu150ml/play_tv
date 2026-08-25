@@ -110,32 +110,44 @@ function capPerCategory<T extends { category_id?: string | number }>(
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
-  const profile = await requestXtream<XtreamProfileResponse>(credentials);
+  const normalizedCredentials = {
+    ...credentials,
+    serverUrl: normalizeServerUrl(credentials.serverUrl)
+  };
+  const profile = await requestXtream<XtreamProfileResponse>(normalizedCredentials);
   const auth = profile.user_info?.auth;
 
   if (auth !== 1 && auth !== "1") {
     throw new Error(profile.user_info?.message ?? "Server rejected the Xtream credentials.");
   }
 
+  const requests = await Promise.allSettled([
+    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_live_categories"),
+    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_vod_categories"),
+    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_series_categories"),
+    requestXtream<XtreamLiveStream[]>(normalizedCredentials, "get_live_streams"),
+    requestXtream<XtreamVodStream[]>(normalizedCredentials, "get_vod_streams"),
+    requestXtream<XtreamSeriesStream[]>(normalizedCredentials, "get_series")
+  ]);
   const [liveCategories, vodCategories, seriesCategories, liveStreams, vodStreams, seriesStreams] =
-    await Promise.all([
-      requestXtream<XtreamCategory[]>(credentials, "get_live_categories"),
-      requestXtream<XtreamCategory[]>(credentials, "get_vod_categories"),
-      requestXtream<XtreamCategory[]>(credentials, "get_series_categories"),
-      requestXtream<XtreamLiveStream[]>(credentials, "get_live_streams"),
-      requestXtream<XtreamVodStream[]>(credentials, "get_vod_streams"),
-      requestXtream<XtreamSeriesStream[]>(credentials, "get_series")
-    ]);
+    requests.map((request) => (request.status === "fulfilled" && Array.isArray(request.value) ? request.value : [])) as [
+      XtreamCategory[],
+      XtreamCategory[],
+      XtreamCategory[],
+      XtreamLiveStream[],
+      XtreamVodStream[],
+      XtreamSeriesStream[]
+    ];
 
   const liveCategoryMap = mapCategories(liveCategories);
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
   const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapLiveStream(stream, liveCategoryMap, credentials)
+    mapLiveStream(stream, liveCategoryMap, normalizedCredentials)
   );
   const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapVodStream(stream, vodCategoryMap, credentials)
+    mapVodStream(stream, vodCategoryMap, normalizedCredentials)
   );
   const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
     mapSeriesStream(stream, seriesCategoryMap)
@@ -195,10 +207,8 @@ async function requestXtream<T>(
     }
 
     return response.data;
-  } catch {
-    throw new Error(
-      "Nao foi possivel consultar o servidor Xtream. Verifique o endereco, a rede e as credenciais."
-    );
+  } catch (error) {
+    throw new Error(describeConnectionError(error));
   }
 }
 
@@ -376,11 +386,51 @@ function buildStreamUrl(
 }
 
 function normalizeServerUrl(serverUrl: string): string {
-  const url = new URL(serverUrl);
-  url.pathname = url.pathname.replace(/\/$/, "");
+  const input = serverUrl.trim();
+  if (!input) {
+    throw new Error("Informe o endereço do servidor.");
+  }
+
+  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `http://${input}`;
+  let url: URL;
+  try {
+    url = new URL(withProtocol);
+  } catch {
+    throw new Error("Endereço do servidor inválido. Use host:porta ou http://host:porta.");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("O endereço do servidor deve começar com http:// ou https://.");
+  }
+
+  url.pathname = url.pathname
+    .replace(/\/(?:player_api|get)\.php\/?$/i, "")
+    .replace(/\/$/, "");
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function describeConnectionError(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (message.includes("endereço") || message.includes("informe o endereço")) {
+    return error instanceof Error ? error.message : "Endereço do servidor inválido.";
+  }
+  if (message.includes("certificate") || message.includes("ssl") || message.includes("trust anchor")) {
+    return "O certificado HTTPS do servidor não é válido neste aparelho.";
+  }
+  if (message.includes("timeout") || message.includes("timed out")) {
+    return "O servidor demorou demais para responder. Confira a rede e tente novamente.";
+  }
+  if (message.includes("resolve host") || message.includes("unknown host") || message.includes("name not resolved")) {
+    return "Servidor não encontrado. Confira o endereço e a conexão com a internet.";
+  }
+  if (message.includes("401") || message.includes("403")) {
+    return "O servidor recusou o acesso. Confira usuário e senha.";
+  }
+
+  return "Não foi possível consultar o servidor Xtream. Confira endereço, porta, rede, usuário e senha.";
 }
 
 function normalizeImage(imageUrl?: string): string | undefined {
