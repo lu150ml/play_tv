@@ -8,6 +8,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SecureCredentialsPlugin.class);
         registerPlugin(NativePlayerPlugin.class);
         registerPlugin(AndroidUpdaterPlugin.class);
+        registerPlugin(MediaAssetsPlugin.class);
+        registerPlugin(DownloadsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

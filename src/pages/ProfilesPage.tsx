@@ -33,7 +33,7 @@ export function ProfilesPage() {
 
   function handleSelectProfile(profile: Profile) {
     setActiveProfile(profile.id);
-    void navigate("/catalog");
+    void navigate("/home");
   }
 
   function handleCreate() {
@@ -41,7 +41,7 @@ export function ProfilesPage() {
     if (!trimmed) return;
     const profile = createProfile(trimmed, selectedColor);
     setActiveProfile(profile.id);
-    void navigate("/catalog");
+    void navigate("/home");
   }
 
   function handleDelete(profileId: string) {

@@ -59,6 +59,8 @@ public class NativePlayerPlugin extends Plugin {
         intent.putExtra("contentId", contentId);
         intent.putExtra("title", call.getString("title", "Play TV"));
         intent.putExtra("streamUrl", streamUrl);
+        JSArray streamCandidates = call.getArray("streamCandidates");
+        intent.putExtra("streamCandidates", streamCandidates == null ? "[]" : streamCandidates.toString());
         intent.putExtra("kind", call.getString("kind", "movie"));
         intent.putExtra("startPositionMs", call.getLong("startPositionMs", 0L));
         intent.putExtra("season", call.getInt("season", 0));

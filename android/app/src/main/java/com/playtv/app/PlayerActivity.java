@@ -61,6 +61,7 @@ public class PlayerActivity extends AppCompatActivity {
     private static final int MAX_RETRIES = 3;
     private static final long SAVE_INTERVAL_MS = 10_000L;
     private static final long CONTROLS_TIMEOUT_MS = 5_000L;
+    private static final int SOURCE_TIMEOUT_MS = 5_000;
     private static WeakReference<PlayerActivity> activeActivity = new WeakReference<>(null);
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -92,6 +93,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean enteringPip;
     private boolean pipSupported;
     private boolean closingPlayer;
+    private boolean candidateSwitchInProgress;
 
     private final Runnable progressSaver = new Runnable() {
         @Override public void run() {
@@ -141,10 +143,15 @@ public class PlayerActivity extends AppCompatActivity {
             buffering.setVisibility(View.VISIBLE);
             executor.execute(() -> {
                 List<MediaItem.SubtitleConfiguration> subtitles = fetchSubtitles(subtitleBase, subtitleQuery);
+                preflightCurrentDescriptor();
                 runOnUiThread(() -> initializePlayer(subtitles));
             });
         } else {
-            initializePlayer(new ArrayList<>());
+            buffering.setVisibility(View.VISIBLE);
+            executor.execute(() -> {
+                preflightCurrentDescriptor();
+                runOnUiThread(() -> initializePlayer(new ArrayList<>()));
+            });
         }
     }
 
@@ -218,6 +225,7 @@ public class PlayerActivity extends AppCompatActivity {
         player.setAudioAttributes(audioAttributes, true);
         player.setWakeMode(C.WAKE_MODE_NETWORK);
         player.setHandleAudioBecomingNoisy(true);
+        player.setVolume(1f);
         playerView.setPlayer(player);
         mediaSession = new MediaSession.Builder(this, player).build();
 
@@ -245,7 +253,8 @@ public class PlayerActivity extends AppCompatActivity {
             }
             @Override public void onPlaybackStateChanged(int state) {
                 buffering.setVisibility(
-                    state == Player.STATE_BUFFERING && player.getPlayWhenReady() ? View.VISIBLE : View.GONE
+                    state == Player.STATE_BUFFERING && player.getPlayWhenReady() && !isLive()
+                        ? View.VISIBLE : View.GONE
                 );
                 if (state == Player.STATE_READY) retryCount = 0;
                 if (state == Player.STATE_ENDED) {
@@ -266,18 +275,8 @@ public class PlayerActivity extends AppCompatActivity {
             }
             @Override public void onPlayerError(@NonNull PlaybackException error) {
                 updateKeepScreenOn(false);
-                if (retryCount < MAX_RETRIES) {
-                    long delay = (long) Math.pow(2, retryCount) * 1_000L;
-                    retryCount += 1;
-                    handler.postDelayed(() -> {
-                        if (player == null) return;
-                        player.prepare();
-                        player.play();
-                    }, delay);
-                    return;
-                }
-                emitState("error", safeErrorCode(error));
-                finishWithResult("error", safeErrorCode(error), false);
+                if (beginNextCandidate(error)) return;
+                handlePlaybackFailure(error);
             }
         });
         player.prepare();
@@ -290,18 +289,26 @@ public class PlayerActivity extends AppCompatActivity {
         scheduleControlsTimeout();
     }
 
+    private void handlePlaybackFailure(@NonNull PlaybackException error) {
+        if (player == null || closingPlayer) return;
+                if (retryCount < MAX_RETRIES) {
+                    long delay = (long) Math.pow(2, retryCount) * 1_000L;
+                    retryCount += 1;
+                    handler.postDelayed(() -> {
+                        if (player == null) return;
+                        player.prepare();
+                        player.play();
+                    }, delay);
+                    return;
+                }
+                emitState("error", safeErrorCode(error));
+                finishWithResult("error", safeErrorCode(error), false);
+    }
+
     private List<MediaItem> buildPlaylist(List<MediaItem.SubtitleConfiguration> subtitles) {
         List<MediaItem> result = new ArrayList<>();
         for (MediaDescriptor descriptor : descriptors) {
-            MediaItem.Builder builder = new MediaItem.Builder()
-                .setMediaId(descriptor.id).setUri(descriptor.streamUrl)
-                .setMediaMetadata(new androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(descriptor.displayTitle()).build());
-            if (descriptor.id.equals(currentId)) builder.setSubtitleConfigurations(subtitles);
-            if (descriptor.isLive() || descriptor.streamUrl.toLowerCase().contains(".m3u8")) {
-                builder.setMimeType(MimeTypes.APPLICATION_M3U8);
-            }
-            result.add(builder.build());
+            result.add(buildMediaItem(descriptor, descriptor.id.equals(currentId) ? subtitles : new ArrayList<>()));
         }
         return result;
     }
@@ -322,7 +329,8 @@ public class PlayerActivity extends AppCompatActivity {
             safeValue(intent.getStringExtra("streamUrl"), ""),
             safeValue(intent.getStringExtra("kind"), "movie"),
             intent.getLongExtra("startPositionMs", 0L),
-            intent.getIntExtra("season", 0), intent.getIntExtra("episode", 0)
+            intent.getIntExtra("season", 0), intent.getIntExtra("episode", 0),
+            readCandidates(intent.getStringExtra("streamCandidates"))
         );
         if (!current.streamUrl.isEmpty()) descriptors.add(current);
         try {
@@ -332,6 +340,117 @@ public class PlayerActivity extends AppCompatActivity {
                 if (descriptor != null) descriptors.add(descriptor);
             }
         } catch (Exception ignored) {}
+    }
+
+    private List<String> readCandidates(String json) {
+        List<String> result = new ArrayList<>();
+        try {
+            JSONArray values = new JSONArray(safeValue(json, "[]"));
+            for (int index = 0; index < values.length(); index += 1) {
+                String value = values.optString(index).trim();
+                if (!value.isEmpty() && !result.contains(value)) result.add(value);
+            }
+        } catch (Exception ignored) {}
+        return result;
+    }
+
+    private MediaItem buildMediaItem(
+        MediaDescriptor descriptor,
+        List<MediaItem.SubtitleConfiguration> subtitles
+    ) {
+        MediaItem.Builder builder = new MediaItem.Builder()
+            .setMediaId(descriptor.id).setUri(descriptor.currentUrl())
+            .setMediaMetadata(new androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(descriptor.displayTitle()).build());
+        if (!subtitles.isEmpty()) builder.setSubtitleConfigurations(subtitles);
+        String mime = descriptor.mimeHint;
+        if (mime == null && descriptor.currentUrl().toLowerCase().contains(".m3u8")) {
+            mime = MimeTypes.APPLICATION_M3U8;
+        }
+        if (mime != null) builder.setMimeType(mime);
+        return builder.build();
+    }
+
+    private void preflightCurrentDescriptor() {
+        MediaDescriptor descriptor = currentDescriptor();
+        if (descriptor == null) return;
+        while (descriptor.candidateIndex < descriptor.candidates.size()) {
+            SourceProbe probe = probeSource(descriptor.currentUrl());
+            if (probe.valid) {
+                descriptor.mimeHint = probe.mimeType;
+                return;
+            }
+            descriptor.candidateIndex += 1;
+        }
+        descriptor.candidateIndex = 0;
+    }
+
+    private SourceProbe probeSource(String urlValue) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(urlValue).openConnection();
+            connection.setInstanceFollowRedirects(true);
+            connection.setConnectTimeout(SOURCE_TIMEOUT_MS);
+            connection.setReadTimeout(SOURCE_TIMEOUT_MS);
+            connection.setRequestProperty("Range", "bytes=0-4095");
+            connection.setRequestProperty("Accept", "video/*,audio/*,application/vnd.apple.mpegurl,*/*");
+            connection.setRequestProperty("User-Agent", "PlayTV-Android/1.4");
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) return SourceProbe.invalid();
+            String contentType = safeValue(connection.getContentType(), "").toLowerCase();
+            if (contentType.contains("text/html") || contentType.contains("application/json")) {
+                return SourceProbe.invalid();
+            }
+            byte[] prefix = new byte[512];
+            int read;
+            try (InputStream input = connection.getInputStream()) { read = input.read(prefix); }
+            if (read <= 0) return SourceProbe.invalid();
+            String text = new String(prefix, 0, Math.min(read, 16), StandardCharsets.US_ASCII).trim();
+            if (text.startsWith("<") || text.startsWith("{")) return SourceProbe.invalid();
+            if (text.startsWith("#EXTM3U")) return SourceProbe.valid(MimeTypes.APPLICATION_M3U8);
+            if ((prefix[0] & 0xff) == 0x47 || contentType.contains("mp2t")) return SourceProbe.valid(MimeTypes.VIDEO_MP2T);
+            if (read > 8 && prefix[4] == 'f' && prefix[5] == 't' && prefix[6] == 'y' && prefix[7] == 'p') return SourceProbe.valid(MimeTypes.VIDEO_MP4);
+            if ((prefix[0] & 0xff) == 0x1a && (prefix[1] & 0xff) == 0x45) return SourceProbe.valid(MimeTypes.VIDEO_WEBM);
+            if (contentType.contains("mpegurl")) return SourceProbe.valid(MimeTypes.APPLICATION_M3U8);
+            if (contentType.startsWith("video/") || contentType.startsWith("audio/") || contentType.contains("octet-stream")) return SourceProbe.valid(null);
+            return SourceProbe.invalid();
+        } catch (Exception ignored) {
+            return SourceProbe.invalid();
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private boolean beginNextCandidate(@NonNull PlaybackException originalError) {
+        MediaDescriptor descriptor = currentDescriptor();
+        if (descriptor == null || player == null || candidateSwitchInProgress || !descriptor.advanceCandidate()) return false;
+        long position = Math.max(0L, player.getCurrentPosition());
+        int mediaIndex = Math.max(0, player.getCurrentMediaItemIndex());
+        candidateSwitchInProgress = true;
+        executor.execute(() -> {
+            SourceProbe selected = SourceProbe.invalid();
+            while (descriptor.candidateIndex < descriptor.candidates.size()) {
+                selected = probeSource(descriptor.currentUrl());
+                if (selected.valid) break;
+                if (!descriptor.advanceCandidate()) break;
+            }
+            SourceProbe finalProbe = selected;
+            handler.post(() -> {
+                candidateSwitchInProgress = false;
+                if (player == null || closingPlayer || descriptor != currentDescriptor()) return;
+                if (!finalProbe.valid) {
+                    handlePlaybackFailure(originalError);
+                    return;
+                }
+                descriptor.mimeHint = finalProbe.mimeType;
+                player.replaceMediaItem(mediaIndex, buildMediaItem(descriptor, new ArrayList<>()));
+                player.seekTo(mediaIndex, descriptor.isLive() ? 0L : position);
+                player.prepare();
+                player.play();
+                retryCount = 0;
+            });
+        });
+        return true;
     }
 
     private void updateMediaUi() {
@@ -761,23 +880,59 @@ public class PlayerActivity extends AppCompatActivity {
         final long startPositionMs;
         final int season;
         final int episode;
+        final List<String> candidates;
+        int candidateIndex;
+        String mimeHint;
         MediaDescriptor(String id, String title, String streamUrl, String kind,
-                        long startPositionMs, int season, int episode) {
+                        long startPositionMs, int season, int episode, List<String> streamCandidates) {
             this.id = id; this.title = title; this.streamUrl = streamUrl; this.kind = kind;
             this.startPositionMs = startPositionMs; this.season = season; this.episode = episode;
+            this.candidates = new ArrayList<>();
+            if (streamCandidates != null) {
+                for (String candidate : streamCandidates) {
+                    if (candidate != null && !candidate.trim().isEmpty() && !this.candidates.contains(candidate)) {
+                        this.candidates.add(candidate);
+                    }
+                }
+            }
+            if (!streamUrl.isEmpty() && !this.candidates.contains(streamUrl)) this.candidates.add(streamUrl);
+            this.candidateIndex = 0;
         }
         @Nullable static MediaDescriptor fromJson(JSONObject value) {
             String id = value.optString("contentId");
             String streamUrl = value.optString("streamUrl");
             if (id.isEmpty() || streamUrl.isEmpty()) return null;
+            List<String> candidates = new ArrayList<>();
+            JSONArray values = value.optJSONArray("streamCandidates");
+            if (values != null) {
+                for (int index = 0; index < values.length(); index += 1) {
+                    String candidate = values.optString(index).trim();
+                    if (!candidate.isEmpty() && !candidates.contains(candidate)) candidates.add(candidate);
+                }
+            }
             return new MediaDescriptor(id, value.optString("title", "Play TV"), streamUrl,
                 value.optString("kind", "episode"), Math.max(0L, value.optLong("startPositionMs", 0L)),
-                value.optInt("season", 0), value.optInt("episode", 0));
+                value.optInt("season", 0), value.optInt("episode", 0), candidates);
+        }
+        String currentUrl() { return candidates.isEmpty() ? streamUrl : candidates.get(Math.min(candidateIndex, candidates.size() - 1)); }
+        boolean advanceCandidate() {
+            if (candidateIndex + 1 >= candidates.size()) return false;
+            candidateIndex += 1;
+            mimeHint = null;
+            return true;
         }
         boolean isLive() { return "live".equals(kind); }
         String displayTitle() {
             return season > 0 && episode > 0 ? "S" + season + ":E" + episode + " \"" + title + "\"" : title;
         }
+    }
+
+    private static class SourceProbe {
+        final boolean valid;
+        final String mimeType;
+        SourceProbe(boolean valid, String mimeType) { this.valid = valid; this.mimeType = mimeType; }
+        static SourceProbe valid(String mimeType) { return new SourceProbe(true, mimeType); }
+        static SourceProbe invalid() { return new SourceProbe(false, null); }
     }
 
     private static class ProgressEntry {

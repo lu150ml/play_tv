@@ -1,20 +1,22 @@
-import { Clapperboard, Film, Home, MonitorPlay, Search, Tv, UserRound } from "lucide-react";
+import { Clapperboard, Download, Film, Home, MonitorPlay, Music2, Search, Tv, UserRound } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
-import { connectServerSession } from "../services/sessionService";
+import { startServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { BrandWordmark } from "./BrandWordmark";
 import { LogoutButton } from "./LogoutButton";
+import { AppFooter } from "./AppFooter";
 
 const navItems = [
-  { label: "Início", path: "/catalog", icon: Home },
-  { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
-  { label: "TV", path: "/catalog/tv", icon: Tv },
-  { label: "Filmes", path: "/catalog/movies", icon: Film },
-  { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Buscar", path: "/catalog?search=open", icon: Search }
+  { label: "Início", path: "/home", icon: Home },
+  { label: "TV", path: "/tv", icon: Tv },
+  { label: "Música", path: "/music", icon: Music2 },
+  { label: "Filmes", path: "/movies", icon: Film },
+  { label: "Séries", path: "/series", icon: Clapperboard },
+  { label: "Buscar", path: "/search", icon: Search },
+  { label: "Downloads", path: "/downloads", icon: Download }
 ];
 
 const mobileNavItems = navItems.filter((item) =>
@@ -28,7 +30,8 @@ export function AppShell() {
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalog = useLibraryStore((state) => state.catalog);
-  const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
   const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
   const setServerUrl = useLibraryStore((state) => state.setServerUrl);
   const setSessionName = useLibraryStore((state) => state.setSessionName);
@@ -49,12 +52,15 @@ export function AppShell() {
     }
 
     isRefetchingRef.current = true;
-    setCatalogStatus("loading");
-    void connectServerSession({ ...connection, remember: true })
+    beginCatalogLoad();
+    void startServerSession(
+      { ...connection, remember: true },
+      (update) => setCatalogSection(update.section, update.items, update.status, update.error)
+    )
       .then((session) => {
         setSessionName(session.displayName);
         setServerUrl(session.serverUrl);
-        setCatalog(session.catalog, session.source);
+        void session.catalogReady;
       })
       .catch(() => {
         // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
@@ -67,7 +73,8 @@ export function AppShell() {
     catalog,
     catalogSource,
     connection,
-    setCatalog,
+    beginCatalogLoad,
+    setCatalogSection,
     setCatalogStatus,
     setServerUrl,
     setSessionName
@@ -88,7 +95,7 @@ export function AppShell() {
           </div>
           <div className="brand-copy">
             <BrandWordmark compact />
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.3.1</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android</p>
           </div>
         </div>
 
@@ -184,6 +191,8 @@ export function AppShell() {
       <main className="app-content min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
         <Outlet />
       </main>
+
+      <AppFooter />
 
       <nav className="app-bottom-nav fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-black/90 px-2 backdrop-blur-2xl lg:hidden">
         {mobileNavItems.map((item) => {

@@ -1,4 +1,9 @@
-import type { ContentItem, Episode, Quality } from "../types/catalog";
+import type {
+  ContentItem,
+  Episode,
+  Quality,
+  XtreamCatalogSection
+} from "../types/catalog";
 import { httpClient } from "../platform/httpClient";
 import { isNativeAndroid } from "../platform/platformInfo";
 
@@ -36,6 +41,7 @@ interface XtreamLiveStream {
   added?: string | number;
   epg_channel_id?: string;
   num?: number;
+  direct_source?: string;
 }
 
 interface XtreamVodStream {
@@ -48,6 +54,7 @@ interface XtreamVodStream {
   rating?: string;
   container_extension?: string;
   duration_secs?: string | number;
+  direct_source?: string;
 }
 
 interface XtreamSeriesStream {
@@ -58,6 +65,7 @@ interface XtreamSeriesStream {
   last_modified?: string | number;
   year?: string | number;
   rating?: string;
+  backdrop_path?: string[] | string;
 }
 
 interface XtreamSeriesInfoEpisode {
@@ -65,6 +73,7 @@ interface XtreamSeriesInfoEpisode {
   episode_num?: string | number;
   title?: string;
   container_extension?: string;
+  direct_source?: string;
   info?: {
     duration_secs?: string | number;
     plot?: string;
@@ -72,17 +81,50 @@ interface XtreamSeriesInfoEpisode {
 }
 
 interface XtreamSeriesInfoResponse {
+  info?: {
+    cover?: string;
+    movie_image?: string;
+    backdrop_path?: string[] | string;
+  };
   episodes?: Record<string, XtreamSeriesInfoEpisode[]>;
 }
+
+export interface XtreamSeriesDetails { episodes: Episode[]; imageCandidates: string[]; }
 
 export interface XtreamCatalogResult {
   profile: XtreamProfileResponse;
   catalog: ContentItem[];
 }
 
+export interface XtreamCatalogSectionUpdate {
+  section: XtreamCatalogSection;
+  items: ContentItem[];
+  status: "ready" | "error";
+  error?: string;
+}
+
+export interface XtreamProgressiveLoad {
+  profile: XtreamProfileResponse;
+  completion: Promise<ContentItem[]>;
+}
+
+type SectionListener = (update: XtreamCatalogSectionUpdate) => void;
+
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
+  const progressive = await beginXtreamCatalogLoad(credentials);
+  const catalog = await progressive.completion;
+  if (catalog.length === 0) {
+    throw new Error("A conexão funcionou, mas o servidor retornou um catálogo vazio.");
+  }
+  return { profile: progressive.profile, catalog };
+}
+
+export async function beginXtreamCatalogLoad(
+  credentials: XtreamCredentials,
+  onSection?: SectionListener
+): Promise<XtreamProgressiveLoad> {
   const normalizedCredentials = normalizeXtreamCredentials(credentials);
   const profile = await requestXtream<XtreamProfileResponse>(normalizedCredentials);
   if (!profile || typeof profile !== "object" || Array.isArray(profile) || !profile.user_info) {
@@ -97,58 +139,73 @@ export async function loadXtreamCatalog(
     );
   }
 
-  const requests = await Promise.allSettled([
-    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_live_categories"),
-    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_vod_categories"),
-    requestXtream<XtreamCategory[]>(normalizedCredentials, "get_series_categories"),
-    requestXtream<XtreamLiveStream[]>(normalizedCredentials, "get_live_streams"),
-    requestXtream<XtreamVodStream[]>(normalizedCredentials, "get_vod_streams"),
-    requestXtream<XtreamSeriesStream[]>(normalizedCredentials, "get_series")
-  ]);
-  const [liveCategories, vodCategories, seriesCategories, liveStreams, vodStreams, seriesStreams] =
-    requests.map((request) =>
-      request.status === "fulfilled" && Array.isArray(request.value) ? request.value : []
-    ) as [
-      XtreamCategory[],
-      XtreamCategory[],
-      XtreamCategory[],
-      XtreamLiveStream[],
-      XtreamVodStream[],
-      XtreamSeriesStream[]
-    ];
+  const sectionTasks = [
+    loadSection(normalizedCredentials, "live", onSection),
+    loadSection(normalizedCredentials, "vod", onSection),
+    loadSection(normalizedCredentials, "series", onSection)
+  ];
 
-  const liveCategoryMap = mapCategories(liveCategories);
-  const vodCategoryMap = mapCategories(vodCategories);
-  const seriesCategoryMap = mapCategories(seriesCategories);
+  const completion = Promise.all(sectionTasks).then((sections) => {
+    const catalog = sections.flat();
+    return catalog.map((item, index) => ({ ...item, isFeatured: index < 6 }));
+  });
 
-  const liveItems = liveStreams.map((stream) =>
-    mapLiveStream(stream, liveCategoryMap, normalizedCredentials)
-  );
-  const vodItems = vodStreams.map((stream) =>
-    mapVodStream(stream, vodCategoryMap, normalizedCredentials)
-  );
-  const seriesItems = seriesStreams.map((stream) => mapSeriesStream(stream, seriesCategoryMap));
+  return { profile, completion };
+}
 
-  const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
+async function loadSection(
+  credentials: XtreamCredentials,
+  section: XtreamCatalogSection,
+  onSection?: SectionListener
+): Promise<ContentItem[]> {
+  const actions = section === "live"
+    ? (["get_live_categories", "get_live_streams"] as const)
+    : section === "vod"
+      ? (["get_vod_categories", "get_vod_streams"] as const)
+      : (["get_series_categories", "get_series"] as const);
 
-  if (catalog.length === 0) {
-    const streamFailure = requests.slice(3).find((request) => request.status === "rejected");
-    if (streamFailure?.status === "rejected" && streamFailure.reason instanceof Error) {
-      throw streamFailure.reason;
-    }
-    throw new Error("A conexão funcionou, mas o servidor retornou um catálogo vazio.");
+  try {
+    const [categories, streams] = await Promise.all([
+      requestXtream<XtreamCategory[]>(credentials, actions[0]),
+      requestXtream<Array<XtreamLiveStream | XtreamVodStream | XtreamSeriesStream>>(
+        credentials,
+        actions[1]
+      )
+    ]);
+    const categoryMap = mapCategories(Array.isArray(categories) ? categories : []);
+    const safeStreams = Array.isArray(streams) ? streams : [];
+    const items = section === "live"
+      ? (safeStreams as XtreamLiveStream[]).map((stream) =>
+          mapLiveStream(stream, categoryMap, credentials)
+        )
+      : section === "vod"
+        ? (safeStreams as XtreamVodStream[]).map((stream) =>
+            mapVodStream(stream, categoryMap, credentials)
+          )
+        : (safeStreams as XtreamSeriesStream[]).map((stream) =>
+            mapSeriesStream(stream, categoryMap, credentials)
+          );
+    const featured = items.map((item, index) => ({ ...item, isFeatured: index < 2 }));
+    onSection?.({ section, items: featured, status: "ready" });
+    return featured;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao carregar esta seção.";
+    onSection?.({ section, items: [], status: "error", error: message });
+    return [];
   }
-
-  return {
-    profile,
-    catalog: catalog.map((item, index) => ({ ...item, isFeatured: index < 6 }))
-  };
 }
 
 export async function loadXtreamSeriesEpisodes(
   credentials: XtreamCredentials,
   seriesId: string
 ): Promise<Episode[]> {
+  return (await loadXtreamSeriesDetails(credentials, seriesId)).episodes;
+}
+
+export async function loadXtreamSeriesDetails(
+  credentials: XtreamCredentials,
+  seriesId: string
+): Promise<XtreamSeriesDetails> {
   const normalizedCredentials = normalizeXtreamCredentials(credentials);
   const response = await requestXtream<XtreamSeriesInfoResponse>(
     normalizedCredentials,
@@ -156,7 +213,7 @@ export async function loadXtreamSeriesEpisodes(
     { series_id: seriesId }
   );
 
-  return Object.entries(response.episodes ?? {}).flatMap(([seasonKey, episodes]) =>
+  const episodes = Object.entries(response.episodes ?? {}).flatMap(([seasonKey, episodes]) =>
     episodes.map((episode, index) => {
       const providerId = String(episode.id ?? `${seriesId}-${seasonKey}-${index + 1}`);
       const episodeNumber = parseNumber(episode.episode_num) ?? index + 1;
@@ -170,10 +227,25 @@ export async function loadXtreamSeriesEpisodes(
         episode: episodeNumber,
         durationSeconds: parseNumber(episode.info?.duration_secs) ?? 0,
         description: episode.info?.plot || "Episode from the connected IPTV server.",
-        streamUrl: buildStreamUrl(normalizedCredentials, "series", providerId, extension)
+        streamUrl: buildStreamUrl(normalizedCredentials, "series", providerId, extension),
+        streamCandidates: buildOnDemandCandidates(
+          normalizedCredentials,
+          "series",
+          providerId,
+          extension,
+          episode.direct_source
+        )
       };
     })
   );
+  const imageCandidates = uniqueUrls([
+    normalizeImage(response.info?.cover, normalizedCredentials.serverUrl),
+    normalizeImage(response.info?.movie_image, normalizedCredentials.serverUrl),
+    ...(Array.isArray(response.info?.backdrop_path)
+      ? response.info.backdrop_path.map((value) => normalizeImage(value, normalizedCredentials.serverUrl))
+      : [normalizeImage(response.info?.backdrop_path, normalizedCredentials.serverUrl)])
+  ]);
+  return { episodes, imageCandidates };
 }
 
 async function requestXtream<T>(
@@ -317,9 +389,13 @@ function mapLiveStream(
       : "Live channel from the connected IPTV server.",
     genres: [categoryName],
     categories: ["Live TV", categoryName],
+    providerCategoryId: String(stream.category_id ?? ""),
+    providerCategoryName: rawCategory,
     quality: inferQuality(title),
-    imageUrl: normalizeImage(stream.stream_icon),
+    imageUrl: normalizeImage(stream.stream_icon, credentials.serverUrl),
+    imageCandidates: [normalizeImage(stream.stream_icon, credentials.serverUrl)].filter((value): value is string => Boolean(value)),
     streamUrl: buildStreamUrl(credentials, "live", providerId, "m3u8"),
+    streamCandidates: buildLiveCandidates(credentials, providerId, stream.direct_source),
     channelNumber: stream.num ?? (Number(providerId) || 0),
     currentProgram: "Live now",
     nextProgram: "Up next",
@@ -351,11 +427,21 @@ function mapVodStream(
       : `Movie from ${categoryName}.`,
     genres: [categoryName],
     categories: ["Movies", categoryName],
+    providerCategoryId: String(stream.category_id ?? ""),
+    providerCategoryName: rawCategory,
     quality: inferQuality(title),
     year: parseNumber(stream.year),
     durationSeconds: parseNumber(stream.duration_secs),
-    imageUrl: normalizeImage(stream.stream_icon),
+    imageUrl: normalizeImage(stream.stream_icon, credentials.serverUrl),
+    imageCandidates: [normalizeImage(stream.stream_icon, credentials.serverUrl)].filter((value): value is string => Boolean(value)),
     streamUrl: buildStreamUrl(credentials, "movie", providerId, extension),
+    streamCandidates: buildOnDemandCandidates(
+      credentials,
+      "movie",
+      providerId,
+      extension,
+      stream.direct_source
+    ),
     director: "Unknown",
     cast: [],
     backdropTone: toneFor(providerId),
@@ -364,7 +450,7 @@ function mapVodStream(
   };
 }
 
-function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>): ContentItem {
+function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>, credentials: XtreamCredentials): ContentItem {
   const providerId = String(stream.series_id ?? stream.name ?? crypto.randomUUID());
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Series";
   const categoryName = normalizeCategory(rawCategory);
@@ -381,9 +467,17 @@ function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, str
       : `Series from ${categoryName}.`,
     genres: [categoryName],
     categories: ["Series", categoryName],
+    providerCategoryId: String(stream.category_id ?? ""),
+    providerCategoryName: rawCategory,
     quality: inferQuality(title),
     year: parseNumber(stream.year),
-    imageUrl: normalizeImage(stream.cover),
+    imageUrl: normalizeImage(stream.cover, credentials.serverUrl),
+    imageCandidates: [
+      normalizeImage(stream.cover, credentials.serverUrl),
+      ...(Array.isArray(stream.backdrop_path)
+        ? stream.backdrop_path.map((value) => normalizeImage(value, credentials.serverUrl))
+        : [normalizeImage(stream.backdrop_path, credentials.serverUrl)])
+    ].filter((value): value is string => Boolean(value)),
     seasons: 0,
     episodes: [],
     backdropTone: toneFor(providerId),
@@ -402,6 +496,48 @@ function buildStreamUrl(
   return `${base}/${kind}/${encodeURIComponent(credentials.username)}/${encodeURIComponent(
     credentials.password
   )}/${streamId}.${extension}`;
+}
+
+function buildLiveCandidates(
+  credentials: XtreamCredentials,
+  streamId: string,
+  directSource?: string
+): string[] {
+  return uniqueUrls([
+    normalizeStreamSource(directSource, credentials.serverUrl),
+    buildStreamUrl(credentials, "live", streamId, "m3u8"),
+    buildStreamUrl(credentials, "live", streamId, "ts")
+  ]);
+}
+
+function buildOnDemandCandidates(
+  credentials: XtreamCredentials,
+  kind: "movie" | "series",
+  streamId: string,
+  extension: string,
+  directSource?: string
+): string[] {
+  return uniqueUrls([
+    normalizeStreamSource(directSource, credentials.serverUrl),
+    buildStreamUrl(credentials, kind, streamId, extension),
+    ...["mp4", "m3u8", "ts", "mkv"].map((candidate) =>
+      buildStreamUrl(credentials, kind, streamId, candidate)
+    )
+  ]);
+}
+
+function normalizeStreamSource(source: string | undefined, serverUrl: string): string | undefined {
+  const value = source?.trim();
+  if (!value) return undefined;
+  try {
+    return new URL(value, `${normalizeServerUrl(serverUrl)}/`).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function uniqueUrls(urls: Array<string | undefined>): string[] {
+  return Array.from(new Set(urls.filter((value): value is string => Boolean(value))));
 }
 
 function normalizeServerUrl(serverUrl: string): string {
@@ -469,12 +605,15 @@ function describeConnectionError(error: unknown): string {
   return "Não foi possível consultar o servidor Xtream. Confira endereço, porta, rede, usuário e senha.";
 }
 
-function normalizeImage(imageUrl?: string): string | undefined {
+function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefined {
   if (!imageUrl || imageUrl.trim().length === 0) {
     return undefined;
   }
 
-  return imageUrl.trim();
+  const value = imageUrl.trim();
+  if (!serverUrl) return value;
+  try { return new URL(value, `${normalizeServerUrl(serverUrl)}/`).toString(); }
+  catch { return undefined; }
 }
 
 function parseNumber(value?: string | number): number | undefined {

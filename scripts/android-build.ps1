@@ -60,7 +60,7 @@ try {
         $manifest = [System.IO.File]::ReadAllText($manifestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
         $manifest.versionCode = [int]$versionCodeMatch.Groups[1].Value
         $manifest.versionName = $package.version
-        $manifest.apkUrl = "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-$($package.version)-release.apk"
+        $manifest.apkUrl = "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-parity-v1.4/artifacts/play-tv-$($package.version)-release.apk"
         $apkStream = [System.IO.File]::OpenRead($artifactPath)
         try {
             $sha256 = [System.Security.Cryptography.SHA256]::Create()

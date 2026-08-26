@@ -43,6 +43,7 @@ body {
 
 .app-content {
   padding-top: calc(5rem + env(safe-area-inset-top));
+  padding-bottom: calc(8.5rem + env(safe-area-inset-bottom));
 }
 
 .app-bottom-nav {

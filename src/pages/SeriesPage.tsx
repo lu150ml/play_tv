@@ -1,6 +1,6 @@
 import { ArrowLeft, Play, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
@@ -8,25 +8,30 @@ import {
   getContinueEpisode,
   groupEpisodesBySeason,
   isSeries,
-  loadSeriesEpisodes
+  loadSeriesDetails
 } from "../services/seriesService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
+import { SecureImage } from "../components/SecureImage";
 
 export function SeriesPage() {
   const { seriesId } = useParams();
+  const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalogStatus = useLibraryStore((state) => state.catalogStatus);
   const playback = useLibraryStore((state) => state.playback);
+  const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
+  const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<number | undefined>();
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | undefined>();
+  const openedRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let isCancelled = false;
@@ -38,14 +43,23 @@ export function SeriesPage() {
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
 
-    void loadSeriesEpisodes(series, connection)
-      .then((nextEpisodes) => {
+    void loadSeriesDetails(series, connection)
+      .then((details) => {
         if (isCancelled) {
           return;
         }
 
+        const nextEpisodes = details.episodes;
         setEpisodes(nextEpisodes);
+        setSeriesEpisodes(series.id, nextEpisodes);
+        setSeriesArtwork(series.id, details.imageCandidates);
         setSelectedSeason((currentSeason) => currentSeason ?? nextEpisodes[0]?.season);
+
+        const nextEpisode = getContinueEpisode(nextEpisodes, playback);
+        if (nextEpisode && openedRef.current !== `${series.id}:${nextEpisode.id}`) {
+          openedRef.current = `${series.id}:${nextEpisode.id}`;
+          void navigate(`/watch/${series.id}/${nextEpisode.id}`, { replace: true });
+        }
 
         if (nextEpisodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
@@ -69,7 +83,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, series]);
+  }, [connection, navigate, playback, series, setSeriesArtwork, setSeriesEpisodes]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;
@@ -86,7 +100,7 @@ export function SeriesPage() {
     if (catalogSource === "xtream" && catalogStatus !== "error") {
       return <CatalogRestoreMessage />;
     }
-    return <Navigate to="/catalog/series" replace />;
+    return <Navigate to="/series" replace />;
   }
 
   if (!series) {
@@ -96,7 +110,7 @@ export function SeriesPage() {
   return (
     <div className="mx-auto max-w-canvas">
       <Link
-        to="/catalog/series"
+        to="/series"
         data-focusable="true"
         className="focus-card mb-4 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
       >
@@ -112,8 +126,8 @@ export function SeriesPage() {
       >
         {series.imageUrl ? (
           <>
-            <img
-              src={series.imageUrl}
+            <SecureImage
+              candidates={series.imageCandidates ?? [series.imageUrl]}
               alt=""
               className="absolute inset-y-0 right-0 h-full w-2/3 object-cover opacity-35"
             />

@@ -6,6 +6,7 @@ export interface NativeMediaItem {
   contentId: string;
   title: string;
   streamUrl: string;
+  streamCandidates?: string[];
   kind: "live" | "movie" | "episode";
   startPositionMs?: number;
   season?: number;

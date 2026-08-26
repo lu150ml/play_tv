@@ -3,13 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../services/sessionService", () => ({
-  connectServerSession: vi.fn()
+  startServerSession: vi.fn()
 }));
 
-import { connectServerSession } from "../services/sessionService";
+import { startServerSession } from "../services/sessionService";
 import { LoginPage } from "./LoginPage";
 
-const mockedConnect = vi.mocked(connectServerSession);
+const mockedConnect = vi.mocked(startServerSession);
 
 function setValueWithoutInputEvent(element: HTMLElement, value: string) {
   if (!(element instanceof HTMLInputElement)) throw new Error("Expected an input element.");
@@ -56,7 +56,7 @@ describe("LoginPage Android autofill", () => {
         username: "viewer",
         password: "secret-value",
         remember: true
-      });
+      }, expect.any(Function));
     });
     expect(await screen.findByText("Servidor indisponível para o teste.")).toBeInTheDocument();
     expect(server).toHaveValue("http://iptv.example:8080");

@@ -5,7 +5,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { UpdatePrompt } from "./components/UpdatePrompt";
-import { CatalogPage } from "./pages/CatalogPage";
+import { HomePage } from "./pages/HomePage";
+import { SearchPage } from "./pages/SearchPage";
+import { MusicPage, MoviesPage, SeriesCatalogPage, TvPage } from "./pages/SectionPages";
+import { DownloadsPage } from "./pages/DownloadsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
@@ -55,14 +58,24 @@ export function App() {
             </AuthenticatedRoute>
           }
         >
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/catalog/:section" element={<CatalogPage />} />
-          <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/tv" element={<TvPage />} />
+          <Route path="/tv/category/:categoryId" element={<TvPage />} />
+          <Route path="/music" element={<MusicPage />} />
+          <Route path="/music/category/:categoryId" element={<MusicPage />} />
+          <Route path="/movies" element={<MoviesPage />} />
+          <Route path="/movies/category/:categoryId" element={<MoviesPage />} />
+          <Route path="/series" element={<SeriesCatalogPage />} />
+          <Route path="/series/category/:categoryId" element={<SeriesCatalogPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/downloads" element={<DownloadsPage />} />
+          <Route path="/catalog" element={<Navigate to="/home" replace />} />
+          <Route path="/catalog/:section" element={<LegacyCatalogRedirect />} />
           <Route path="/series/:seriesId" element={<SeriesPage />} />
           <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />
           <Route path="/watch/:contentId" element={<PlayerPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/catalog" replace />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </>
   );
@@ -93,7 +106,7 @@ function StartupRoute({
   if (sessionStatus === "checking") return <SessionLoading />;
 
   if (sessionStatus === "authenticated") {
-    return <Navigate to={activeProfileId ? "/catalog" : "/profiles"} replace />;
+    return <Navigate to={activeProfileId ? "/home" : "/profiles"} replace />;
   }
 
   return <Navigate to="/login" replace />;
@@ -170,7 +183,7 @@ function useNativePlayerEvents() {
         }
 
         if (event.state === "pip" && location.pathname.startsWith("/watch/")) {
-          void navigate("/catalog", { replace: true });
+          void navigate("/home", { replace: true });
         }
       })
       .then((handle) => {
@@ -198,7 +211,7 @@ function useAndroidBackButton() {
     let disposed = false;
     let removeListener: (() => Promise<void>) | undefined;
     void CapacitorApp.addListener("backButton", () => {
-      const isRoot = location.pathname === "/login" || location.pathname === "/catalog";
+      const isRoot = location.pathname === "/login" || location.pathname === "/home";
       if (isRoot && !location.search) {
         void CapacitorApp.exitApp();
         return;
@@ -217,4 +230,11 @@ function useAndroidBackButton() {
       if (removeListener) void removeListener();
     };
   }, [location.pathname, location.search, navigate]);
+}
+
+function LegacyCatalogRedirect() {
+  const location = useLocation();
+  const section = location.pathname.split("/")[2];
+  const target = section === "tv" ? "/tv" : section === "movies" ? "/movies" : section === "series" ? "/series" : "/home";
+  return <Navigate to={target} replace />;
 }

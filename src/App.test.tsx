@@ -10,7 +10,10 @@ vi.mock("./components/AppShell", () => ({
   AppShell: () => <Outlet />
 }));
 vi.mock("./components/UpdatePrompt", () => ({ UpdatePrompt: () => null }));
-vi.mock("./pages/CatalogPage", () => ({ CatalogPage: () => <div>Catálogo restaurado</div> }));
+vi.mock("./pages/HomePage", () => ({ HomePage: () => <div>Catálogo restaurado</div> }));
+vi.mock("./pages/SectionPages", () => ({ TvPage: () => null, MusicPage: () => null, MoviesPage: () => null, SeriesCatalogPage: () => null }));
+vi.mock("./pages/SearchPage", () => ({ SearchPage: () => null }));
+vi.mock("./pages/DownloadsPage", () => ({ DownloadsPage: () => null }));
 vi.mock("./pages/LoginPage", () => ({ LoginPage: () => <div>Tela de login</div> }));
 vi.mock("./pages/PlayerPage", () => ({ PlayerPage: () => null }));
 vi.mock("./pages/ProfilesPage", () => ({ ProfilesPage: () => <div>Escolher perfil</div> }));

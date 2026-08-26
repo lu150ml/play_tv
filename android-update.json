@@ -1,7 +1,7 @@
 {
-    "versionCode":  9,
-    "versionName":  "1.3.1",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.3.1-release.apk",
-    "sha256":  "4746F43B4763A4E0662F1F248024B812A0FCCF1490729E34DB891AD26965F621",
-    "releaseNotes":  "Correções do player e catálogo: áudio é encerrado imediatamente ao fechar, nova HUD compacta com ícones próprios e todos os filmes e séries ficam disponíveis na busca, sem o antigo corte por categoria."
+    "versionCode":  10,
+    "versionName":  "1.4.0",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-parity-v1.4/artifacts/play-tv-1.4.0-release.apk",
+    "sha256":  "68B1ABADC05AF60356A256F20FE717595B1DD78C67CDB7DCE3FEFF6CE5CAF1F6",
+    "releaseNotes":  "Nova Home móvel, catálogo progressivo, telas independentes, Música, melhorias no player Media3, capas protegidas, downloads e status completo de atualização."
 }

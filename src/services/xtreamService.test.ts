@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { httpClient } from "../platform/httpClient";
 import {
+  beginXtreamCatalogLoad,
   buildXtreamRequestUrl,
   isXtreamAuthenticated,
   loadXtreamCatalog,
@@ -154,5 +155,33 @@ describe("loadXtreamCatalog", () => {
 
     expect(result.catalog).toHaveLength(605);
     expect(result.catalog.at(-1)?.title).toBe("Filme depois do limite");
+  });
+
+  it("emits live channels before slow VOD and series endpoints", async () => {
+    let releaseVod!: () => void;
+    let releaseSeries!: () => void;
+    const vodGate = new Promise<void>((resolve) => { releaseVod = resolve; });
+    const seriesGate = new Promise<void>((resolve) => { releaseSeries = resolve; });
+    const updates: string[] = [];
+    vi.spyOn(httpClient, "get").mockImplementation(async (url) => {
+      const action = new URL(url, "http://localhost").searchParams.get("action");
+      if (!action) return { data: { user_info: { auth: 1 } }, status: 200 };
+      if (action === "get_vod_streams") await vodGate;
+      if (action === "get_series") await seriesGate;
+      const data = action === "get_live_categories" ? [{ category_id: "1", category_name: "TV" }]
+        : action === "get_live_streams" ? [{ stream_id: 7, name: "Canal rápido", category_id: "1" }]
+        : [];
+      return { data, status: 200 };
+    });
+    const load = await beginXtreamCatalogLoad(credentials, (update) => updates.push(update.section));
+    await vi.waitFor(() => expect(updates).toContain("live"));
+    expect(updates).not.toContain("vod");
+    expect(updates).not.toContain("series");
+    releaseVod(); releaseSeries();
+    const catalog = await load.completion;
+    expect(catalog[0]?.streamCandidates).toEqual([
+      "http://iptv.example:8080/live/demo%20user/secret%26value/7.m3u8",
+      "http://iptv.example:8080/live/demo%20user/secret%26value/7.ts"
+    ]);
   });
 });

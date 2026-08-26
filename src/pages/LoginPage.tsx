@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { BrandWordmark } from "../components/BrandWordmark";
-import { connectServerSession } from "../services/sessionService";
+import { startServerSession } from "../services/sessionService";
 import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
@@ -12,8 +12,12 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setSessionName = useLibraryStore((state) => state.setSessionName);
   const setServerUrlInStore = useLibraryStore((state) => state.setServerUrl);
-  const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
+  const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
   const setConnection = useLibraryStore((state) => state.setConnection);
+  const profiles = useLibraryStore((state) => state.profiles);
+  const setActiveProfile = useLibraryStore((state) => state.setActiveProfile);
   const [remember, setRemember] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -36,14 +40,13 @@ export function LoginPage() {
     setPassword(submittedPassword);
     setError(undefined);
     setIsConnecting(true);
+    beginCatalogLoad();
 
     try {
-      const session = await connectServerSession({
-        serverUrl: submittedServerUrl,
-        username: submittedUsername,
-        password: submittedPassword,
-        remember
-      });
+      const session = await startServerSession(
+        { serverUrl: submittedServerUrl, username: submittedUsername, password: submittedPassword, remember },
+        (update) => setCatalogSection(update.section, update.items, update.status, update.error)
+      );
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
       const connection = session.connection;
@@ -56,9 +59,15 @@ export function LoginPage() {
       } else {
         await credentialVault.clear();
       }
-      setCatalog(session.catalog, session.source);
-      void navigate("/profiles");
+      if (profiles.length === 1 && profiles[0]) {
+        setActiveProfile(profiles[0].id);
+        void navigate("/home");
+      } else {
+        void navigate("/profiles");
+      }
+      void session.catalogReady;
     } catch (connectionError) {
+      setCatalogStatus("error");
       setError(
         connectionError instanceof Error
           ? connectionError.message

@@ -50,7 +50,7 @@ export function searchCatalog(
   return sortCatalog(results, filters.sort ?? "featured");
 }
 
-function normalizeSearchText(value: string): string {
+export function normalizeSearchText(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

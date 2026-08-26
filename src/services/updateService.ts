@@ -5,7 +5,7 @@ import { httpClient } from "../platform/httpClient";
 import { isNativeAndroid } from "../platform/platformInfo";
 
 const DEFAULT_MANIFEST_URL =
-  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/android-update.json";
+  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-parity-v1.4/android-update.json";
 
 export interface AndroidUpdateManifest {
   versionCode: number;
@@ -17,7 +17,10 @@ export interface AndroidUpdateManifest {
 
 interface AndroidUpdaterPlugin {
   install(options: { apkUrl: string; sha256: string }): Promise<{ installerOpened: boolean }>;
+  addListener(eventName: "updateProgress", listener: (event: AndroidUpdateProgress) => void): Promise<{ remove: () => Promise<void> }>;
 }
+
+export interface AndroidUpdateProgress { status: "downloading" | "ready"; downloadedBytes: number; totalBytes: number; progress: number; }
 
 const AndroidUpdater = registerPlugin<AndroidUpdaterPlugin>("AndroidUpdater");
 
@@ -59,4 +62,14 @@ export async function checkForAndroidUpdate(): Promise<AndroidUpdateManifest | u
 export async function installAndroidUpdate(update: AndroidUpdateManifest): Promise<void> {
   if (!isNativeAndroid()) return;
   await AndroidUpdater.install({ apkUrl: update.apkUrl, sha256: update.sha256 });
+}
+
+export async function getInstalledVersion(): Promise<{ version: string; build: number }> {
+  if (!isNativeAndroid()) return { version: "web", build: 0 };
+  const info = await App.getInfo();
+  return { version: info.version, build: Number.parseInt(info.build, 10) || 0 };
+}
+
+export function onAndroidUpdateProgress(listener: (progress: AndroidUpdateProgress) => void) {
+  return AndroidUpdater.addListener("updateProgress", listener);
 }

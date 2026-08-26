@@ -9,6 +9,7 @@ import {
 import { useLibraryStore } from "../stores/libraryStore";
 import type { ContentItem } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
+import { SecureImage } from "./SecureImage";
 
 interface ContentCardProps {
   item: ContentItem;
@@ -44,8 +45,8 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
         ].join(" ")}
       >
         {item.imageUrl ? (
-          <img
-            src={item.imageUrl}
+          <SecureImage
+            candidates={item.imageCandidates ?? [item.imageUrl]}
             alt=""
             loading="lazy"
             className="absolute inset-0 h-full w-full object-cover opacity-85 transition duration-500 group-hover:scale-105"

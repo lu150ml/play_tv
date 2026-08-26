@@ -99,6 +99,7 @@ public class AndroidUpdaterPlugin extends Plugin {
 
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
                 long downloaded = 0L;
+                long lastProgressAt = 0L;
                 byte[] buffer = new byte[32 * 1024];
                 try (InputStream input = new BufferedInputStream(connection.getInputStream());
                      FileOutputStream output = new FileOutputStream(temporaryApk)) {
@@ -110,6 +111,11 @@ public class AndroidUpdaterPlugin extends Plugin {
                         }
                         digest.update(buffer, 0, count);
                         output.write(buffer, 0, count);
+                        long now = System.currentTimeMillis();
+                        if (now - lastProgressAt > 400L) {
+                            emitProgress("downloading", downloaded, declaredLength);
+                            lastProgressAt = now;
+                        }
                     }
                     output.getFD().sync();
                 } finally {
@@ -140,8 +146,16 @@ public class AndroidUpdaterPlugin extends Plugin {
         }, "play-tv-updater").start();
     }
 
+    private void emitProgress(String status, long downloaded, long total) {
+        JSObject event = new JSObject();
+        event.put("status", status); event.put("downloadedBytes", downloaded); event.put("totalBytes", total);
+        event.put("progress", total > 0 ? Math.min(100, downloaded * 100 / total) : -1);
+        notifyListeners("updateProgress", event, true);
+    }
+
     private void openInstaller(PluginCall call, File apk) {
         try {
+            emitProgress("ready", apk.length(), apk.length());
             Uri apkUri = FileProvider.getUriForFile(
                 getContext(),
                 getContext().getPackageName() + ".fileprovider",

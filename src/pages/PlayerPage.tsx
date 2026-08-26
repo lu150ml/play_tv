@@ -1,5 +1,5 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, Play } from "lucide-react";
+import { ArrowLeft, Download, Heart, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
 import { isNativeAndroid } from "../platform/platformInfo";
 import { playerGateway } from "../platform/playerGateway";
+import { downloads } from "../platform/downloads";
 import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
 import {
@@ -32,6 +33,7 @@ export function PlayerPage() {
   const series = isSeries(item) ? item : undefined;
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
+  const storeSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
     routeContentId ? state.isFavorite(routeContentId) : false
@@ -55,6 +57,8 @@ export function PlayerPage() {
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
   const [nativeLaunchToken, setNativeLaunchToken] = useState(0);
   const [nativePlayerState, setNativePlayerState] = useState<"idle" | "opening" | "error">("idle");
+  const [localStreamUri, setLocalStreamUri] = useState<string>();
+  const [downloadNotice, setDownloadNotice] = useState<string>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
@@ -65,7 +69,13 @@ export function PlayerPage() {
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
   );
-  const activeStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const remoteStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const downloadContentId = selectedEpisode?.id ?? item?.id;
+  const activeStreamUrl = localStreamUri ?? remoteStreamUrl;
+  const activeStreamCandidates = useMemo(
+    () => localStreamUri ? [localStreamUri] : selectedEpisode?.streamCandidates ?? item?.streamCandidates ?? (remoteStreamUrl ? [remoteStreamUrl] : []),
+    [item?.streamCandidates, localStreamUri, remoteStreamUrl, selectedEpisode?.streamCandidates]
+  );
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -91,6 +101,21 @@ export function PlayerPage() {
   const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
   const nativeLaunchKeyRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    setLocalStreamUri(undefined);
+    if (!downloadContentId) return;
+    void downloads.completedUri(downloadContentId).then((uri) => { if (active) setLocalStreamUri(uri); });
+    return () => { active = false; };
+  }, [downloadContentId]);
+
+  useEffect(() => {
+    const player = playerShellRef.current;
+    if (!player || !downloadContentId) return;
+    player.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => player.focus({ preventScroll: true }), 180);
+  }, [downloadContentId]);
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -191,6 +216,7 @@ export function PlayerPage() {
         }
 
         setSeriesEpisodes(episodes);
+        storeSeriesEpisodes(series.id, episodes);
         setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
 
         if (episodes.length === 0) {
@@ -215,7 +241,7 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, episodeId, series]);
+  }, [connection, episodeId, series, storeSeriesEpisodes]);
 
   useEffect(() => {
     if (episodeId) {
@@ -396,6 +422,7 @@ export function PlayerPage() {
             contentId: episode.id,
             title: episode.title,
             streamUrl: episode.streamUrl ?? "",
+            streamCandidates: episode.streamCandidates,
             kind: "episode" as const,
             startPositionMs: (playback[episode.id]?.positionSeconds ?? 0) * 1000,
             season: episode.season,
@@ -408,6 +435,7 @@ export function PlayerPage() {
       contentId: playbackId,
       title: selectedEpisode?.title ?? item.title,
       streamUrl: activeStreamUrl,
+      streamCandidates: activeStreamCandidates,
       kind: item.type === "channel" ? "live" : selectedEpisode ? "episode" : "movie",
       startPositionMs: (playback[playbackId]?.positionSeconds ?? 0) * 1000,
       season: selectedEpisode?.season,
@@ -469,7 +497,7 @@ export function PlayerPage() {
         }
 
       if (result.reason !== "replaced" && window.location.pathname.startsWith("/watch/")) {
-          void navigate(series ? `/series/${series.id}` : "/catalog", { replace: true });
+          void navigate(series ? "/series" : item.type === "channel" ? "/tv" : "/movies", { replace: true });
         }
       })
       .catch(() => {
@@ -478,6 +506,7 @@ export function PlayerPage() {
       });
   }, [
     activeStreamUrl,
+    activeStreamCandidates,
     item,
     nativeLaunchToken,
     navigate,
@@ -551,6 +580,18 @@ export function PlayerPage() {
           durationSeconds: durationSeconds || selectedEpisode.durationSeconds || 0
         })
       );
+    }
+  }
+
+  async function handleDownload() {
+    if (!downloads.isAvailable() || !downloadContentId || activeStreamCandidates.length === 0 || item?.type === "channel") return;
+    if (!window.confirm(`Baixar ${selectedEpisode?.title ?? item?.title ?? "este conteúdo"}?`)) return;
+    setDownloadNotice("Adicionando à fila…");
+    try {
+      await downloads.start({ contentId: downloadContentId, parentId: selectedEpisode ? item?.id : undefined, title: selectedEpisode ? `${item?.title ?? "Série"} - S${selectedEpisode.season}E${selectedEpisode.episode}` : item?.title ?? "Filme", kind: selectedEpisode ? "episode" : "movie", candidates: activeStreamCandidates.filter((candidate) => candidate !== localStreamUri) });
+      setDownloadNotice("Download adicionado à fila.");
+    } catch (error) {
+      setDownloadNotice(error instanceof Error ? error.message : "Não foi possível iniciar o download.");
     }
   }
 
@@ -754,7 +795,7 @@ export function PlayerPage() {
   return (
     <div className="mx-auto max-w-canvas">
       <Link
-        to={series ? `/series/${series.id}` : "/catalog"}
+        to={series ? "/series" : content.type === "channel" ? "/tv" : "/movies"}
         data-focusable="true"
         className="focus-card mb-4 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
       >
@@ -764,6 +805,7 @@ export function PlayerPage() {
 
       <section
         ref={playerShellRef}
+        tabIndex={-1}
         onClick={revealControls}
         onFocusCapture={() => {
           revealControls();
@@ -832,7 +874,7 @@ export function PlayerPage() {
             {mediaError}
           </div>
         ) : null}
-        {isBuffering && !mediaError ? (
+        {isBuffering && !mediaError && content.type !== "channel" ? (
           <div
             data-testid="buffering-indicator"
             className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/80 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl"
@@ -951,7 +993,9 @@ export function PlayerPage() {
               />
               Favorite
             </button>
+            {content.type !== "channel" && downloads.isAvailable() ? <button type="button" data-focusable="true" onClick={() => void handleDownload()} className="focus-card flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"><Download size={20}/>Baixar</button> : null}
           </div>
+          {downloadNotice ? <p className="mt-3 text-sm text-primary-container">{downloadNotice}</p> : null}
 
           {content.type === "series" ? (
             <section className="mt-8">
