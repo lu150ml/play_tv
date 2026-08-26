@@ -52,7 +52,7 @@ available when the service is absent.
 Enable USB debugging, connect the device, and run:
 
 ```powershell
-.tools\android-sdk\platform-tools\adb.exe install -r artifacts\play-tv-1.1.2-release.apk
+.tools\android-sdk\platform-tools\adb.exe install -r artifacts\play-tv-1.2.0-release.apk
 ```
 
 HTTP IPTV servers are supported and produce an in-app security warning.

@@ -1,7 +1,7 @@
 {
-    "versionCode":  4,
-    "versionName":  "1.1.2",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.1.2-release.apk",
-    "sha256":  "E1406A1088BEF43592B71F10336323F8877BFDABD9130415ACE1221FA821E4EE",
-    "releaseNotes":  "Corrige o formulário Android que enviava campos vazios após preenchimento automático ou colagem e mantém os dados quando o login falha."
+    "versionCode":  5,
+    "versionName":  "1.2.0",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.2.0-release.apk",
+    "sha256":  "91B699582B762FF22C3CE3862C866A6E1335AF273D70DF5F2749DB29F0E14CD9",
+    "releaseNotes":  "Novo player com identidade Play TV, controles próprios, tela sempre ativa durante o vídeo, Picture-in-Picture no Android 8 ou superior, lista de episódios e seleção de áudio e legendas."
 }

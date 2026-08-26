@@ -2,6 +2,7 @@ package com.playtv.app;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 import android.content.pm.ActivityInfo;
@@ -25,5 +26,8 @@ public class AndroidPlayerContractTest {
 
         assertFalse(info.exported);
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, info.screenOrientation);
+        assertTrue((info.flags & ActivityInfo.FLAG_SUPPORTS_PICTURE_IN_PICTURE) != 0);
+        assertTrue((info.configChanges & ActivityInfo.CONFIG_SCREEN_SIZE) != 0);
+        assertTrue((info.configChanges & ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE) != 0);
     }
 }

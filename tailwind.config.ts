@@ -5,31 +5,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "#0b1326",
-        surface: "#0b1326",
-        "surface-dim": "#0b1326",
-        "surface-bright": "#31394d",
-        "surface-container-lowest": "#060e20",
-        "surface-container-low": "#131b2e",
-        "surface-container": "#171f33",
-        "surface-container-high": "#222a3d",
-        "surface-container-highest": "#2d3449",
-        "on-surface": "#dae2fd",
-        "on-surface-variant": "#b9cacb",
-        outline: "#849495",
-        "outline-variant": "#3b494b",
-        "surface-tint": "#00dbe9",
-        primary: "#dbfcff",
-        "on-primary": "#00363a",
-        "primary-container": "#00f0ff",
-        "on-primary-container": "#006970",
-        secondary: "#d0bcff",
-        "secondary-container": "#571bc1",
-        "on-secondary-container": "#c4abff",
-        tertiary: "#fff5de",
-        "tertiary-container": "#fed639",
-        error: "#ffb4ab",
-        "error-container": "#93000a"
+        background: "rgb(var(--playtv-background) / <alpha-value>)",
+        surface: "rgb(var(--playtv-background) / <alpha-value>)",
+        "surface-dim": "rgb(var(--playtv-background) / <alpha-value>)",
+        "surface-bright": "rgb(49 57 77 / <alpha-value>)",
+        "surface-container-lowest": "rgb(var(--playtv-surface-lowest) / <alpha-value>)",
+        "surface-container-low": "rgb(var(--playtv-surface-low) / <alpha-value>)",
+        "surface-container": "rgb(var(--playtv-surface) / <alpha-value>)",
+        "surface-container-high": "rgb(var(--playtv-surface-high) / <alpha-value>)",
+        "surface-container-highest": "rgb(var(--playtv-surface-highest) / <alpha-value>)",
+        "on-surface": "rgb(var(--playtv-on-surface) / <alpha-value>)",
+        "on-surface-variant": "rgb(var(--playtv-on-surface-variant) / <alpha-value>)",
+        outline: "rgb(var(--playtv-outline) / <alpha-value>)",
+        "outline-variant": "rgb(var(--playtv-outline-variant) / <alpha-value>)",
+        "surface-tint": "rgb(var(--playtv-cyan-dark) / <alpha-value>)",
+        primary: "rgb(219 252 255 / <alpha-value>)",
+        "on-primary": "rgb(var(--playtv-on-cyan) / <alpha-value>)",
+        "primary-container": "rgb(var(--playtv-cyan) / <alpha-value>)",
+        "on-primary-container": "rgb(0 105 112 / <alpha-value>)",
+        secondary: "rgb(var(--playtv-purple) / <alpha-value>)",
+        "secondary-container": "rgb(var(--playtv-purple-container) / <alpha-value>)",
+        "on-secondary-container": "rgb(196 171 255 / <alpha-value>)",
+        tertiary: "rgb(255 245 222 / <alpha-value>)",
+        "tertiary-container": "rgb(var(--playtv-yellow) / <alpha-value>)",
+        error: "rgb(var(--playtv-error) / <alpha-value>)",
+        "error-container": "rgb(var(--playtv-error-container) / <alpha-value>)"
       },
       fontFamily: {
         display: ["Geist", "Inter", "sans-serif"],
@@ -44,8 +44,8 @@ export default {
         xl: "0.75rem"
       },
       boxShadow: {
-        glow: "0 0 24px rgba(0, 219, 233, 0.18)",
-        focus: "0 0 0 3px rgba(0, 240, 255, 0.42)"
+        glow: "var(--playtv-glow)",
+        focus: "var(--playtv-focus-ring)"
       },
       maxWidth: {
         canvas: "1440px"

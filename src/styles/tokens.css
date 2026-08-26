@@ -1,0 +1,23 @@
+:root {
+  --playtv-background: 11 19 38;
+  --playtv-surface-lowest: 6 14 32;
+  --playtv-surface-low: 19 27 46;
+  --playtv-surface: 23 31 51;
+  --playtv-surface-high: 34 42 61;
+  --playtv-surface-highest: 45 52 73;
+  --playtv-on-surface: 218 226 253;
+  --playtv-on-surface-variant: 185 202 203;
+  --playtv-outline: 132 148 149;
+  --playtv-outline-variant: 59 73 75;
+  --playtv-cyan: 0 240 255;
+  --playtv-cyan-dark: 0 219 233;
+  --playtv-on-cyan: 0 54 58;
+  --playtv-purple: 208 188 255;
+  --playtv-purple-container: 87 27 193;
+  --playtv-yellow: 254 214 57;
+  --playtv-error: 255 180 171;
+  --playtv-error-container: 147 0 10;
+  --playtv-radius-control: 0.75rem;
+  --playtv-focus-ring: 0 0 0 3px rgb(var(--playtv-cyan) / 0.42);
+  --playtv-glow: 0 0 24px rgb(var(--playtv-cyan-dark) / 0.18);
+}

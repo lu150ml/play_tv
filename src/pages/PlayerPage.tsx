@@ -54,9 +54,7 @@ export function PlayerPage() {
   const [subtitleUrl, setSubtitleUrl] = useState<string | undefined>();
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
   const [nativeLaunchToken, setNativeLaunchToken] = useState(0);
-  const [nativePlayerState, setNativePlayerState] = useState<"idle" | "opening" | "error">(
-    "idle"
-  );
+  const [nativePlayerState, setNativePlayerState] = useState<"idle" | "opening" | "error">("idle");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
@@ -392,62 +390,92 @@ export function PlayerPage() {
     setNativePlayerState("opening");
     setMediaError(undefined);
 
-    const currentIndex = selectedEpisode
-      ? seriesEpisodes.findIndex((episode) => episode.id === selectedEpisode.id)
-      : -1;
-    const nextEpisodes = currentIndex >= 0
-      ? seriesEpisodes.slice(currentIndex + 1).map((episode) => ({
-          contentId: episode.id,
-          title: episode.title,
-          streamUrl: episode.streamUrl ?? "",
-          kind: "episode" as const,
-          startPositionMs: (playback[episode.id]?.positionSeconds ?? 0) * 1000
-        })).filter((episode) => episode.streamUrl.length > 0)
+    const playlist = selectedEpisode
+      ? seriesEpisodes
+          .map((episode) => ({
+            contentId: episode.id,
+            title: episode.title,
+            streamUrl: episode.streamUrl ?? "",
+            kind: "episode" as const,
+            startPositionMs: (playback[episode.id]?.positionSeconds ?? 0) * 1000,
+            season: episode.season,
+            episode: episode.episode
+          }))
+          .filter((episode) => episode.streamUrl.length > 0)
       : undefined;
 
-    void playerGateway.open({
+    const request = {
       contentId: playbackId,
       title: selectedEpisode?.title ?? item.title,
       streamUrl: activeStreamUrl,
       kind: item.type === "channel" ? "live" : selectedEpisode ? "episode" : "movie",
       startPositionMs: (playback[playbackId]?.positionSeconds ?? 0) * 1000,
+      season: selectedEpisode?.season,
+      episode: selectedEpisode?.episode,
       posterUrl: item.imageUrl,
-      nextEpisodes,
-      subtitleQuery: item.type === "channel" ? undefined : {
-        title: cleanTitle(item.title),
-        season: selectedEpisode?.season,
-        episode: selectedEpisode?.episode
-      },
+      playlist,
+      subtitleQuery:
+        item.type === "channel"
+          ? undefined
+          : {
+              title: cleanTitle(item.title),
+              season: selectedEpisode?.season,
+              episode: selectedEpisode?.episode
+            },
       subtitleApiBaseUrl: import.meta.env.VITE_SUBTITLE_API_BASE_URL
-    }).then((result) => {
-      for (const entry of result.progress ?? [result]) {
-        if (entry.durationMs <= 0) continue;
-        storeProgress(savePlaybackProgress({
-          contentId: entry.contentId,
-          positionSeconds: Math.floor(entry.positionMs / 1000),
-          durationSeconds: Math.floor(entry.durationMs / 1000)
-        }));
-      }
+    } as const;
 
-      if (selectedEpisode && result.durationMs > 0) {
-        storeProgress(savePlaybackProgress({
-          contentId: item.id,
-          positionSeconds: Math.floor(result.positionMs / 1000),
-          durationSeconds: Math.floor(result.durationMs / 1000)
-        }));
+    void (async () => {
+      if (await playerGateway.hasActiveSession()) {
+        const shouldReplace = window.confirm(
+          "Já existe um vídeo em reprodução. Deseja salvar o progresso e reproduzir este título?"
+        );
+        if (!shouldReplace) {
+          nativeLaunchKeyRef.current = undefined;
+          void navigate(-1);
+          return;
+        }
+        await playerGateway.close("replaced");
       }
+      return playerGateway.open(request);
+    })()
+      .then((result) => {
+        if (!result) return;
+        for (const entry of result.progress ?? [result]) {
+          if (entry.durationMs <= 0) continue;
+          storeProgress(
+            savePlaybackProgress({
+              contentId: entry.contentId,
+              positionSeconds: Math.floor(entry.positionMs / 1000),
+              durationSeconds: Math.floor(entry.durationMs / 1000)
+            })
+          );
+        }
 
-      if (result.reason === "error") {
+        if (selectedEpisode && result.durationMs > 0) {
+          storeProgress(
+            savePlaybackProgress({
+              contentId: item.id,
+              positionSeconds: Math.floor(result.positionMs / 1000),
+              durationSeconds: Math.floor(result.durationMs / 1000)
+            })
+          );
+        }
+
+        if (result.reason === "error") {
+          setNativePlayerState("error");
+          setMediaError("Não foi possível reproduzir esta mídia neste aparelho.");
+          return;
+        }
+
+      if (result.reason !== "replaced" && window.location.pathname.startsWith("/watch/")) {
+          void navigate(series ? `/series/${series.id}` : "/catalog", { replace: true });
+        }
+      })
+      .catch(() => {
         setNativePlayerState("error");
-        setMediaError("Não foi possível reproduzir esta mídia neste aparelho.");
-        return;
-      }
-
-      void navigate(series ? `/series/${series.id}` : "/catalog", { replace: true });
-    }).catch(() => {
-      setNativePlayerState("error");
-      setMediaError("Não foi possível abrir o player nativo.");
-    });
+        setMediaError("Não foi possível abrir o player nativo.");
+      });
   }, [
     activeStreamUrl,
     item,
@@ -483,9 +511,7 @@ export function PlayerPage() {
         <div className="glass-panel w-full rounded-2xl p-8">
           <h1 className="font-display text-2xl font-bold text-on-surface">{content.title}</h1>
           <p className="mt-3 text-on-surface-variant">
-            {nativePlayerState === "error"
-              ? mediaError
-              : "Abrindo o player em tela cheia..."}
+            {nativePlayerState === "error" ? mediaError : "Abrindo o player em tela cheia..."}
           </p>
           {nativePlayerState === "error" ? (
             <button

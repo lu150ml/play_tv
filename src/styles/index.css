@@ -1,4 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import "@fontsource-variable/geist";
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/inter/latin-700.css";
+@import "./tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -6,8 +11,8 @@
 
 :root {
   color-scheme: dark;
-  background: #0b1326;
-  color: #dae2fd;
+  background: rgb(var(--playtv-background));
+  color: rgb(var(--playtv-on-surface));
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -21,8 +26,13 @@ body {
   margin: 0;
   overscroll-behavior: none;
   background:
-    radial-gradient(circle at 18% 8%, rgba(0, 219, 233, 0.14), transparent 30%),
-    linear-gradient(180deg, #060e20 0%, #0b1326 38%, #060e20 100%);
+    radial-gradient(circle at 18% 8%, rgb(var(--playtv-cyan-dark) / 0.14), transparent 30%),
+    linear-gradient(
+      180deg,
+      rgb(var(--playtv-surface-lowest)) 0%,
+      rgb(var(--playtv-background)) 38%,
+      rgb(var(--playtv-surface-lowest)) 100%
+    );
 }
 
 .app-header {
@@ -105,12 +115,12 @@ select {
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.42);
+  box-shadow: var(--playtv-focus-ring);
 }
 
 ::selection {
-  background: #00f0ff;
-  color: #00363a;
+  background: rgb(var(--playtv-cyan));
+  color: rgb(var(--playtv-on-cyan));
 }
 
 ::-webkit-scrollbar {
@@ -119,16 +129,16 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b1326;
+  background: rgb(var(--playtv-background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2d3449;
+  background: rgb(var(--playtv-surface-highest));
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #00dbe9;
+  background: rgb(var(--playtv-cyan-dark));
 }
 
 @layer components {
