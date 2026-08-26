@@ -19,10 +19,10 @@ export default {
         outline: "rgb(var(--playtv-outline) / <alpha-value>)",
         "outline-variant": "rgb(var(--playtv-outline-variant) / <alpha-value>)",
         "surface-tint": "rgb(var(--playtv-cyan-dark) / <alpha-value>)",
-        primary: "rgb(219 252 255 / <alpha-value>)",
+        primary: "rgb(var(--playtv-cyan) / <alpha-value>)",
         "on-primary": "rgb(var(--playtv-on-cyan) / <alpha-value>)",
         "primary-container": "rgb(var(--playtv-cyan) / <alpha-value>)",
-        "on-primary-container": "rgb(0 105 112 / <alpha-value>)",
+        "on-primary-container": "rgb(255 224 215 / <alpha-value>)",
         secondary: "rgb(var(--playtv-purple) / <alpha-value>)",
         "secondary-container": "rgb(var(--playtv-purple-container) / <alpha-value>)",
         "on-secondary-container": "rgb(196 171 255 / <alpha-value>)",
@@ -33,6 +33,7 @@ export default {
       },
       fontFamily: {
         display: ["Geist", "Inter", "sans-serif"],
+        cinema: ["Georgia", "Times New Roman", "serif"],
         body: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"]
       },
@@ -41,7 +42,8 @@ export default {
         DEFAULT: "0.25rem",
         md: "0.375rem",
         lg: "0.5rem",
-        xl: "0.75rem"
+        xl: "0.75rem",
+        "2xl": "1rem"
       },
       boxShadow: {
         glow: "var(--playtv-glow)",

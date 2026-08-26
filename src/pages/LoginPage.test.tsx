@@ -39,16 +39,16 @@ describe("LoginPage Android autofill", () => {
       </MemoryRouter>
     );
 
-    const server = screen.getByLabelText("Server URL");
-    const username = screen.getByLabelText("Username");
-    const password = screen.getByLabelText("Password");
+    const server = screen.getByLabelText("Endereço do servidor");
+    const username = screen.getByLabelText("Usuário");
+    const password = screen.getByLabelText("Senha");
 
     act(() => {
       setValueWithoutInputEvent(server, "http://iptv.example:8080");
       setValueWithoutInputEvent(username, "viewer");
       setValueWithoutInputEvent(password, "secret-value");
     });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    fireEvent.click(screen.getByRole("button", { name: /entrar/i }));
 
     await waitFor(() => {
       expect(mockedConnect).toHaveBeenCalledWith({
@@ -72,13 +72,13 @@ describe("LoginPage Android autofill", () => {
       </MemoryRouter>
     );
 
-    const server = screen.getByLabelText("Server URL");
-    const username = screen.getByLabelText("Username");
-    const password = screen.getByLabelText("Password");
+    const server = screen.getByLabelText("Endereço do servidor");
+    const username = screen.getByLabelText("Usuário");
+    const password = screen.getByLabelText("Senha");
     fireEvent.change(server, { target: { value: "http://iptv.example:8080" } });
     fireEvent.change(username, { target: { value: "viewer" } });
     fireEvent.change(password, { target: { value: "secret-value" } });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    fireEvent.click(screen.getByRole("button", { name: /entrar/i }));
 
     expect(await screen.findByText("Credenciais recusadas.")).toBeInTheDocument();
     expect(server).toHaveValue("http://iptv.example:8080");

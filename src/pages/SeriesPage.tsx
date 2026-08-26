@@ -106,11 +106,21 @@ export function SeriesPage() {
 
       <section
         className={[
-          "mb-8 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl lg:p-8",
+          "relative mb-8 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl lg:p-8",
           series.backdropTone
         ].join(" ")}
       >
-        <div className="grid gap-8 xl:grid-cols-[1fr_320px]">
+        {series.imageUrl ? (
+          <>
+            <img
+              src={series.imageUrl}
+              alt=""
+              className="absolute inset-y-0 right-0 h-full w-2/3 object-cover opacity-35"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-surface-container-lowest via-surface-container-lowest/80 to-transparent" />
+          </>
+        ) : null}
+        <div className="relative z-10 grid gap-8 xl:grid-cols-[1fr_320px]">
           <div>
             <div className="mb-4 flex flex-wrap gap-2">
               {series.genres.map((genre) => (
@@ -122,7 +132,7 @@ export function SeriesPage() {
                 </span>
               ))}
             </div>
-            <h1 className="font-display text-4xl font-bold text-on-surface lg:text-6xl">
+            <h1 className="font-cinema text-5xl font-semibold text-on-surface lg:text-7xl">
               {series.title}
             </h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-on-surface-variant lg:text-lg">

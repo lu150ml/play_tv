@@ -24,6 +24,7 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
     ? formatRemainingTime(getRemainingSeconds(playback))
     : undefined;
   const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  const usePortrait = compact && item.type !== "channel";
 
   return (
     <Link
@@ -31,13 +32,14 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
       data-focusable="true"
       aria-label={`${item.title} ${item.type}`}
       className={[
-        "focus-card group block overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 text-left",
-        compact ? "w-72 shrink-0" : "min-h-full"
+        "focus-card group block overflow-hidden rounded-lg border border-white/10 bg-surface-container/70 text-left shadow-[0_16px_32px_rgba(0,0,0,0.24)]",
+        compact ? (usePortrait ? "w-44 shrink-0 sm:w-52" : "w-72 shrink-0") : "min-h-full"
       ].join(" ")}
     >
       <div
         className={[
-          "media-poster relative aspect-video overflow-hidden bg-gradient-to-br",
+          "media-poster relative overflow-hidden bg-gradient-to-br",
+          usePortrait ? "aspect-[2/3]" : "aspect-video",
           item.posterTone
         ].join(" ")}
       >
@@ -46,14 +48,16 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
             src={item.imageUrl}
             alt=""
             loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover opacity-75"
+            className="absolute inset-0 h-full w-full object-cover opacity-85 transition duration-500 group-hover:scale-105"
           />
         ) : null}
         <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.12),transparent)] opacity-0 transition-opacity group-hover:opacity-100" />
         <div className="absolute left-3 top-3 flex gap-2">
-          <span className="rounded-md border border-white/10 bg-black/35 px-2 py-1 font-mono text-[11px] uppercase text-on-surface">
-            {item.type}
-          </span>
+          {item.type === "channel" ? (
+            <span className="rounded bg-primary px-2 py-1 font-mono text-[10px] font-semibold uppercase text-on-primary">
+              Ao vivo
+            </span>
+          ) : null}
           <span className="rounded-md border border-white/10 bg-black/35 px-2 py-1 font-mono text-[11px] uppercase text-on-surface">
             {item.quality[0]}
           </span>
@@ -73,9 +77,9 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
         ) : null}
       </div>
 
-      <div className="p-4">
+      <div className={compact ? "p-3" : "p-4"}>
         <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 font-display text-lg font-semibold text-on-surface">
+          <h3 className="line-clamp-2 font-display text-base font-semibold text-on-surface sm:text-lg">
             {item.title}
           </h3>
           <Heart
@@ -84,9 +88,11 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
             size={18}
           />
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">
-          {item.description}
-        </p>
+        {!compact ? (
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">
+            {item.description}
+          </p>
+        ) : null}
         {remainingLabel ? (
           <p className="mt-3 font-mono text-xs uppercase text-primary-container">
             {remainingLabel}

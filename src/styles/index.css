@@ -26,11 +26,12 @@ body {
   margin: 0;
   overscroll-behavior: none;
   background:
-    radial-gradient(circle at 18% 8%, rgb(var(--playtv-cyan-dark) / 0.14), transparent 30%),
+    radial-gradient(circle at 76% 4%, rgb(var(--playtv-cyan-dark) / 0.09), transparent 32%),
+    radial-gradient(circle at 10% 62%, rgb(108 57 29 / 0.12), transparent 30%),
     linear-gradient(
       180deg,
       rgb(var(--playtv-surface-lowest)) 0%,
-      rgb(var(--playtv-background)) 38%,
+      rgb(var(--playtv-background)) 50%,
       rgb(var(--playtv-surface-lowest)) 100%
     );
 }
@@ -69,7 +70,7 @@ body {
   .app-sidebar .brand-copy,
   .app-sidebar .nav-label,
   .app-sidebar .profile-copy,
-  .app-sidebar > div:last-child > p {
+  .app-sidebar .profile-card > p {
     display: none;
   }
 
@@ -144,7 +145,7 @@ select {
 @layer components {
   .glass-panel {
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(23, 31, 51, 0.72);
+    background: rgba(20, 19, 16, 0.86);
     backdrop-filter: blur(24px);
   }
 
@@ -158,14 +159,52 @@ select {
 
   .focus-card:hover,
   .focus-card:focus-visible {
-    border-color: rgba(0, 240, 255, 0.72);
-    box-shadow: 0 0 24px rgba(0, 219, 233, 0.22);
+    border-color: rgba(242, 78, 47, 0.82);
+    box-shadow:
+      0 0 0 1px rgba(242, 78, 47, 0.3),
+      0 12px 34px rgba(0, 0, 0, 0.45);
     transform: translateY(-2px);
   }
 
   .media-poster {
     background:
-      linear-gradient(135deg, rgba(0, 219, 233, 0.22), transparent 38%),
-      linear-gradient(160deg, rgba(208, 188, 255, 0.18), transparent 52%), #131b2e;
+      linear-gradient(135deg, rgba(242, 78, 47, 0.18), transparent 38%),
+      linear-gradient(160deg, rgba(216, 158, 62, 0.12), transparent 52%), #171612;
+  }
+
+  .auth-screen {
+    background:
+      radial-gradient(circle at 74% 24%, rgba(242, 78, 47, 0.16), transparent 28%),
+      linear-gradient(110deg, rgba(5, 6, 5, 0.98), rgba(10, 10, 8, 0.88) 48%, rgba(28, 18, 11, 0.7));
+  }
+
+  .cinematic-hero {
+    min-height: clamp(22rem, 52vw, 38rem);
+    background-color: rgb(var(--playtv-surface-lowest));
+  }
+
+  .cinematic-hero::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(5, 6, 5, 0.98) 0%,
+        rgba(5, 6, 5, 0.8) 38%,
+        rgba(5, 6, 5, 0.16) 72%
+      ),
+      linear-gradient(0deg, rgb(var(--playtv-background)) 0%, transparent 42%);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-header {
+    display: none;
+  }
+
+  .app-content {
+    padding-top: 0;
   }
 }

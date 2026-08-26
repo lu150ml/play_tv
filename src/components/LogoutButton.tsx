@@ -34,7 +34,11 @@ export function LogoutButton({ compact = false }: { compact?: boolean }) {
       ].join(" ")}
     >
       <LogOut aria-hidden="true" size={18} />
-      {compact ? <span className="sr-only">Sair</span> : isLoggingOut ? "Saindo..." : "Sair"}
+      {compact ? (
+        <span className="sr-only">Sair</span>
+      ) : (
+        <span className="nav-label">{isLoggingOut ? "Saindo..." : "Sair"}</span>
+      )}
     </button>
   );
 }

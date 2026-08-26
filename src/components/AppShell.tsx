@@ -1,31 +1,24 @@
-import {
-  Clapperboard,
-  Film,
-  Home,
-  MonitorPlay,
-  Search,
-  Tv,
-  UserRound
-} from "lucide-react";
+import { Clapperboard, Film, Home, MonitorPlay, Search, Tv, UserRound } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { BrandWordmark } from "./BrandWordmark";
 import { LogoutButton } from "./LogoutButton";
 
 const navItems = [
-  { label: "Home", path: "/catalog", icon: Home },
+  { label: "Início", path: "/catalog", icon: Home },
   { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
   { label: "TV", path: "/catalog/tv", icon: Tv },
   { label: "Filmes", path: "/catalog/movies", icon: Film },
   { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search }
+  { label: "Buscar", path: "/catalog?search=open", icon: Search }
 ];
 
 const mobileNavItems = navItems.filter((item) =>
-  ["Home", "TV", "Filmes", "Séries", "Search"].includes(item.label)
+  ["Início", "TV", "Filmes", "Séries", "Buscar"].includes(item.label)
 );
 
 export function AppShell() {
@@ -51,12 +44,7 @@ export function AppShell() {
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
 
-    if (
-      catalogSource !== "xtream" ||
-      !connection ||
-      hasXtreamCatalog ||
-      isRefetchingRef.current
-    ) {
+    if (catalogSource !== "xtream" || !connection || hasXtreamCatalog || isRefetchingRef.current) {
       return;
     }
 
@@ -93,16 +81,14 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
-        <div className="mb-8 flex items-center gap-4 px-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary-container/50 bg-primary-container/10 text-primary shadow-glow">
-            <MonitorPlay aria-hidden="true" size={28} />
+      <aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-black/80 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
+        <div className="mb-10 flex items-center gap-4 px-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary">
+            <MonitorPlay aria-hidden="true" size={23} />
           </div>
           <div className="brand-copy">
-            <p className="font-display text-xl font-bold tracking-normal text-primary">
-              Play TV
-            </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.2.2</p>
+            <BrandWordmark compact />
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.3.0</p>
           </div>
         </div>
 
@@ -117,9 +103,9 @@ export function AppShell() {
                 data-focusable="true"
                 aria-current={isActive ? "page" : undefined}
                 className={[
-                  "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
+                  "focus-card relative flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
                   isActive
-                    ? "border-primary-container/40 bg-primary-container/10 text-primary"
+                    ? "border-primary/20 bg-primary/10 text-primary before:absolute before:-left-4 before:h-8 before:w-1 before:rounded-r-full before:bg-primary"
                     : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
                 ].join(" ")}
               >
@@ -131,8 +117,8 @@ export function AppShell() {
         </nav>
 
         {/* Profile card */}
-        <div className="rounded-xl border border-white/10 bg-surface-container/70 p-4">
-          <p className="font-mono text-xs uppercase text-on-surface-variant">Connected as</p>
+        <div className="profile-card rounded-xl border border-white/10 bg-surface-container/70 p-4">
+          <p className="font-mono text-xs uppercase text-on-surface-variant">Conectado como</p>
           <p className="mt-1 font-display text-lg font-semibold text-on-surface">{sessionName}</p>
 
           {activeProfile ? (
@@ -171,8 +157,8 @@ export function AppShell() {
         <LogoutButton />
       </aside>
 
-      <header className="app-header fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
-        <p className="font-display text-xl font-bold text-primary lg:text-2xl">Play TV</p>
+      <header className="app-header fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-black/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
+        <BrandWordmark compact />
         <div className="flex items-center gap-2">
           {activeProfile ? (
             <button
@@ -199,7 +185,7 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <nav className="app-bottom-nav fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
+      <nav className="app-bottom-nav fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-black/90 px-2 backdrop-blur-2xl lg:hidden">
         {mobileNavItems.map((item) => {
           const isActive = isNavItemActive(item.path, currentPath);
 
@@ -212,7 +198,7 @@ export function AppShell() {
               className={[
                 "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
                 isActive
-                  ? "border-secondary-container bg-secondary-container/40 text-primary"
+                  ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-transparent text-on-surface-variant"
               ].join(" ")}
             >

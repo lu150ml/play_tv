@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { BrandWordmark } from "../components/BrandWordmark";
 import { connectServerSession } from "../services/sessionService";
 import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -69,25 +70,27 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-10 text-on-surface">
+    <main className="auth-screen flex min-h-screen items-center justify-center px-4 py-10 text-on-surface">
       <form
         onSubmit={(event) => {
           void handleSubmit(event);
         }}
-        className="glass-panel w-full max-w-md rounded-xl p-8 shadow-2xl"
+        className="glass-panel w-full max-w-md rounded-2xl p-8 shadow-2xl"
       >
         <header className="mb-8 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary shadow-glow">
             <Server aria-hidden="true" size={34} />
           </div>
-          <h1 className="font-display text-3xl font-bold text-primary">Play TV</h1>
-          <p className="mt-2 text-on-surface-variant">Play TV · conexão Xtream</p>
+          <div className="flex justify-center">
+            <BrandWordmark />
+          </div>
+          <p className="mt-2 text-on-surface-variant">Sua programação em um só lugar</p>
         </header>
 
         <div className="space-y-5">
           <InputField
             name="serverUrl"
-            label="Server URL"
+            label="Endereço do servidor"
             value={serverUrl}
             onChange={setServerUrl}
             placeholder="http://host:port"
@@ -95,19 +98,19 @@ export function LoginPage() {
           />
           <InputField
             name="username"
-            label="Username"
+            label="Usuário"
             value={username}
             onChange={setUsername}
-            placeholder="Your Xtream username"
+            placeholder="Seu usuário Xtream"
             icon={<UserRound aria-hidden="true" size={20} />}
           />
           <InputField
             name="password"
-            label="Password"
+            label="Senha"
             value={password}
             onChange={setPassword}
             type="password"
-            placeholder="Your Xtream password"
+            placeholder="Sua senha Xtream"
             icon={<Lock aria-hidden="true" size={20} />}
           />
         </div>
@@ -132,10 +135,10 @@ export function LoginPage() {
               onChange={(event) => setRemember(event.target.checked)}
               className="h-5 w-5 accent-primary-container"
             />
-            Remember Me
+            Lembrar acesso
           </label>
           <a className="font-mono text-xs uppercase text-primary" href="mailto:support@example.com">
-            Get Help
+            Ajuda
           </a>
         </div>
 
@@ -144,10 +147,9 @@ export function LoginPage() {
           disabled={isConnecting}
           className="focus-card flex w-full items-center justify-center gap-3 rounded-lg border border-primary-container/40 bg-primary px-6 py-4 font-display text-lg font-bold text-on-primary shadow-glow disabled:cursor-wait disabled:opacity-70"
         >
-          {isConnecting ? "Connecting..." : "Connect"}
+          {isConnecting ? "Conectando..." : "Entrar"}
           <ArrowRight aria-hidden="true" size={24} />
         </button>
-
       </form>
     </main>
   );
@@ -168,7 +170,15 @@ interface InputFieldProps {
   placeholder?: string;
 }
 
-function InputField({ name, label, value, onChange, icon, type = "text", placeholder }: InputFieldProps) {
+function InputField({
+  name,
+  label,
+  value,
+  onChange,
+  icon,
+  type = "text",
+  placeholder
+}: InputFieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block font-mono text-xs uppercase tracking-normal text-on-surface-variant">
@@ -180,7 +190,9 @@ function InputField({ name, label, value, onChange, icon, type = "text", placeho
           data-focusable="true"
           name={name}
           type={type}
-          autoComplete={name === "password" ? "current-password" : name === "username" ? "username" : "url"}
+          autoComplete={
+            name === "password" ? "current-password" : name === "username" ? "username" : "url"
+          }
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}

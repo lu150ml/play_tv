@@ -1,7 +1,7 @@
 {
-    "versionCode":  7,
-    "versionName":  "1.2.2",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.2.2-release.apk",
-    "sha256":  "47932318F4771D80B597DF81C8B7EC7942B1A7B01696425B72226B85CD138B75",
-    "releaseNotes":  "Remove o modo demonstração, corrige sessões presas no catálogo demo e adiciona logoff com limpeza segura da conexão."
+    "versionCode":  8,
+    "versionName":  "1.3.0",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.3.0-release.apk",
+    "sha256":  "4B8E7BFE74EC56D57274D2A16002DDB3B4EA15D7E5D51AB235CCE22781B24F65",
+    "releaseNotes":  "Nova identidade cinematográfica Play TV: interface preta com tons quentes, destaque laranja, hero com imagem, pôsteres verticais e player Android alinhado à nova marca."
 }
