@@ -25,4 +25,11 @@ public class PlayerPolicyTest {
         assertTrue(PlayerActivity.supportsPipForDevice(34, true, true));
         assertFalse(PlayerActivity.supportsPipForDevice(36, false, false));
     }
+
+    @Test
+    public void closingPlayerNeverEntersPictureInPicture() {
+        assertFalse(PlayerActivity.shouldEnterPipForState(true, true, true, true));
+        assertTrue(PlayerActivity.shouldEnterPipForState(false, true, true, true));
+        assertFalse(PlayerActivity.shouldEnterPipForState(false, true, true, false));
+    }
 }

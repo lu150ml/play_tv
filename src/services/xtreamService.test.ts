@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { httpClient } from "../platform/httpClient";
 import {
   buildXtreamRequestUrl,
   isXtreamAuthenticated,
+  loadXtreamCatalog,
   normalizeXtreamCredentials
 } from "./xtreamService";
 
@@ -11,6 +13,8 @@ const credentials = {
   username: "demo user",
   password: "secret&value"
 };
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("buildXtreamRequestUrl", () => {
   it("keeps the browser proxy contract", () => {
@@ -80,7 +84,8 @@ describe("buildXtreamRequestUrl", () => {
 
   it("extracts credentials when a complete M3U URL is pasted", () => {
     const normalized = normalizeXtreamCredentials({
-      serverUrl: "http://iptv.example:8080/get.php?username=viewer&password=p%40ss%26word&type=m3u_plus",
+      serverUrl:
+        "http://iptv.example:8080/get.php?username=viewer&password=p%40ss%26word&type=m3u_plus",
       username: "",
       password: ""
     });
@@ -117,5 +122,37 @@ describe("buildXtreamRequestUrl", () => {
     [{ ...credentials, password: "\u200B" }, "senha"]
   ])("rejects incomplete pasted credentials %#", (value, expectedMessage) => {
     expect(() => normalizeXtreamCredentials(value)).toThrow(expectedMessage);
+  });
+});
+
+describe("loadXtreamCatalog", () => {
+  it("keeps movies located after the old per-category cutoff", async () => {
+    const movies = Array.from({ length: 605 }, (_, index) => ({
+      stream_id: index + 1,
+      name: index === 604 ? "Filme depois do limite" : `Filme ${index + 1}`,
+      category_id: "2",
+      container_extension: "mp4"
+    }));
+
+    vi.spyOn(httpClient, "get").mockImplementation((url) => {
+      const parsed = new URL(url, "http://localhost");
+      const action = parsed.searchParams.get("action");
+      const payloads: Record<string, unknown> = {
+        profile: { user_info: { auth: 1, status: "Active" } },
+        get_live_categories: [],
+        get_vod_categories: [{ category_id: "2", category_name: "Filmes" }],
+        get_series_categories: [],
+        get_live_streams: [],
+        get_vod_streams: movies,
+        get_series: []
+      };
+
+      return Promise.resolve({ data: payloads[action ?? "profile"] as never, status: 200 });
+    });
+
+    const result = await loadXtreamCatalog(credentials);
+
+    expect(result.catalog).toHaveLength(605);
+    expect(result.catalog.at(-1)?.title).toBe("Filme depois do limite");
   });
 });

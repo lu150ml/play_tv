@@ -80,33 +80,6 @@ export interface XtreamCatalogResult {
   catalog: ContentItem[];
 }
 
-// Limite por categoria (não por tipo). Um corte plano em N itens do início da
-// lista descartava categorias inteiras que o servidor retorna no fim (ex.:
-// Comédia, Netflix). Capando por categoria, toda categoria fica representada.
-const MAX_ITEMS_PER_CATEGORY = 600;
-
-function capPerCategory<T extends { category_id?: string | number }>(
-  streams: T[],
-  max: number
-): T[] {
-  const counts = new Map<string, number>();
-  const result: T[] = [];
-
-  for (const stream of streams) {
-    const key = String(stream.category_id ?? "uncategorized");
-    const count = counts.get(key) ?? 0;
-
-    if (count >= max) {
-      continue;
-    }
-
-    counts.set(key, count + 1);
-    result.push(stream);
-  }
-
-  return result;
-}
-
 export async function loadXtreamCatalog(
   credentials: XtreamCredentials
 ): Promise<XtreamCatalogResult> {
@@ -133,7 +106,9 @@ export async function loadXtreamCatalog(
     requestXtream<XtreamSeriesStream[]>(normalizedCredentials, "get_series")
   ]);
   const [liveCategories, vodCategories, seriesCategories, liveStreams, vodStreams, seriesStreams] =
-    requests.map((request) => (request.status === "fulfilled" && Array.isArray(request.value) ? request.value : [])) as [
+    requests.map((request) =>
+      request.status === "fulfilled" && Array.isArray(request.value) ? request.value : []
+    ) as [
       XtreamCategory[],
       XtreamCategory[],
       XtreamCategory[],
@@ -146,15 +121,13 @@ export async function loadXtreamCatalog(
   const vodCategoryMap = mapCategories(vodCategories);
   const seriesCategoryMap = mapCategories(seriesCategories);
 
-  const liveItems = capPerCategory(liveStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const liveItems = liveStreams.map((stream) =>
     mapLiveStream(stream, liveCategoryMap, normalizedCredentials)
   );
-  const vodItems = capPerCategory(vodStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
+  const vodItems = vodStreams.map((stream) =>
     mapVodStream(stream, vodCategoryMap, normalizedCredentials)
   );
-  const seriesItems = capPerCategory(seriesStreams, MAX_ITEMS_PER_CATEGORY).map((stream) =>
-    mapSeriesStream(stream, seriesCategoryMap)
-  );
+  const seriesItems = seriesStreams.map((stream) => mapSeriesStream(stream, seriesCategoryMap));
 
   const catalog = [...liveItems, ...vodItems, ...seriesItems].filter(Boolean);
 
@@ -443,9 +416,7 @@ function normalizeServerUrl(serverUrl: string): string {
     throw new Error("O endereço do servidor deve começar com http:// ou https://.");
   }
 
-  url.pathname = url.pathname
-    .replace(/\/(?:player_api|get)\.php\/?$/i, "")
-    .replace(/\/$/, "");
+  url.pathname = url.pathname.replace(/\/(?:player_api|get)\.php\/?$/i, "").replace(/\/$/, "");
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
@@ -468,13 +439,21 @@ function describeConnectionError(error: unknown): string {
   if (message.includes("endereço") || message.includes("informe o endereço")) {
     return error instanceof Error ? error.message : "Endereço do servidor inválido.";
   }
-  if (message.includes("certificate") || message.includes("ssl") || message.includes("trust anchor")) {
+  if (
+    message.includes("certificate") ||
+    message.includes("ssl") ||
+    message.includes("trust anchor")
+  ) {
     return "O certificado HTTPS do servidor não é válido neste aparelho.";
   }
   if (message.includes("timeout") || message.includes("timed out")) {
     return "O servidor demorou demais para responder. Confira a rede e tente novamente.";
   }
-  if (message.includes("resolve host") || message.includes("unknown host") || message.includes("name not resolved")) {
+  if (
+    message.includes("resolve host") ||
+    message.includes("unknown host") ||
+    message.includes("name not resolved")
+  ) {
     return "Servidor não encontrado. Confira o endereço e a conexão com a internet.";
   }
   if (message.includes("401") || message.includes("403")) {

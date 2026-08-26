@@ -1,7 +1,7 @@
 {
-    "versionCode":  8,
-    "versionName":  "1.3.0",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.3.0-release.apk",
-    "sha256":  "4B8E7BFE74EC56D57274D2A16002DDB3B4EA15D7E5D51AB235CCE22781B24F65",
-    "releaseNotes":  "Nova identidade cinematográfica Play TV: interface preta com tons quentes, destaque laranja, hero com imagem, pôsteres verticais e player Android alinhado à nova marca."
+    "versionCode":  9,
+    "versionName":  "1.3.1",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.3.1-release.apk",
+    "sha256":  "4746F43B4763A4E0662F1F248024B812A0FCCF1490729E34DB891AD26965F621",
+    "releaseNotes":  "Correções do player e catálogo: áudio é encerrado imediatamente ao fechar, nova HUD compacta com ícones próprios e todos os filmes e séries ficam disponíveis na busca, sem o antigo corte por categoria."
 }

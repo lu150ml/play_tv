@@ -77,9 +77,9 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView durationView;
     private SeekBar seekBar;
     private ImageButton playPauseButton;
-    private Button pipButton;
-    private Button rewindButton;
-    private Button forwardButton;
+    private ImageButton pipButton;
+    private ImageButton rewindButton;
+    private ImageButton forwardButton;
     private Button episodesButton;
     private Button tracksButton;
     private Button nextButton;
@@ -91,6 +91,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean userSeeking;
     private boolean enteringPip;
     private boolean pipSupported;
+    private boolean closingPlayer;
 
     private final Runnable progressSaver = new Runnable() {
         @Override public void run() {
@@ -166,7 +167,9 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void wireControls() {
-        findViewById(R.id.player_back).setOnClickListener(view -> handleBackAction());
+        findViewById(R.id.player_back).setOnClickListener(
+            view -> finishWithResult("back", null, false)
+        );
         pipButton.setOnClickListener(view -> enterPip());
         playPauseButton.setOnClickListener(view -> togglePlayback());
         rewindButton.setOnClickListener(view -> seekBy(-10_000L));
@@ -349,7 +352,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (player == null) return;
         boolean isPlaying = player.isPlaying();
         playPauseButton.setImageResource(isPlaying
-            ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+            ? R.drawable.ic_player_pause : R.drawable.ic_player_play);
         playPauseButton.setContentDescription(isPlaying ? "Pausar" : "Reproduzir");
         boolean keepAwake = shouldKeepScreenAwake(player.getPlayWhenReady(), player.getPlaybackState());
         updateKeepScreenOn(keepAwake);
@@ -458,7 +461,21 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private boolean shouldEnterPip() {
-        return pipSupported && player != null && player.isPlaying();
+        return shouldEnterPipForState(
+            closingPlayer,
+            pipSupported,
+            player != null,
+            player != null && player.isPlaying()
+        );
+    }
+
+    static boolean shouldEnterPipForState(
+        boolean closing,
+        boolean supported,
+        boolean playerExists,
+        boolean playing
+    ) {
+        return !closing && supported && playerExists && playing;
     }
 
     private void enterPip() {
@@ -542,13 +559,11 @@ public class PlayerActivity extends AppCompatActivity {
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         executor.shutdownNow();
-        updateKeepScreenOn(false);
         if (!resultSent) {
             prepareResult("back", null, false);
             emitState("closed", null);
         }
-        if (mediaSession != null) { mediaSession.release(); mediaSession = null; }
-        if (player != null) { player.release(); player = null; }
+        releasePlaybackResources();
         if (activeActivity.get() == this) activeActivity = new WeakReference<>(null);
         super.onDestroy();
     }
@@ -584,10 +599,31 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void finishWithResult(String reason, String errorCode, boolean completed) {
         if (resultSent) return;
+        closingPlayer = true;
+        handler.removeCallbacksAndMessages(null);
         prepareResult(reason, errorCode, completed);
         activeActivity = new WeakReference<>(null);
         emitState("error".equals(reason) ? "error" : ("ended".equals(reason) ? "ended" : "closed"), errorCode);
+        releasePlaybackResources();
         finish();
+    }
+
+    private void releasePlaybackResources() {
+        updateKeepScreenOn(false);
+        if (player != null) {
+            player.pause();
+            player.stop();
+            player.clearMediaItems();
+            playerView.setPlayer(null);
+        }
+        if (mediaSession != null) {
+            mediaSession.release();
+            mediaSession = null;
+        }
+        if (player != null) {
+            player.release();
+            player = null;
+        }
     }
 
     private void prepareResult(String reason, String errorCode, boolean completed) {

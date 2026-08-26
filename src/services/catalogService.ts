@@ -21,15 +21,14 @@ export function searchCatalog(
   favorites: ReadonlySet<string> = new Set(),
   items: ContentItem[] = mockCatalog
 ): ContentItem[] {
-  const query = filters.query?.trim().toLowerCase();
+  const query = filters.query ? normalizeSearchText(filters.query) : undefined;
 
   const results = items.filter((item) => {
     const matchesQuery =
       !query ||
-      [item.title, item.description, ...item.genres, ...item.categories]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+      normalizeSearchText(
+        [item.title, item.description, ...item.genres, ...item.categories].join(" ")
+      ).includes(query);
 
     const matchesType = !filters.type || filters.type === "all" || item.type === filters.type;
     const matchesCategory = !filters.category || item.categories.includes(filters.category);
@@ -49,6 +48,14 @@ export function searchCatalog(
   });
 
   return sortCatalog(results, filters.sort ?? "featured");
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
 }
 
 export function sortCatalog(items: ContentItem[], sort: CatalogFilter["sort"]): ContentItem[] {

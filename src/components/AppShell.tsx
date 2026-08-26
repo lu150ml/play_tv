@@ -88,7 +88,7 @@ export function AppShell() {
           </div>
           <div className="brand-copy">
             <BrandWordmark compact />
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.3.0</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.3.1</p>
           </div>
         </div>
 
