@@ -12,7 +12,6 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
-import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
 const navItems = [
@@ -37,7 +36,6 @@ export function AppShell() {
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
   const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
-  const setConnection = useLibraryStore((state) => state.setConnection);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
@@ -47,20 +45,6 @@ export function AppShell() {
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
   // do servidor uma única vez.
   const isRefetchingRef = useRef(false);
-  const hasLoadedVaultRef = useRef(false);
-  useEffect(() => {
-    if (connection || hasLoadedVaultRef.current) return;
-    hasLoadedVaultRef.current = true;
-    if (catalogSource === "xtream") setCatalogStatus("loading");
-    void credentialVault.load().then((saved) => {
-      if (saved) {
-        setConnection(saved);
-      } else if (catalogSource === "xtream") {
-        setCatalogStatus("error");
-      }
-    });
-  }, [catalogSource, connection, setCatalogStatus, setConnection]);
-
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
 
@@ -105,7 +89,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Play TV
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.2.0</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.2.1</p>
           </div>
         </div>
 

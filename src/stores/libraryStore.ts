@@ -169,7 +169,7 @@ export const useLibraryStore = create<LibraryState>()(
       migrate: (persistedState) => persistedState as LibraryState,
       // O catálogo NÃO é persistido: pode passar de dezenas de milhares de itens
       // e estourar a cota (~5MB) do localStorage. É recarregado do servidor no
-      // boot via AppShell quando há uma conexão salva (catalogSource === "xtream").
+      // boot via App quando há uma conexão salva (catalogSource === "xtream").
       partialize: (state) => ({
         catalogSource: state.catalogSource,
         favorites: state.favorites,

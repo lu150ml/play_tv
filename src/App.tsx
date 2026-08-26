@@ -1,5 +1,5 @@
 import { App as CapacitorApp } from "@capacitor/app";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -10,6 +10,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SeriesPage } from "./pages/SeriesPage";
+import { credentialVault } from "./platform/credentialVault";
 import { isNativeAndroid } from "./platform/platformInfo";
 import { playerGateway } from "./platform/playerGateway";
 import { savePlaybackProgress } from "./services/playbackService";
@@ -18,12 +19,19 @@ import { useLibraryStore } from "./stores/libraryStore";
 export function App() {
   useAndroidBackButton();
   useNativePlayerEvents();
+  const sessionStatus = useSessionBootstrap();
+  const activeProfileId = useLibraryStore((state) => state.activeProfileId);
 
   return (
     <>
       <UpdatePrompt />
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/"
+          element={
+            <StartupRoute sessionStatus={sessionStatus} activeProfileId={activeProfileId} />
+          }
+        />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/profiles" element={<ProfilesPage />} />
         <Route element={<AppShell />}>
@@ -38,6 +46,70 @@ export function App() {
       </Routes>
     </>
   );
+}
+
+type SessionStatus = "checking" | "authenticated" | "anonymous";
+
+function StartupRoute({
+  sessionStatus,
+  activeProfileId
+}: {
+  sessionStatus: SessionStatus;
+  activeProfileId: string | null;
+}) {
+  if (sessionStatus === "checking") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
+        <div
+          aria-label="Restaurando sessão"
+          className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary"
+        />
+      </main>
+    );
+  }
+
+  if (sessionStatus === "authenticated") {
+    return <Navigate to={activeProfileId ? "/catalog" : "/profiles"} replace />;
+  }
+
+  return <Navigate to="/login" replace />;
+}
+
+function useSessionBootstrap(): SessionStatus {
+  const setConnection = useLibraryStore((state) => state.setConnection);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function restoreSession() {
+      await waitForLibraryHydration();
+
+      try {
+        const savedConnection = await credentialVault.load();
+        if (disposed) return;
+
+        setConnection(savedConnection);
+        setSessionStatus(savedConnection ? "authenticated" : "anonymous");
+      } catch {
+        if (disposed) return;
+        setConnection(undefined);
+        setSessionStatus("anonymous");
+      }
+    }
+
+    void restoreSession();
+    return () => {
+      disposed = true;
+    };
+  }, [setConnection]);
+
+  return sessionStatus;
+}
+
+async function waitForLibraryHydration(): Promise<void> {
+  if (useLibraryStore.persist.hasHydrated()) return;
+  await useLibraryStore.persist.rehydrate();
 }
 
 function useNativePlayerEvents() {
