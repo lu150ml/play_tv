@@ -63,7 +63,6 @@ export function CatalogPage() {
     sort: "featured"
   });
   const catalog = useLibraryStore((state) => state.catalog);
-  const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
@@ -145,7 +144,7 @@ export function CatalogPage() {
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
-          {catalogSource === "xtream" ? "Xtream server catalog" : "Demo catalog"}
+          Catálogo do servidor Xtream
         </span>
         <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
           {catalog.length} items loaded

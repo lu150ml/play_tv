@@ -1,7 +1,7 @@
 {
-    "versionCode":  6,
-    "versionName":  "1.2.1",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.2.1-release.apk",
-    "sha256":  "7E4B5844007AEA992AFF0AA577342469F9C80D98E84EF9C3F84A5A77A8F2B075",
-    "releaseNotes":  "Correção rápida: o login, o perfil e a conexão agora são restaurados automaticamente ao fechar e abrir o aplicativo."
+    "versionCode":  7,
+    "versionName":  "1.2.2",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/refs/heads/codex/android-capacitor/artifacts/play-tv-1.2.2-release.apk",
+    "sha256":  "47932318F4771D80B597DF81C8B7EC7942B1A7B01696425B72226B85CD138B75",
+    "releaseNotes":  "Remove o modo demonstração, corrige sessões presas no catálogo demo e adiciona logoff com limpeza segura da conexão."
 }

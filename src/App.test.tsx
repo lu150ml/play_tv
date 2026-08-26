@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Outlet } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,6 +53,7 @@ describe("restauração da sessão", () => {
 
     expect(await screen.findByText("Catálogo restaurado")).toBeInTheDocument();
     expect(useLibraryStore.getState().connection?.username).toBe("saved-user");
+    expect(useLibraryStore.getState().catalogSource).toBe("xtream");
   });
 
   it("abre o login quando não há credenciais salvas", async () => {
@@ -65,5 +66,23 @@ describe("restauração da sessão", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Tela de login")).toBeInTheDocument());
+  });
+
+  it("bloqueia o catálogo imediatamente depois do logoff", async () => {
+    vi.spyOn(credentialVault, "load").mockResolvedValue({
+      serverUrl: "http://example.test:8080",
+      username: "saved-user",
+      password: "saved-password"
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/catalog"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Catálogo restaurado")).toBeInTheDocument();
+    act(() => useLibraryStore.getState().clearSession());
+    expect(await screen.findByText("Tela de login")).toBeInTheDocument();
   });
 });

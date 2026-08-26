@@ -19,8 +19,15 @@ import { useLibraryStore } from "./stores/libraryStore";
 export function App() {
   useAndroidBackButton();
   useNativePlayerEvents();
-  const sessionStatus = useSessionBootstrap();
+  const bootstrapStatus = useSessionBootstrap();
   const activeProfileId = useLibraryStore((state) => state.activeProfileId);
+  const connection = useLibraryStore((state) => state.connection);
+  const sessionStatus: SessionStatus =
+    bootstrapStatus === "checking"
+      ? "checking"
+      : connection
+        ? "authenticated"
+        : "anonymous";
 
   return (
     <>
@@ -33,8 +40,21 @@ export function App() {
           }
         />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/profiles" element={<ProfilesPage />} />
-        <Route element={<AppShell />}>
+        <Route
+          path="/profiles"
+          element={
+            <AuthenticatedRoute sessionStatus={sessionStatus}>
+              <ProfilesPage />
+            </AuthenticatedRoute>
+          }
+        />
+        <Route
+          element={
+            <AuthenticatedRoute sessionStatus={sessionStatus}>
+              <AppShell />
+            </AuthenticatedRoute>
+          }
+        >
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/:section" element={<CatalogPage />} />
           <Route path="/catalog/:section/:categorySlug" element={<CatalogPage />} />
@@ -49,6 +69,19 @@ export function App() {
 }
 
 type SessionStatus = "checking" | "authenticated" | "anonymous";
+type BootstrapStatus = "checking" | "ready";
+
+function AuthenticatedRoute({
+  sessionStatus,
+  children
+}: {
+  sessionStatus: SessionStatus;
+  children: React.ReactNode;
+}) {
+  if (sessionStatus === "checking") return <SessionLoading />;
+  if (sessionStatus === "anonymous") return <Navigate to="/login" replace />;
+  return children;
+}
 
 function StartupRoute({
   sessionStatus,
@@ -57,16 +90,7 @@ function StartupRoute({
   sessionStatus: SessionStatus;
   activeProfileId: string | null;
 }) {
-  if (sessionStatus === "checking") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <div
-          aria-label="Restaurando sessão"
-          className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary"
-        />
-      </main>
-    );
-  }
+  if (sessionStatus === "checking") return <SessionLoading />;
 
   if (sessionStatus === "authenticated") {
     return <Navigate to={activeProfileId ? "/catalog" : "/profiles"} replace />;
@@ -75,9 +99,20 @@ function StartupRoute({
   return <Navigate to="/login" replace />;
 }
 
-function useSessionBootstrap(): SessionStatus {
+function SessionLoading() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background text-primary">
+      <div
+        aria-label="Restaurando sessão"
+        className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary"
+      />
+    </main>
+  );
+}
+
+function useSessionBootstrap(): BootstrapStatus {
   const setConnection = useLibraryStore((state) => state.setConnection);
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("checking");
 
   useEffect(() => {
     let disposed = false;
@@ -90,11 +125,11 @@ function useSessionBootstrap(): SessionStatus {
         if (disposed) return;
 
         setConnection(savedConnection);
-        setSessionStatus(savedConnection ? "authenticated" : "anonymous");
+        setBootstrapStatus("ready");
       } catch {
         if (disposed) return;
         setConnection(undefined);
-        setSessionStatus("anonymous");
+        setBootstrapStatus("ready");
       }
     }
 
@@ -104,7 +139,7 @@ function useSessionBootstrap(): SessionStatus {
     };
   }, [setConnection]);
 
-  return sessionStatus;
+  return bootstrapStatus;
 }
 
 async function waitForLibraryHydration(): Promise<void> {

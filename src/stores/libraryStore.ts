@@ -38,6 +38,7 @@ interface LibraryState {
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   setCatalogStatus: (status: LibraryState["catalogStatus"]) => void;
   setConnection: (connection?: XtreamConnection) => void;
+  clearSession: () => void;
   setSessionName: (name: string) => void;
   setServerUrl: (serverUrl: string) => void;
   // Profile actions
@@ -98,7 +99,21 @@ export const useLibraryStore = create<LibraryState>()(
 
       setCatalog: (catalog, source) => set({ catalog, catalogSource: source, catalogStatus: "ready" }),
       setCatalogStatus: (catalogStatus) => set({ catalogStatus }),
-      setConnection: (connection) => set({ connection }),
+      setConnection: (connection) =>
+        set(
+          connection
+            ? { connection, catalogSource: "xtream", catalogStatus: "loading" }
+            : { connection: undefined }
+        ),
+      clearSession: () =>
+        set({
+          catalog: [],
+          catalogSource: "mock",
+          catalogStatus: "ready",
+          connection: undefined,
+          sessionName: "Play TV",
+          serverUrl: undefined
+        }),
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
 

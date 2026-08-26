@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { connectServerSession } from "../services/sessionService";
-import { getCatalog } from "../services/catalogService";
 import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
@@ -149,18 +148,6 @@ export function LoginPage() {
           <ArrowRight aria-hidden="true" size={24} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setConnection(undefined);
-            setCatalog(getCatalog(), "mock");
-            setSessionName("Demonstração");
-            void navigate("/profiles");
-          }}
-          className="focus-card mt-3 flex min-h-12 w-full items-center justify-center rounded-lg border border-white/10 bg-surface-container px-6 py-3 font-semibold text-on-surface-variant"
-        >
-          Explorar demonstração
-        </button>
       </form>
     </main>
   );

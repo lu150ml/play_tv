@@ -21,6 +21,16 @@ beforeEach(() => {
 });
 
 describe("LoginPage Android autofill", () => {
+  it("não oferece mais acesso ao catálogo de demonstração", () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("button", { name: /demonstração/i })).not.toBeInTheDocument();
+  });
+
   it("submits the visible autofilled values even when Android emits no input event", async () => {
     mockedConnect.mockRejectedValue(new Error("Servidor indisponível para o teste."));
     render(

@@ -13,6 +13,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { LogoutButton } from "./LogoutButton";
 
 const navItems = [
   { label: "Home", path: "/catalog", icon: Home },
@@ -36,6 +37,8 @@ export function AppShell() {
   const catalog = useLibraryStore((state) => state.catalog);
   const setCatalog = useLibraryStore((state) => state.setCatalog);
   const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
+  const setServerUrl = useLibraryStore((state) => state.setServerUrl);
+  const setSessionName = useLibraryStore((state) => state.setSessionName);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
@@ -61,6 +64,8 @@ export function AppShell() {
     setCatalogStatus("loading");
     void connectServerSession({ ...connection, remember: true })
       .then((session) => {
+        setSessionName(session.displayName);
+        setServerUrl(session.serverUrl);
         setCatalog(session.catalog, session.source);
       })
       .catch(() => {
@@ -70,7 +75,15 @@ export function AppShell() {
       .finally(() => {
         isRefetchingRef.current = false;
       });
-  }, [catalog, catalogSource, connection, setCatalog, setCatalogStatus]);
+  }, [
+    catalog,
+    catalogSource,
+    connection,
+    setCatalog,
+    setCatalogStatus,
+    setServerUrl,
+    setSessionName
+  ]);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -89,7 +102,7 @@ export function AppShell() {
             <p className="font-display text-xl font-bold tracking-normal text-primary">
               Play TV
             </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.2.1</p>
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android 1.2.2</p>
           </div>
         </div>
 
@@ -155,6 +168,7 @@ export function AppShell() {
             </button>
           )}
         </div>
+        <LogoutButton />
       </aside>
 
       <header className="app-header fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
@@ -177,6 +191,7 @@ export function AppShell() {
               {activeProfile.name}
             </button>
           ) : null}
+          <LogoutButton compact />
         </div>
       </header>
 

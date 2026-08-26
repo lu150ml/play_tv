@@ -2,6 +2,7 @@ import { MonitorPlay, Plus, Trash2, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { LogoutButton } from "../components/LogoutButton";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Profile } from "../types/catalog";
 
@@ -49,6 +50,9 @@ export function ProfilesPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12 text-on-surface">
+      <div className="absolute right-4 top-4">
+        <LogoutButton compact />
+      </div>
       {/* Header */}
       <div className="mb-2 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
