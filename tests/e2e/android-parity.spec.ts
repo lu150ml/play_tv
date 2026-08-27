@@ -60,11 +60,14 @@ async function enterApp(page: Page) {
 
 test("home móvel usa conteúdo real e abre as telas independentes", async ({ page }) => {
   await enterApp(page);
-  await expect(page.getByText("TV ao vivo", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Notícias", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver mais em Notícias" }).first()).toBeVisible();
   await page.goto("/tv");
+  await expect(page.getByRole("link", { name: "Ver mais em Notícias" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Canal Notícias channel/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /MTV Music channel/ })).toHaveCount(0);
   await page.goto("/music");
+  await expect(page.getByRole("link", { name: "Ver mais em Música" })).toBeVisible();
   await expect(page.getByRole("link", { name: /MTV Music channel/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Canal Notícias channel/ })).toHaveCount(0);
 });
@@ -80,6 +83,11 @@ test("busca e filtros permanecem isolados por tela", async ({ page }) => {
   await expect(page.getByPlaceholder("Buscar em Filmes")).toHaveValue("Aurora");
   await page.getByRole("link", { name: "Buscar", exact: true }).first().click();
   await expect(page.getByPlaceholder("Filmes, séries, canais ou categorias")).toHaveValue("");
+  await page.getByRole("button", { name: "TV" }).click();
+  await expect(page.getByRole("link", { name: /Canal Notícias channel/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /MTV Music channel/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Música" }).click();
+  await expect(page.getByRole("link", { name: /MTV Music channel/ })).toBeVisible();
 });
 
 test("série abre o primeiro episódio imediatamente e foca o player", async ({ page }) => {
@@ -95,7 +103,7 @@ test("série abre o primeiro episódio imediatamente e foca o player", async ({ 
 test("TV não mostra spam de buffer e categorias usam o id estável do servidor", async ({ page }) => {
   await enterApp(page);
   await page.goto("/tv");
-  await page.getByRole("link", { name: "Notícias", exact: true }).click();
+  await page.getByRole("link", { name: "Ver mais em Notícias" }).click();
   await expect(page).toHaveURL(/\/tv\/category\/10$/);
   await page.getByRole("link", { name: /Canal Notícias channel/ }).click();
   await expect(page).toHaveURL(/\/watch\/xtream-live-101$/);

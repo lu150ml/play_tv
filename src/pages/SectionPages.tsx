@@ -2,11 +2,13 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { CatalogRail } from "../components/CatalogRail";
 import { ContentCard } from "../components/ContentCard";
+import { groupContentByProviderCategory } from "../services/categoryRailService";
 import { isMusicChannel } from "../services/musicService";
 import { normalizeSearchText } from "../services/catalogService";
 import { useLibraryStore } from "../stores/libraryStore";
-import type { ContentItem, XtreamCatalogSection } from "../types/catalog";
+import type { XtreamCatalogSection } from "../types/catalog";
 
 type ScreenKey = "tv" | "music" | "movies" | "series";
 
@@ -40,7 +42,7 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
     if (screen === "movies") return item.type === "movie";
     return item.type === "series";
   }), [catalog, screen]);
-  const categories = useMemo(() => groupCategories(sectionItems), [sectionItems]);
+  const categories = useMemo(() => groupContentByProviderCategory(sectionItems), [sectionItems]);
   const selectedCategory = categoryId
     ? categories.find((group) => group.id === decodeURIComponent(categoryId))
     : undefined;
@@ -68,11 +70,37 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
         <div><p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">Catálogo</p><h1 className="font-cinema text-4xl font-semibold">{selectedCategory?.title ?? config[screen].title}</h1></div>
         {selectedCategory ? <Link className="focus-card rounded-lg border border-white/10 px-3 py-2 text-sm" to={config[screen].path}>Voltar</Link> : null}
       </header>
-      {!selectedCategory ? <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2">{categories.map((category) => <Link key={category.id} className="focus-card shrink-0 rounded-full border border-white/10 bg-surface-container px-4 py-2 text-sm" to={`${config[screen].path}/category/${encodeURIComponent(category.id)}`}>{category.title}</Link>)}</div> : null}
-      <label className="mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input value={query} onChange={(event) => { setQuery(event.target.value); setPageSize(60); }} placeholder={`Buscar em ${config[screen].title}`} className="w-full bg-transparent outline-none" /></label>
-      <p className="mb-4 font-mono text-xs uppercase text-on-surface-variant">{filtered.length} itens</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{filtered.slice(0, pageSize).map((item) => <div key={item.id} data-content-id={item.id}><ContentCard item={item} compact /></div>)}</div>
-      {filtered.length > pageSize ? <button type="button" onClick={() => setPageSize((value) => value + 60)} className="focus-card mx-auto mt-7 block rounded-lg bg-primary px-6 py-3 font-bold text-on-primary">Carregar mais</button> : null}
+      {!selectedCategory ? (
+        <>
+          <label className="mb-6 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input value={query} onChange={(event) => { setQuery(event.target.value); setPageSize(60); }} placeholder={`Buscar em ${config[screen].title}`} className="w-full bg-transparent outline-none" /></label>
+          {filtered.length === 0 ? <EmptyMessage text="Nenhum item encontrado nesta tela." /> : null}
+          {categories
+            .map((category) => {
+              const items = normalizedQuery
+                ? category.items.filter((item) => filtered.some((result) => result.id === item.id))
+                : category.items;
+              return { ...category, items };
+            })
+            .filter((category) => category.items.length > 0)
+            .map((category) => (
+              <CatalogRail
+                key={category.id}
+                title={category.title}
+                items={category.items.slice(0, 16)}
+                viewAllTo={`${config[screen].path}/category/${encodeURIComponent(category.id)}`}
+                viewMoreInRail
+              />
+            ))}
+        </>
+      ) : (
+        <>
+          <label className="mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input value={query} onChange={(event) => { setQuery(event.target.value); setPageSize(60); }} placeholder={`Buscar em ${selectedCategory.title}`} className="w-full bg-transparent outline-none" /></label>
+          <p className="mb-4 font-mono text-xs uppercase text-on-surface-variant">{filtered.length} itens</p>
+          {filtered.length === 0 ? <EmptyMessage text="Nenhum item nesta categoria." /> : null}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{filtered.slice(0, pageSize).map((item) => <div key={item.id} data-content-id={item.id}><ContentCard item={item} compact /></div>)}</div>
+          {filtered.length > pageSize ? <button type="button" onClick={() => setPageSize((value) => value + 60)} className="focus-card mx-auto mt-7 block rounded-lg bg-primary px-6 py-3 font-bold text-on-primary">Carregar mais</button> : null}
+        </>
+      )}
     </div>
   );
 }
@@ -81,15 +109,6 @@ function SectionMessage({ text, error = false }: { text: string; error?: boolean
   return <div className={`mx-auto mt-20 max-w-lg rounded-xl border p-6 text-center ${error ? "border-error/40 text-error" : "border-white/10 text-on-surface-variant"}`}>{text}</div>;
 }
 
-interface CategoryGroup { id: string; title: string; items: ContentItem[]; }
-function groupCategories(items: ContentItem[]): CategoryGroup[] {
-  const groups = new Map<string, CategoryGroup>();
-  for (const item of items) {
-    const title = item.categories.at(-1) ?? item.providerCategoryName ?? "Outros";
-    const id = item.providerCategoryId || normalizeSearchText(title).replace(/\s+/g, "-");
-    const group: CategoryGroup = groups.get(id) ?? { id, title, items: [] };
-    group.items.push(item);
-    groups.set(id, group);
-  }
-  return [...groups.values()];
+function EmptyMessage({ text }: { text: string }) {
+  return <p className="rounded-xl border border-white/10 bg-surface-container/60 p-5 text-center text-sm text-on-surface-variant">{text}</p>;
 }

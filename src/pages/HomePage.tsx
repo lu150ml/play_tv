@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { SecureImage } from "../components/SecureImage";
+import { groupContentByProviderCategory } from "../services/categoryRailService";
 import { isMusicChannel } from "../services/musicService";
 import { getPersonalizedRecommendations, getRecommendedHero } from "../services/recommendationService";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -30,6 +31,12 @@ export function HomePage() {
   const music = catalog.filter(isMusicChannel);
   const movies = catalog.filter((item) => item.type === "movie");
   const series = catalog.filter((item) => item.type === "series");
+  const homeCategoryRails = [
+    ...groupContentByProviderCategory(live).map((category) => ({ ...category, basePath: "/tv" })),
+    ...groupContentByProviderCategory(music).map((category) => ({ ...category, basePath: "/music" })),
+    ...groupContentByProviderCategory(movies).map((category) => ({ ...category, basePath: "/movies" })),
+    ...groupContentByProviderCategory(series).map((category) => ({ ...category, basePath: "/series" }))
+  ].filter((category) => category.items.length > 0);
 
   return <div className="mx-auto max-w-canvas">
     <div className="mb-5 flex items-center justify-between lg:hidden"><div><p className="text-xs text-on-surface-variant">Bem-vindo</p><h1 className="font-display text-2xl font-bold">{activeProfile?.name ?? "Play TV"}</h1></div><div className="flex gap-2"><Link aria-label="Downloads" className="focus-card rounded-full border border-white/10 p-3" to="/downloads"><Download size={20}/></Link><Link aria-label="Buscar" className="focus-card rounded-full border border-white/10 p-3" to="/search"><Search size={20}/></Link></div></div>
@@ -37,9 +44,14 @@ export function HomePage() {
     {hero ? <Link to={hero.type === "series" ? `/series/${hero.id}` : `/watch/${hero.id}`} className={`compact-hero focus-card relative mb-7 flex min-h-56 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br p-6 ${hero.backdropTone}`}>{hero.imageUrl ? <SecureImage candidates={hero.imageCandidates ?? [hero.imageUrl]} alt="" className="absolute inset-0 h-full w-full object-cover opacity-45"/> : null}<div className="relative z-10 mt-auto max-w-xl"><p className="font-mono text-xs uppercase text-primary">Destaque Play TV</p><h2 className="mt-1 font-cinema text-4xl font-semibold">{hero.title}</h2><span className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 font-bold text-on-primary"><Play size={18} fill="currentColor"/>Assistir</span></div></Link> : null}
     <CatalogRail title={`Continuar assistindo${activeProfile ? ` como ${activeProfile.name}` : ""}`} items={continuing.slice(0, 12)}/>
     <CatalogRail title="Recomendados para você" items={recommendations}/>
-    <CatalogRail title="TV ao vivo" items={live.slice(0, 12)} viewAllTo="/tv"/>
-    <CatalogRail title="Música" items={music.slice(0, 12)} viewAllTo="/music"/>
-    <CatalogRail title="Filmes" items={movies.slice(0, 12)} viewAllTo="/movies"/>
-    <CatalogRail title="Séries" items={series.slice(0, 12)} viewAllTo="/series"/>
+    {homeCategoryRails.map((category) => (
+      <CatalogRail
+        key={`${category.basePath}:${category.id}`}
+        title={category.title}
+        items={category.items.slice(0, 16)}
+        viewAllTo={`${category.basePath}/category/${encodeURIComponent(category.id)}`}
+        viewMoreInRail
+      />
+    ))}
   </div>;
 }

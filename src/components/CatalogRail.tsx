@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import type { ContentItem } from "../types/catalog";
@@ -7,9 +8,10 @@ interface CatalogRailProps {
   title: string;
   items: ContentItem[];
   viewAllTo?: string;
+  viewMoreInRail?: boolean;
 }
 
-export function CatalogRail({ title, items, viewAllTo }: CatalogRailProps) {
+export function CatalogRail({ title, items, viewAllTo, viewMoreInRail = false }: CatalogRailProps) {
   if (items.length === 0) {
     return null;
   }
@@ -32,6 +34,17 @@ export function CatalogRail({ title, items, viewAllTo }: CatalogRailProps) {
         {items.map((item) => (
           <ContentCard key={item.id} item={item} compact />
         ))}
+        {viewAllTo && viewMoreInRail ? (
+          <Link
+            to={viewAllTo}
+            data-focusable="true"
+            aria-label={`Ver mais em ${title}`}
+            className="focus-card flex min-h-40 w-40 shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-white/20 bg-surface-container/70 px-5 text-center font-display font-semibold text-on-surface hover:border-primary hover:text-primary sm:w-48"
+          >
+            <ChevronRight aria-hidden="true" size={34} />
+            Ver mais
+          </Link>
+        ) : null}
       </div>
     </section>
   );
