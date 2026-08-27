@@ -29,7 +29,8 @@ export function ContentCard({ item, compact = false, onRemove }: ContentCardProp
   const remainingLabel = showProgress
     ? formatRemainingTime(getRemainingSeconds(playback))
     : undefined;
-  const href = item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  const href =
+    item.type === "series" ? `/series/${item.id}` : item.type === "movie" ? `/movie/${item.id}` : `/watch/${item.id}`;
   const isPoster = item.type !== "channel";
   return (
     <Link

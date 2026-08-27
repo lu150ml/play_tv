@@ -1,6 +1,6 @@
-import { ArrowLeft, Play, RotateCcw } from "lucide-react";
+import { ArrowLeft, Heart, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
@@ -17,11 +17,12 @@ import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function SeriesPage() {
-  const navigate = useNavigate();
   const { seriesId } = useParams();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const playback = useLibraryStore((state) => state.playback);
+  const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
+  const isFavorite = useLibraryStore((state) => seriesId ? state.isFavorite(seriesId) : false);
   const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
@@ -46,20 +47,15 @@ export function SeriesPage() {
     const currentSeries = isSeries(currentItem) ? currentItem : undefined;
     if (!currentSeries) return undefined;
 
-    const openEpisode = (nextEpisodes: Episode[]) => {
-      const target = getContinueEpisode(nextEpisodes, useLibraryStore.getState().playback);
-      if (target) void navigate(`/watch/${currentSeries.id}/${target.id}`, { replace: true });
-    };
-
     if (!providerId || source !== "xtream") {
       setEpisodes(currentSeries.episodes);
-      openEpisode(currentSeries.episodes);
+      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, useLibraryStore.getState().playback)?.season ?? currentSeries.episodes[0]?.season);
       return undefined;
     }
 
     if (currentSeries.episodes.length > 0 && loadAttempt === 0) {
       setEpisodes(currentSeries.episodes);
-      openEpisode(currentSeries.episodes);
+      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, useLibraryStore.getState().playback)?.season ?? currentSeries.episodes[0]?.season);
       return undefined;
     }
 
@@ -79,12 +75,10 @@ export function SeriesPage() {
 
         setEpisodes(nextEpisodes);
         setSeriesEpisodes(currentSeries.id, nextEpisodes);
-        setSelectedSeason((currentSeason) => currentSeason ?? nextEpisodes[0]?.season);
+        setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(nextEpisodes, useLibraryStore.getState().playback)?.season ?? nextEpisodes[0]?.season);
 
         if (nextEpisodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
-        } else {
-          openEpisode(nextEpisodes);
         }
       })
       .catch((error) => {
@@ -105,7 +99,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, connectionKey, loadAttempt, navigate, providerId, seriesId, setSeriesArtwork, setSeriesEpisodes, source]);
+  }, [connection, connectionKey, loadAttempt, providerId, seriesId, setSeriesArtwork, setSeriesEpisodes, source]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;
@@ -207,6 +201,19 @@ export function SeriesPage() {
                   {continueLabel}
                 </Link>
               ) : null}
+              <button
+                type="button"
+                data-focusable="true"
+                onClick={() => toggleFavorite(series.id)}
+                className="focus-card inline-flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"
+              >
+                <Heart
+                  aria-hidden="true"
+                  className={isFavorite ? "fill-error text-error" : "text-on-surface-variant"}
+                  size={20}
+                />
+                Favorito
+              </button>
               {seasonGroups.length > 0 ? (
                 <span className="inline-flex h-12 items-center rounded-lg border border-white/10 bg-surface-container px-4 font-mono text-xs uppercase text-on-surface-variant">
                   {seasonGroups.length} temporadas

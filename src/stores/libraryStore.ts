@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
-import type { ContentItem, Episode, PlaybackState, Profile, WatchedState } from "../types/catalog";
+import type { ContentItem, Episode, Movie, PlaybackState, Profile, WatchedState } from "../types/catalog";
 import type { StreamHealthStatus } from "../services/desktopService";
 import type { XtreamCatalogSection } from "../services/xtreamService";
 
@@ -74,6 +74,7 @@ interface LibraryState {
   setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error", error?: string) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageUrl: string) => void;
+  setMovieDetails: (movie: Movie) => void;
   getChannelHealth: (contentId: string) => ChannelHealth | undefined;
   setChannelHealth: (contentId: string, health: Omit<ChannelHealth, "contentId" | "accountKey" | "checkedAt">) => void;
   activateServerAccount: (connection: XtreamConnection, remember: boolean) => void;
@@ -367,6 +368,12 @@ export const useLibraryStore = create<LibraryState>()(
             item.id === seriesId && item.type === "series" ? { ...item, imageUrl } : item
           )
         };
+      }),
+      setMovieDetails: (movie) => set((current) => {
+        const existing = current.catalog.find((item) => item.id === movie.id);
+        if (!existing || existing.type !== "movie") return current;
+        if (JSON.stringify(existing) === JSON.stringify(movie)) return current;
+        return { catalog: current.catalog.map((item) => item.id === movie.id ? movie : item) };
       }),
       getChannelHealth: (contentId) => {
         const current = get();

@@ -1,7 +1,7 @@
 {
   "name": "play-tv-x",
   "private": true,
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "Player IPTV (Xtream Codes) com legendas, estilo streaming.",
   "author": "Play TV X",
   "type": "module",
@@ -75,7 +75,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
-    "electron": "^43.2.0",
+    "electron": "43.2.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.0.0",

@@ -14,6 +14,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SeriesPage } from "./pages/SeriesPage";
+import { MoviePage } from "./pages/MoviePage";
 import { StartupPage } from "./pages/StartupPage";
 
 export function App() {
@@ -36,6 +37,7 @@ export function App() {
         <Route path="/catalog/series/:categorySlug" element={<SeriesCatalogPage />} />
         <Route path="/search" element={<GlobalSearchPage />} />
         <Route path="/series/:seriesId" element={<SeriesPage />} />
+        <Route path="/movie/:movieId" element={<MoviePage />} />
         <Route path="/downloads" element={<DownloadsPage />} />
         <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />
         <Route path="/watch/:contentId" element={<PlayerPage />} />

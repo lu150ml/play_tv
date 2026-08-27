@@ -435,7 +435,7 @@ function FeaturedHero({ item }: { item: ContentItem }) {
           {item.description}
         </p>
         <span className="mt-6 inline-flex w-fit items-center gap-3 rounded-md bg-primary px-6 py-3 font-semibold text-on-primary">
-          <Play aria-hidden="true" size={19} fill="currentColor" /> Assistir
+          <Play aria-hidden="true" size={19} fill="currentColor" /> {item.type === "channel" ? "Assistir" : "Detalhes"}
         </span>
       </div>
     </Link>
@@ -443,7 +443,7 @@ function FeaturedHero({ item }: { item: ContentItem }) {
 }
 
 function getContentHref(item: ContentItem): string {
-  return item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  return item.type === "series" ? `/series/${item.id}` : item.type === "movie" ? `/movie/${item.id}` : `/watch/${item.id}`;
 }
 
 function HomeRails({ catalog }: { catalog: ContentItem[] }) {
