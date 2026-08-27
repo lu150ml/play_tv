@@ -11,7 +11,7 @@ import {
   isSeries,
   loadSeriesDetails
 } from "../services/seriesService";
-import { useLibraryStore } from "../stores/libraryStore";
+import { useLibraryStore, isCatalogSectionPending } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 import { SecureImage } from "../components/SecureImage";
@@ -21,7 +21,7 @@ export function SeriesPage() {
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
-  const catalogStatus = useLibraryStore((state) => state.catalogStatus);
+  const seriesSection = useLibraryStore((state) => state.catalogSections.series);
   const playback = useLibraryStore((state) => state.playback);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) => seriesId ? state.isFavorite(seriesId) : false);
@@ -114,7 +114,8 @@ export function SeriesPage() {
   }
 
   if (!item) {
-    if (catalogSource === "xtream" && catalogStatus !== "error") {
+    // Espera a seção series (/series/:id), não o status global.
+    if (catalogSource === "xtream" && isCatalogSectionPending(seriesSection.status)) {
       return <CatalogRestoreMessage />;
     }
     return <Navigate to="/series" replace />;

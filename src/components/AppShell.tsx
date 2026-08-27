@@ -40,14 +40,26 @@ export function AppShell() {
   useRemoteNavigation();
   const currentPath = `${location.pathname}${location.search}`;
 
+  const catalogSections = useLibraryStore((state) => state.catalogSections);
+
   // O catálogo do xtream não é persistido (ver libraryStore). Após um refresh,
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
-  // do servidor uma única vez.
+  // do servidor uma única vez. Não reinicia se alguma seção já está loading
+  // (ex.: login acabou de disparar o carregamento progressivo).
   const isRefetchingRef = useRef(false);
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
+    const isSectionLoading = Object.values(catalogSections).some(
+      (section) => section.status === "loading"
+    );
 
-    if (catalogSource !== "xtream" || !connection || hasXtreamCatalog || isRefetchingRef.current) {
+    if (
+      catalogSource !== "xtream" ||
+      !connection ||
+      hasXtreamCatalog ||
+      isSectionLoading ||
+      isRefetchingRef.current
+    ) {
       return;
     }
 
@@ -71,6 +83,7 @@ export function AppShell() {
       });
   }, [
     catalog,
+    catalogSections,
     catalogSource,
     connection,
     beginCatalogLoad,

@@ -7,7 +7,7 @@ import { ContentCard } from "../components/ContentCard";
 import { groupContentByProviderCategory } from "../services/categoryRailService";
 import { isMusicChannel } from "../services/musicService";
 import { normalizeSearchText } from "../services/catalogService";
-import { useLibraryStore } from "../stores/libraryStore";
+import { useLibraryStore, isCatalogSectionPending } from "../stores/libraryStore";
 import type { XtreamCatalogSection } from "../types/catalog";
 
 type ScreenKey = "tv" | "music" | "movies" | "series";
@@ -29,6 +29,7 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
   const routeKey = categoryId ? `${screen}:${categoryId}` : screen;
   const saved = useLibraryStore.getState().getViewState(routeKey);
   const catalog = useLibraryStore((state) => state.catalog);
+  const catalogSource = useLibraryStore((state) => state.catalogSource);
   const sectionState = useLibraryStore((state) => state.catalogSections[config[screen].section]);
   const setViewState = useLibraryStore((state) => state.setViewState);
   const [query, setQuery] = useState(saved.query);
@@ -61,8 +62,13 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
     return () => setViewState(routeKey, { ...latestState.current, scrollY: window.scrollY, focusedId: document.activeElement?.getAttribute("data-content-id") ?? undefined });
   }, [routeKey, setViewState]);
 
-  if (sectionState.status === "loading" && sectionItems.length === 0) return <SectionMessage text={`Carregando ${config[screen].title.toLowerCase()}…`} />;
-  if (sectionState.status === "error" && sectionItems.length === 0) return <SectionMessage text={sectionState.error ?? "Não foi possível carregar esta seção."} error />;
+  const sectionPending = catalogSource === "xtream" && isCatalogSectionPending(sectionState.status);
+  if (sectionPending && sectionItems.length === 0) {
+    return <SectionMessage text={`Carregando ${config[screen].title.toLowerCase()}…`} />;
+  }
+  if (sectionState.status === "error" && sectionItems.length === 0) {
+    return <SectionMessage text={sectionState.error ?? "Não foi possível carregar esta seção."} error />;
+  }
 
   return (
     <div className="mx-auto max-w-canvas">

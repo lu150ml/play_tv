@@ -62,9 +62,20 @@ function sameEpisodes(left: Episode[], right: Episode[]): boolean {
 
 function overallStatus(sections: CatalogSections): LibraryState["catalogStatus"] {
   const values = Object.values(sections);
+  // Enquanto qualquer seção ainda carrega, o status global permanece loading.
+  // Isso evita que /movie/:id e /series/:id tratem o catálogo como pronto só
+  // porque a TV ao vivo chegou primeiro.
+  if (values.some((section) => section.status === "loading" || section.status === "idle")) {
+    return "loading";
+  }
   if (values.some((section) => section.status === "ready")) return "ready";
   if (values.every((section) => section.status === "error")) return "error";
   return "loading";
+}
+
+/** True enquanto a seção ainda não terminou (idle/loading). */
+export function isCatalogSectionPending(status: CatalogSectionState["status"]): boolean {
+  return status === "idle" || status === "loading";
 }
 
 function migrateLibraryState(persistedState: unknown): Partial<LibraryState> {
@@ -141,7 +152,31 @@ export const useLibraryStore = create<LibraryState>()(
       }),
       getViewState: (routeKey) => get().catalogViewStates[routeKey] ?? DEFAULT_VIEW_STATE,
       setViewState: (routeKey, state) => set((current) => ({ catalogViewStates: { ...current.catalogViewStates, [routeKey]: { ...(current.catalogViewStates[routeKey] ?? DEFAULT_VIEW_STATE), ...state } } })),
-      setConnection: (connection) => set(connection ? { connection, catalogSource: "xtream", catalogStatus: "loading" } : { connection: undefined }),
+      setConnection: (connection) => set((current) => {
+        if (!connection) return { connection: undefined };
+        const hasInFlightOrReady = Object.values(current.catalogSections).some(
+          (section) => section.status === "loading" || section.status === "ready"
+        );
+        // Restauração a frio: seções ainda idle → marca loading sem apagar um
+        // carregamento já iniciado no login.
+        if (hasInFlightOrReady) {
+          return {
+            connection,
+            catalogSource: "xtream",
+            catalogStatus: overallStatus(current.catalogSections)
+          };
+        }
+        return {
+          connection,
+          catalogSource: "xtream",
+          catalogStatus: "loading",
+          catalogSections: {
+            live: { status: "loading" },
+            vod: { status: "loading" },
+            series: { status: "loading" }
+          }
+        };
+      }),
       clearSession: () => set({ catalog: [], catalogSource: "mock", catalogStatus: "ready", catalogSections: IDLE_SECTIONS, connection: undefined, sessionName: "Play TV", serverUrl: undefined }),
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),

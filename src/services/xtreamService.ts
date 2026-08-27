@@ -203,14 +203,28 @@ async function loadSection(
       : (["get_series_categories", "get_series"] as const);
 
   try {
-    const [categories, streams] = await Promise.all([
+    // Categorias e streams são independentes: falha em categorias não pode
+    // derrubar filmes/séries inteiros (comum em alguns painéis Xtream).
+    const [categoryResult, streamResult] = await Promise.allSettled([
       requestXtream<XtreamCategory[]>(credentials, actions[0]),
       requestXtream<Array<XtreamLiveStream | XtreamVodStream | XtreamSeriesStream>>(
         credentials,
         actions[1]
       )
     ]);
-    const categoryMap = mapCategories(Array.isArray(categories) ? categories : []);
+
+    if (streamResult.status === "rejected") {
+      throw streamResult.reason instanceof Error
+        ? streamResult.reason
+        : new Error("Falha ao carregar esta seção.");
+    }
+
+    const categories =
+      categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value)
+        ? categoryResult.value
+        : [];
+    const streams = streamResult.value;
+    const categoryMap = mapCategories(categories);
     const safeStreams = Array.isArray(streams) ? streams : [];
     const items = section === "live"
       ? (safeStreams as XtreamLiveStream[]).map((stream) =>

@@ -7,7 +7,7 @@ import { downloads } from "../platform/downloads";
 import { getContentById } from "../services/catalogService";
 import { isMovie, loadMovieDetails } from "../services/movieService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
-import { useLibraryStore } from "../stores/libraryStore";
+import { useLibraryStore, isCatalogSectionPending } from "../stores/libraryStore";
 import type { Movie } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
 
@@ -16,7 +16,7 @@ export function MoviePage() {
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
-  const catalogStatus = useLibraryStore((state) => state.catalogStatus);
+  const vodSection = useLibraryStore((state) => state.catalogSections.vod);
   const playback = useLibraryStore((state) => state.playback);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) => movieId ? state.isFavorite(movieId) : false);
@@ -66,7 +66,8 @@ export function MoviePage() {
   );
 
   if (!item) {
-    if (catalogSource === "xtream" && catalogStatus !== "error") {
+    // Espera a seção VOD (/movie/:id), não o status global — a TV pode já estar ready.
+    if (catalogSource === "xtream" && isCatalogSectionPending(vodSection.status)) {
       return <CatalogRestoreMessage />;
     }
     return <Navigate to="/movies" replace />;

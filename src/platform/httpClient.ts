@@ -29,6 +29,8 @@ function parseNativeData<T>(data: unknown): T {
 export const httpClient: HttpClient = {
   async get<T>(url: string): Promise<HttpResponse<T>> {
     if (isNativeAndroid()) {
+      // Catálogos VOD/séries podem ser bem maiores que a TV ao vivo; 60s evita
+      // marcar filmes/séries como erro enquanto o live já terminou.
       const response = await CapacitorHttp.get({
         url,
         headers: {
@@ -36,7 +38,7 @@ export const httpClient: HttpClient = {
           "User-Agent": "PlayTV-Android/1.0"
         },
         connectTimeout: 15_000,
-        readTimeout: 30_000
+        readTimeout: 60_000
       });
 
       return { data: parseNativeData<T>(response.data), status: response.status };
