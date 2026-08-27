@@ -1,7 +1,7 @@
 {
-    "versionCode":  12,
-    "versionName":  "1.4.2",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.2-release.apk",
-    "sha256":  "D4F9D9AF3E707288DED9F915D6030D488D570C16A076AC774253168BC6151164",
+    "versionCode":  13,
+    "versionName":  "1.4.3",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.3-release.apk",
+    "sha256":  "6B9D0777FE54C61AEFA7E96F4B290BF0F982D774D9569238C911D5F0180E57A7",
     "releaseNotes":  "Filmes e séries agora abrem uma tela de detalhes antes da reprodução. TV ao vivo e Música continuam abrindo direto no player."
 }
