@@ -1,9 +1,10 @@
-import { ArrowLeft, Play, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Download, Heart, Play, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
+import { downloads } from "../platform/downloads";
 import {
   getContinueEpisode,
   groupEpisodesBySeason,
@@ -17,12 +18,13 @@ import { SecureImage } from "../components/SecureImage";
 
 export function SeriesPage() {
   const { seriesId } = useParams();
-  const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalogStatus = useLibraryStore((state) => state.catalogStatus);
   const playback = useLibraryStore((state) => state.playback);
+  const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
+  const isFavorite = useLibraryStore((state) => seriesId ? state.isFavorite(seriesId) : false);
   const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
@@ -31,7 +33,8 @@ export function SeriesPage() {
   const [selectedSeason, setSelectedSeason] = useState<number | undefined>();
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | undefined>();
-  const openedRef = useRef<string | undefined>(undefined);
+  const [retryToken, setRetryToken] = useState(0);
+  const [downloadNotice, setDownloadNotice] = useState<string>();
 
   useEffect(() => {
     let isCancelled = false;
@@ -43,7 +46,7 @@ export function SeriesPage() {
     setIsLoadingEpisodes(true);
     setEpisodeError(undefined);
 
-    void loadSeriesDetails(series, connection)
+    void loadSeriesDetails(series, connection, retryToken > 0)
       .then((details) => {
         if (isCancelled) {
           return;
@@ -53,13 +56,8 @@ export function SeriesPage() {
         setEpisodes(nextEpisodes);
         setSeriesEpisodes(series.id, nextEpisodes);
         setSeriesArtwork(series.id, details.imageCandidates);
-        setSelectedSeason((currentSeason) => currentSeason ?? nextEpisodes[0]?.season);
-
         const nextEpisode = getContinueEpisode(nextEpisodes, playback);
-        if (nextEpisode && openedRef.current !== `${series.id}:${nextEpisode.id}`) {
-          openedRef.current = `${series.id}:${nextEpisode.id}`;
-          void navigate(`/watch/${series.id}/${nextEpisode.id}`, { replace: true });
-        }
+        setSelectedSeason((currentSeason) => currentSeason ?? nextEpisode?.season ?? nextEpisodes[0]?.season);
 
         if (nextEpisodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
@@ -83,7 +81,7 @@ export function SeriesPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, navigate, playback, series, setSeriesArtwork, setSeriesEpisodes]);
+  }, [connection, playback, retryToken, series, setSeriesArtwork, setSeriesEpisodes]);
 
   const seasonGroups = useMemo(() => groupEpisodesBySeason(episodes), [episodes]);
   const activeSeason = selectedSeason ?? seasonGroups[0]?.season;
@@ -95,6 +93,25 @@ export function SeriesPage() {
   );
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
   const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
+
+  async function handleDownloadEpisode(episode: Episode) {
+    const candidates = episode.streamCandidates ?? (episode.streamUrl ? [episode.streamUrl] : []);
+    if (!series || !downloads.isAvailable() || candidates.length === 0) return;
+    if (!window.confirm(`Baixar ${episode.title}?`)) return;
+    setDownloadNotice("Adicionando à fila...");
+    try {
+      await downloads.start({
+        contentId: episode.id,
+        parentId: series.id,
+        title: `${series.title} - S${episode.season}E${episode.episode}`,
+        kind: "episode",
+        candidates
+      });
+      setDownloadNotice("Download adicionado à fila.");
+    } catch (error) {
+      setDownloadNotice(error instanceof Error ? error.message : "Nao foi possivel iniciar o download.");
+    }
+  }
 
   if (!item) {
     if (catalogSource === "xtream" && catalogStatus !== "error") {
@@ -167,12 +184,26 @@ export function SeriesPage() {
                   {continueLabel}
                 </Link>
               ) : null}
+              <button
+                type="button"
+                data-focusable="true"
+                onClick={() => toggleFavorite(series.id)}
+                className="focus-card inline-flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"
+              >
+                <Heart
+                  aria-hidden="true"
+                  className={isFavorite ? "fill-error text-error" : "text-on-surface-variant"}
+                  size={20}
+                />
+                Favorito
+              </button>
               {seasonGroups.length > 0 ? (
                 <span className="inline-flex h-12 items-center rounded-lg border border-white/10 bg-surface-container px-4 font-mono text-xs uppercase text-on-surface-variant">
                   {seasonGroups.length} temporadas
                 </span>
               ) : null}
             </div>
+            {downloadNotice ? <p className="mt-3 text-sm text-primary-container">{downloadNotice}</p> : null}
           </div>
 
           <dl className="grid grid-cols-2 gap-3 xl:grid-cols-1">
@@ -196,6 +227,9 @@ export function SeriesPage() {
         {episodeError ? (
           <div className="mb-4 rounded-xl border border-error/40 bg-error-container/30 p-4 text-sm leading-6 text-error">
             {episodeError}
+            <button type="button" className="ml-3 underline" onClick={() => setRetryToken((value) => value + 1)}>
+              Tentar novamente
+            </button>
           </div>
         ) : null}
         <div className="mb-5 flex gap-3 overflow-x-auto pb-2">
@@ -221,7 +255,12 @@ export function SeriesPage() {
         {activeEpisodes.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2">
             {activeEpisodes.map((episode) => (
-              <EpisodeCard key={episode.id} episode={episode} seriesId={series.id} />
+              <EpisodeCard
+                key={episode.id}
+                episode={episode}
+                seriesId={series.id}
+                onDownload={downloads.isAvailable() ? handleDownloadEpisode : undefined}
+              />
             ))}
           </div>
         ) : null}
@@ -240,30 +279,53 @@ function CatalogRestoreMessage() {
   );
 }
 
-function EpisodeCard({ episode, seriesId }: { episode: Episode; seriesId: string }) {
+function EpisodeCard({
+  episode,
+  seriesId,
+  onDownload
+}: {
+  episode: Episode;
+  seriesId: string;
+  onDownload?: (episode: Episode) => void | Promise<void>;
+}) {
   const progress = useLibraryStore((state) => state.playback[episode.id]);
   const progressRatio = getProgressRatio(progress);
   const remainingLabel = formatRemainingTime(getRemainingSeconds(progress));
   const actionLabel = progress?.positionSeconds ? "Continuar" : "Assistir";
 
   return (
-    <Link
-      to={`/watch/${seriesId}/${episode.id}`}
-      data-focusable="true"
-      aria-label={`S${episode.season} E${episode.episode} ${episode.title}`}
-      className="focus-card relative overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 p-4 text-left text-on-surface"
-    >
-      <span className="font-mono text-xs uppercase text-on-surface-variant">
-        S{episode.season} E{episode.episode} · {formatDuration(episode.durationSeconds)}
-      </span>
-      <span className="mt-1 block font-display text-lg font-semibold">{episode.title}</span>
-      <span className="mt-2 line-clamp-2 block text-sm leading-6 text-on-surface-variant">
-        {episode.description}
-      </span>
-      <span className="mt-4 inline-flex items-center gap-2 font-mono text-xs uppercase text-primary-container">
-        <Play aria-hidden="true" size={15} />
-        {remainingLabel ?? actionLabel}
-      </span>
+    <article className="focus-within:ring-focus relative overflow-hidden rounded-xl border border-white/10 bg-surface-container/70 p-4 text-left text-on-surface">
+      <Link
+        to={`/watch/${seriesId}/${episode.id}`}
+        data-focusable="true"
+        aria-label={`S${episode.season} E${episode.episode} ${episode.title}`}
+        className="focus-card block rounded-lg"
+      >
+        <span className="font-mono text-xs uppercase text-on-surface-variant">
+          S{episode.season} E{episode.episode} · {formatDuration(episode.durationSeconds)}
+        </span>
+        <span className="mt-1 block font-display text-lg font-semibold">{episode.title}</span>
+        <span className="mt-2 line-clamp-2 block text-sm leading-6 text-on-surface-variant">
+          {episode.description}
+        </span>
+        <span className="mt-4 inline-flex items-center gap-2 font-mono text-xs uppercase text-primary-container">
+          <Play aria-hidden="true" size={15} />
+          {remainingLabel ?? actionLabel}
+        </span>
+      </Link>
+      {onDownload ? (
+        <button
+          type="button"
+          data-focusable="true"
+          onClick={() => {
+            void onDownload(episode);
+          }}
+          className="focus-card mt-3 inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-on-surface-variant"
+        >
+          <Download size={16} />
+          Baixar
+        </button>
+      ) : null}
       {progressRatio > 0 ? (
         <span className="absolute bottom-0 left-0 h-1 w-full bg-white/15">
           <span
@@ -272,7 +334,7 @@ function EpisodeCard({ episode, seriesId }: { episode: Episode; seriesId: string
           />
         </span>
       ) : null}
-    </Link>
+    </article>
   );
 }
 

@@ -35,6 +35,9 @@ export interface Movie extends BaseContent {
   type: "movie";
   director: string;
   cast: string[];
+  rating?: string;
+  releasedAt?: string;
+  imageCandidates?: string[];
 }
 
 export interface Episode {

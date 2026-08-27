@@ -5,7 +5,7 @@ import { httpClient } from "../platform/httpClient";
 import { isNativeAndroid } from "../platform/platformInfo";
 
 const DEFAULT_MANIFEST_URL =
-  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-catalog-search-v1.4.1/android-update.json";
+  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/android-update.json";
 
 export interface AndroidUpdateManifest {
   versionCode: number;

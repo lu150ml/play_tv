@@ -57,6 +57,31 @@ interface XtreamVodStream {
   direct_source?: string;
 }
 
+interface XtreamVodInfoResponse {
+  info?: {
+    name?: string;
+    o_name?: string;
+    movie_image?: string;
+    cover_big?: string;
+    backdrop_path?: string[] | string;
+    plot?: string;
+    description?: string;
+    genre?: string;
+    cast?: string;
+    director?: string;
+    releasedate?: string;
+    year?: string | number;
+    duration_secs?: string | number;
+    duration?: string;
+    rating?: string;
+  };
+  movie_data?: {
+    stream_id?: string | number;
+    container_extension?: string;
+    direct_source?: string;
+  };
+}
+
 interface XtreamSeriesStream {
   series_id?: string | number;
   name?: string;
@@ -90,6 +115,19 @@ interface XtreamSeriesInfoResponse {
 }
 
 export interface XtreamSeriesDetails { episodes: Episode[]; imageCandidates: string[]; }
+
+export interface XtreamMovieDetails {
+  description?: string;
+  genres?: string[];
+  year?: number;
+  durationSeconds?: number;
+  director?: string;
+  cast?: string[];
+  rating?: string;
+  releasedAt?: string;
+  imageCandidates: string[];
+  streamCandidates?: string[];
+}
 
 export interface XtreamCatalogResult {
   profile: XtreamProfileResponse;
@@ -246,6 +284,48 @@ export async function loadXtreamSeriesDetails(
       : [normalizeImage(response.info?.backdrop_path, normalizedCredentials.serverUrl)])
   ]);
   return { episodes, imageCandidates };
+}
+
+export async function loadXtreamMovieDetails(
+  credentials: XtreamCredentials,
+  movieId: string
+): Promise<XtreamMovieDetails> {
+  const normalizedCredentials = normalizeXtreamCredentials(credentials);
+  const response = await requestXtream<XtreamVodInfoResponse>(
+    normalizedCredentials,
+    "get_vod_info",
+    { vod_id: movieId }
+  );
+  const info = response.info ?? {};
+  const movieData = response.movie_data ?? {};
+  const providerId = String(movieData.stream_id ?? movieId);
+  const extension = movieData.container_extension || "mp4";
+  const imageCandidates = uniqueUrls([
+    normalizeImage(info.movie_image, normalizedCredentials.serverUrl),
+    normalizeImage(info.cover_big, normalizedCredentials.serverUrl),
+    ...(Array.isArray(info.backdrop_path)
+      ? info.backdrop_path.map((value) => normalizeImage(value, normalizedCredentials.serverUrl))
+      : [normalizeImage(info.backdrop_path, normalizedCredentials.serverUrl)])
+  ]);
+
+  return {
+    description: info.plot || info.description,
+    genres: splitList(info.genre),
+    year: parseYear(info.year ?? info.releasedate),
+    durationSeconds: parseDurationSeconds(info.duration_secs, info.duration),
+    director: info.director?.trim(),
+    cast: splitList(info.cast),
+    rating: info.rating?.trim(),
+    releasedAt: info.releasedate?.trim(),
+    imageCandidates,
+    streamCandidates: buildOnDemandCandidates(
+      normalizedCredentials,
+      "movie",
+      providerId,
+      extension,
+      movieData.direct_source
+    )
+  };
 }
 
 async function requestXtream<T>(
@@ -619,6 +699,37 @@ function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefin
 function parseNumber(value?: string | number): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseYear(value?: string | number): number | undefined {
+  const match = String(value ?? "").match(/\b(19|20)\d{2}\b/);
+  return match ? Number(match[0]) : parseNumber(value);
+}
+
+function parseDurationSeconds(seconds?: string | number, duration?: string): number | undefined {
+  const direct = parseNumber(seconds);
+  if (direct) return direct;
+  const parts = String(duration ?? "").split(":").map((part) => Number(part));
+  if (parts.length === 3 && parts.every(Number.isFinite)) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  if (parts.length === 2 && parts.every(Number.isFinite)) {
+    return parts[0] * 60 + parts[1];
+  }
+  return undefined;
+}
+
+function splitList(value?: string): string[] {
+  return uniqueValues(
+    String(value ?? "")
+      .split(/[,/]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+}
+
+function uniqueValues(values: string[]): string[] {
+  return Array.from(new Set(values));
 }
 
 function parseXtreamDate(value?: string | number): string {

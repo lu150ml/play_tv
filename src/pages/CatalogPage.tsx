@@ -261,7 +261,7 @@ function FeaturedHero({ item }: { item: ContentItem }) {
 }
 
 function getContentHref(item: ContentItem): string {
-  return item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  return item.type === "series" ? `/series/${item.id}` : item.type === "movie" ? `/movie/${item.id}` : `/watch/${item.id}`;
 }
 
 function HomeRails({ catalog }: { catalog: ContentItem[] }) {

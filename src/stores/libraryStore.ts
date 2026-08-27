@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { mockCatalog } from "../data/mockCatalog";
 import { platformStorage } from "../platform/storageAdapter";
-import type { CatalogSectionState, CatalogViewState, ContentItem, Episode, PlaybackState, Profile, XtreamCatalogSection } from "../types/catalog";
+import type { CatalogSectionState, CatalogViewState, ContentItem, Episode, Movie, PlaybackState, Profile, XtreamCatalogSection } from "../types/catalog";
 
 export interface XtreamConnection { serverUrl: string; username: string; password: string; }
 interface ProfileData { favorites: string[]; playback: Record<string, PlaybackState>; }
@@ -36,6 +36,7 @@ interface LibraryState {
   setCatalogStatus: (status: LibraryState["catalogStatus"]) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageCandidates: string[]) => void;
+  setMovieDetails: (movie: Movie) => void;
   getViewState: (routeKey: string) => CatalogViewState;
   setViewState: (routeKey: string, state: Partial<CatalogViewState>) => void;
   setConnection: (connection?: XtreamConnection) => void;
@@ -131,6 +132,12 @@ export const useLibraryStore = create<LibraryState>()(
         const series = current.catalog.find((item) => item.id === seriesId);
         if (!series || series.type !== "series" || imageCandidates.length === 0 || JSON.stringify(series.imageCandidates ?? []) === JSON.stringify(imageCandidates)) return current;
         return { catalog: current.catalog.map((item) => item.id === seriesId && item.type === "series" ? { ...item, imageUrl: imageCandidates[0], imageCandidates } : item) };
+      }),
+      setMovieDetails: (movie) => set((current) => {
+        const existing = current.catalog.find((item) => item.id === movie.id);
+        if (!existing || existing.type !== "movie") return current;
+        if (JSON.stringify(existing) === JSON.stringify(movie)) return current;
+        return { catalog: current.catalog.map((item) => item.id === movie.id ? movie : item) };
       }),
       getViewState: (routeKey) => get().catalogViewStates[routeKey] ?? DEFAULT_VIEW_STATE,
       setViewState: (routeKey, state) => set((current) => ({ catalogViewStates: { ...current.catalogViewStates, [routeKey]: { ...(current.catalogViewStates[routeKey] ?? DEFAULT_VIEW_STATE), ...state } } })),

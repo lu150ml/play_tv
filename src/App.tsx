@@ -13,6 +13,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SeriesPage } from "./pages/SeriesPage";
+import { MoviePage } from "./pages/MoviePage";
 import { credentialVault } from "./platform/credentialVault";
 import { isNativeAndroid } from "./platform/platformInfo";
 import { playerGateway } from "./platform/playerGateway";
@@ -72,6 +73,7 @@ export function App() {
           <Route path="/catalog" element={<Navigate to="/home" replace />} />
           <Route path="/catalog/:section" element={<LegacyCatalogRedirect />} />
           <Route path="/series/:seriesId" element={<SeriesPage />} />
+          <Route path="/movie/:movieId" element={<MoviePage />} />
           <Route path="/watch/:seriesId/:episodeId" element={<PlayerPage />} />
           <Route path="/watch/:contentId" element={<PlayerPage />} />
         </Route>

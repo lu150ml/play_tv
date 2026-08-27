@@ -1,7 +1,7 @@
 {
-    "versionCode":  11,
-    "versionName":  "1.4.1",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-catalog-search-v1.4.1/artifacts/play-tv-1.4.1-release.apk",
-    "sha256":  "22729B26939819004317E5464C96C686343BAA48FAF94E46B11621F09FAAFB12",
-    "releaseNotes":  "Nova Home móvel, catálogo progressivo, telas independentes, Música, melhorias no player Media3, capas protegidas, downloads e status completo de atualização."
+    "versionCode":  12,
+    "versionName":  "1.4.2",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.2-release.apk",
+    "sha256":  "D4F9D9AF3E707288DED9F915D6030D488D570C16A076AC774253168BC6151164",
+    "releaseNotes":  "Filmes e séries agora abrem uma tela de detalhes antes da reprodução. TV ao vivo e Música continuam abrindo direto no player."
 }
