@@ -127,6 +127,10 @@ Consulte [docs/android.md](docs/android.md) para preparar o SDK, configurar a as
 - O app instalado usa o fluxo proprio de atualizacao do Android
 - A atualizacao e distribuida por manifesto consultado pelo app instalado
 
+APK publico atual:
+
+- [Play TV X APK 1.4.4](https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.4-release.apk)
+
 ### Instalador EXE Windows
 
 - Versao atual do instalador EXE Windows: `0.4.13`
