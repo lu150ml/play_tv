@@ -5,10 +5,15 @@ Play TV X e um player IPTV para servidores compativeis com Xtream Codes. O proje
 - Android, para celular, tablet e Android TV, com player nativo Media3
 - PC/Windows, empacotado com Electron, com release e atualizacao automatica nas builds instaladas
 
-Em 28 de agosto de 2026, as versoes mais recentes conhecidas desta base sao:
+## Versoes disponiveis
 
-- Android: `1.4.4` (`versionCode 14`)
-- PC / Electron: `0.4.13`
+Em 28 de agosto de 2026, as versoes distribuidas deste projeto sao:
+
+- APK Android: `1.4.4` (`versionCode 14`)
+- Instalador EXE Windows: `0.4.13`
+- EXE portatil Windows: `0.4.13`
+
+As versoes acima representam os artefatos distribuidos ao usuario. Nesta branch, a linha Android local pode avancar antes de uma nova release publica do Electron.
 
 ## Funcionalidades principais
 
@@ -116,16 +121,22 @@ Consulte [docs/android.md](docs/android.md) para preparar o SDK, configurar a as
 
 ## Publicacao e versoes disponiveis
 
-### Android
+### APK Android
 
-- Linha atual local: `1.4.4`
-- Atualizacao distribuida por manifesto consultado pelo app instalado
+- Versao atual do APK Android: `1.4.4` (`versionCode 14`)
+- O app instalado usa o fluxo proprio de atualizacao do Android
+- A atualizacao e distribuida por manifesto consultado pelo app instalado
 
-### PC / Electron
+### Instalador EXE Windows
 
-- Release publicada mais recente: `v0.4.13`
-- Instalador NSIS com atualizacao automatica
-- Versao portatil sem updater automatico
+- Versao atual do instalador EXE Windows: `0.4.13`
+- Release publica correspondente: `v0.4.13`
+- O instalador Windows usa atualizacao automatica nas builds suportadas
+
+### EXE portatil Windows
+
+- Versao atual do EXE portatil Windows: `0.4.13`
+- O EXE portatil nao usa atualizacao automatica
 
 Release publica atual do PC:
 
