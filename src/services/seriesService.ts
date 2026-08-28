@@ -1,25 +1,44 @@
 import type { ContentItem, Episode, PlaybackState, Series } from "../types/catalog";
 import type { XtreamCredentials } from "./xtreamService";
-import { loadXtreamSeriesEpisodes } from "./xtreamService";
+import { loadXtreamSeriesDetails } from "./xtreamService";
 
 export interface SeasonGroup {
   season: number;
   episodes: Episode[];
 }
 
+export interface SeriesDetails { episodes: Episode[]; imageCandidates: string[]; }
+const episodeRequests = new Map<string, Promise<SeriesDetails>>();
+
 export async function loadSeriesEpisodes(
   series: Series,
-  connection?: XtreamCredentials
+  connection?: XtreamCredentials,
+  force = false
 ): Promise<Episode[]> {
+  return (await loadSeriesDetails(series, connection, force)).episodes;
+}
+
+export async function loadSeriesDetails(series: Series, connection?: XtreamCredentials, force = false): Promise<SeriesDetails> {
+  if (!force && series.episodes.length > 0) return { episodes: series.episodes, imageCandidates: series.imageCandidates ?? (series.imageUrl ? [series.imageUrl] : []) };
   if (series.source === "xtream" && series.providerId) {
     if (!connection) {
       throw new Error("Volte ao login para recarregar a conexao antes de abrir episodios.");
     }
 
-    return loadXtreamSeriesEpisodes(connection, series.providerId);
+    const key = `${connection.serverUrl}\n${connection.username}\n${series.providerId}`;
+    if (!force) {
+      const existing = episodeRequests.get(key);
+      if (existing) return existing;
+    }
+    const request = loadXtreamSeriesDetails(connection, series.providerId).catch((error) => {
+      episodeRequests.delete(key);
+      throw error;
+    });
+    episodeRequests.set(key, request);
+    return request;
   }
 
-  return series.episodes;
+  return { episodes: series.episodes, imageCandidates: series.imageCandidates ?? (series.imageUrl ? [series.imageUrl] : []) };
 }
 
 export function isSeries(item?: ContentItem): item is Series {

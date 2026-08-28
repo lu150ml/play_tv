@@ -2,18 +2,20 @@ import { MonitorPlay, Plus, Trash2, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { BrandWordmark } from "../components/BrandWordmark";
+import { LogoutButton } from "../components/LogoutButton";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Profile } from "../types/catalog";
 
 const AVATAR_COLORS = [
-  "bg-violet-500",
-  "bg-blue-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-cyan-500",
-  "bg-fuchsia-500",
-  "bg-orange-500"
+  "bg-orange-700",
+  "bg-red-800",
+  "bg-amber-700",
+  "bg-stone-600",
+  "bg-yellow-800",
+  "bg-rose-900",
+  "bg-neutral-600",
+  "bg-orange-900"
 ];
 
 export function ProfilesPage() {
@@ -31,7 +33,7 @@ export function ProfilesPage() {
 
   function handleSelectProfile(profile: Profile) {
     setActiveProfile(profile.id);
-    void navigate("/catalog");
+    void navigate("/home");
   }
 
   function handleCreate() {
@@ -39,7 +41,7 @@ export function ProfilesPage() {
     if (!trimmed) return;
     const profile = createProfile(trimmed, selectedColor);
     setActiveProfile(profile.id);
-    void navigate("/catalog");
+    void navigate("/home");
   }
 
   function handleDelete(profileId: string) {
@@ -49,17 +51,18 @@ export function ProfilesPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12 text-on-surface">
+      <div className="absolute right-4 top-4">
+        <LogoutButton compact />
+      </div>
       {/* Header */}
-      <div className="mb-2 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary shadow-glow">
           <MonitorPlay aria-hidden="true" size={22} />
         </div>
-        <p className="font-display text-xl font-bold text-primary">Server Xtreme</p>
+        <BrandWordmark compact />
       </div>
       <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">{sessionName}</p>
-      <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">
-        Quem vai assistir?
-      </h1>
+      <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">Quem vai assistir?</h1>
 
       {/* Profile grid */}
       <div className="mb-8 flex flex-wrap justify-center gap-5">
@@ -174,7 +177,9 @@ export function ProfilesPage() {
 
           {/* Color picker */}
           <div className="mb-5">
-            <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">Cor do avatar</p>
+            <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">
+              Cor do avatar
+            </p>
             <div className="flex flex-wrap gap-2">
               {AVATAR_COLORS.map((color) => (
                 <button
@@ -206,9 +211,7 @@ export function ProfilesPage() {
       ) : null}
 
       {profiles.length === 0 && !isCreating ? (
-        <p className="text-sm text-on-surface-variant">
-          Crie seu primeiro perfil para começar.
-        </p>
+        <p className="text-sm text-on-surface-variant">Crie seu primeiro perfil para começar.</p>
       ) : null}
     </main>
   );

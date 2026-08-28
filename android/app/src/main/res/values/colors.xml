@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="playtv_background">#090908</color>
+    <color name="playtv_surface_low">#11110E</color>
+    <color name="playtv_surface">#171612</color>
+    <color name="playtv_surface_high">#201E18</color>
+    <color name="playtv_on_surface">#F4EFE5</color>
+    <color name="playtv_on_surface_variant">#BEB6A8</color>
+    <color name="playtv_cyan">#F24E2F</color>
+    <color name="playtv_cyan_dark">#D3371E</color>
+    <color name="playtv_on_cyan">#FFFFFF</color>
+    <color name="playtv_purple">#E1B169</color>
+    <color name="playtv_error">#FF8B74</color>
+    <color name="playtv_overlay">#B3000000</color>
+    <color name="colorPrimary">#F24E2F</color>
+    <color name="colorPrimaryDark">#090908</color>
+    <color name="colorAccent">#F24E2F</color>
+</resources>

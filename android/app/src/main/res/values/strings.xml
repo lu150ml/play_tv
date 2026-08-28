@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Play TV</string>
+    <string name="title_activity_main">Play TV</string>
+    <string name="package_name">com.playtv.app</string>
+    <string name="custom_url_scheme">com.playtv.app</string>
+    <string name="player_back">Voltar</string>
+    <string name="player_pip">Janela flutuante</string>
+    <string name="player_audio">Áudio</string>
+    <string name="player_subtitles">Legendas</string>
+    <string name="player_no_tracks">Nenhuma faixa disponível</string>
+</resources>

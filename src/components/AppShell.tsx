@@ -1,30 +1,27 @@
-import {
-  Clapperboard,
-  Download,
-  Film,
-  Home,
-  MonitorPlay,
-  Search,
-  Settings,
-  Tv,
-  UserRound
-} from "lucide-react";
+import { Clapperboard, Download, Film, Home, MonitorPlay, Music2, Search, Tv, UserRound } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
-import { connectServerSession } from "../services/sessionService";
+import { startServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { BrandWordmark } from "./BrandWordmark";
+import { LogoutButton } from "./LogoutButton";
+import { AppFooter } from "./AppFooter";
 
 const navItems = [
-  { label: "Home", path: "/catalog", icon: Home },
-  { label: "Todos", path: "/catalog/all", icon: MonitorPlay },
-  { label: "TV", path: "/catalog/tv", icon: Tv },
-  { label: "Filmes", path: "/catalog/movies", icon: Film },
-  { label: "Séries", path: "/catalog/series", icon: Clapperboard },
-  { label: "Search", path: "/catalog?search=open", icon: Search },
-  { label: "Downloads", path: "/catalog", icon: Download }
+  { label: "Início", path: "/home", icon: Home },
+  { label: "TV", path: "/tv", icon: Tv },
+  { label: "Música", path: "/music", icon: Music2 },
+  { label: "Filmes", path: "/movies", icon: Film },
+  { label: "Séries", path: "/series", icon: Clapperboard },
+  { label: "Buscar", path: "/search", icon: Search },
+  { label: "Downloads", path: "/downloads", icon: Download }
 ];
+
+const mobileNavItems = navItems.filter((item) =>
+  ["Início", "TV", "Filmes", "Séries", "Buscar"].includes(item.label)
+);
 
 export function AppShell() {
   const sessionName = useLibraryStore((state) => state.sessionName);
@@ -33,40 +30,68 @@ export function AppShell() {
   const connection = useLibraryStore((state) => state.connection);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalog = useLibraryStore((state) => state.catalog);
-  const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
+  const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
+  const setServerUrl = useLibraryStore((state) => state.setServerUrl);
+  const setSessionName = useLibraryStore((state) => state.setSessionName);
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
   const currentPath = `${location.pathname}${location.search}`;
 
+  const catalogSections = useLibraryStore((state) => state.catalogSections);
+
   // O catálogo do xtream não é persistido (ver libraryStore). Após um refresh,
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
-  // do servidor uma única vez.
+  // do servidor uma única vez. Não reinicia se alguma seção já está loading
+  // (ex.: login acabou de disparar o carregamento progressivo).
   const isRefetchingRef = useRef(false);
   useEffect(() => {
     const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
+    const isSectionLoading = Object.values(catalogSections).some(
+      (section) => section.status === "loading"
+    );
 
     if (
       catalogSource !== "xtream" ||
       !connection ||
       hasXtreamCatalog ||
+      isSectionLoading ||
       isRefetchingRef.current
     ) {
       return;
     }
 
     isRefetchingRef.current = true;
-    void connectServerSession({ ...connection, remember: true })
+    beginCatalogLoad();
+    void startServerSession(
+      { ...connection, remember: true },
+      (update) => setCatalogSection(update.section, update.items, update.status, update.error)
+    )
       .then((session) => {
-        setCatalog(session.catalog, session.source);
+        setSessionName(session.displayName);
+        setServerUrl(session.serverUrl);
+        void session.catalogReady;
       })
       .catch(() => {
         // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
+        setCatalogStatus("error");
       })
       .finally(() => {
         isRefetchingRef.current = false;
       });
-  }, [catalog, catalogSource, connection, setCatalog]);
+  }, [
+    catalog,
+    catalogSections,
+    catalogSource,
+    connection,
+    beginCatalogLoad,
+    setCatalogSection,
+    setCatalogStatus,
+    setServerUrl,
+    setSessionName
+  ]);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -76,16 +101,14 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-surface-container-high/90 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
-        <div className="mb-8 flex items-center gap-4 px-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary-container/50 bg-primary-container/10 text-primary shadow-glow">
-            <MonitorPlay aria-hidden="true" size={28} />
+      <aside className="app-sidebar fixed left-0 top-0 z-40 hidden h-screen w-72 border-r border-white/10 bg-black/80 px-4 py-8 backdrop-blur-3xl lg:flex lg:flex-col">
+        <div className="mb-10 flex items-center gap-4 px-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary">
+            <MonitorPlay aria-hidden="true" size={23} />
           </div>
-          <div>
-            <p className="font-display text-xl font-bold tracking-normal text-primary">
-              Server Xtreme
-            </p>
-            <p className="font-mono text-xs uppercase text-on-surface-variant">v0.1.0</p>
+          <div className="brand-copy">
+            <BrandWordmark compact />
+            <p className="font-mono text-xs uppercase text-on-surface-variant">Android</p>
           </div>
         </div>
 
@@ -100,22 +123,22 @@ export function AppShell() {
                 data-focusable="true"
                 aria-current={isActive ? "page" : undefined}
                 className={[
-                  "focus-card flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
+                  "focus-card relative flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold",
                   isActive
-                    ? "border-primary-container/40 bg-primary-container/10 text-primary"
+                    ? "border-primary/20 bg-primary/10 text-primary before:absolute before:-left-4 before:h-8 before:w-1 before:rounded-r-full before:bg-primary"
                     : "border-transparent text-on-surface-variant hover:bg-white/5 hover:text-on-surface"
                 ].join(" ")}
               >
                 <item.icon aria-hidden="true" size={20} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
         {/* Profile card */}
-        <div className="rounded-xl border border-white/10 bg-surface-container/70 p-4">
-          <p className="font-mono text-xs uppercase text-on-surface-variant">Connected as</p>
+        <div className="profile-card rounded-xl border border-white/10 bg-surface-container/70 p-4">
+          <p className="font-mono text-xs uppercase text-on-surface-variant">Conectado como</p>
           <p className="mt-1 font-display text-lg font-semibold text-on-surface">{sessionName}</p>
 
           {activeProfile ? (
@@ -132,7 +155,7 @@ export function AppShell() {
               >
                 {activeProfile.name.charAt(0).toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="profile-copy min-w-0 flex-1">
                 <p className="truncate font-semibold text-on-surface">{activeProfile.name}</p>
                 <p className="font-mono text-[10px] uppercase text-primary-container">
                   Trocar perfil
@@ -151,10 +174,11 @@ export function AppShell() {
             </button>
           )}
         </div>
+        <LogoutButton />
       </aside>
 
-      <header className="fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-surface/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
-        <p className="font-display text-xl font-bold text-primary lg:text-2xl">Server Xtreme</p>
+      <header className="app-header fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-black/80 px-4 backdrop-blur-2xl lg:left-72 lg:w-[calc(100%-18rem)] lg:px-10">
+        <BrandWordmark compact />
         <div className="flex items-center gap-2">
           {activeProfile ? (
             <button
@@ -173,23 +197,18 @@ export function AppShell() {
               {activeProfile.name}
             </button>
           ) : null}
-          <button
-            type="button"
-            data-focusable="true"
-            className="focus-card flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-surface-container text-on-surface-variant"
-            aria-label="Open settings"
-          >
-            <Settings aria-hidden="true" size={20} />
-          </button>
+          <LogoutButton compact />
         </div>
       </header>
 
-      <main className="min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
+      <main className="app-content min-h-screen px-4 pb-24 pt-20 lg:ml-72 lg:px-10 lg:pb-10">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-surface/90 px-2 backdrop-blur-2xl lg:hidden">
-        {navItems.slice(0, 4).map((item) => {
+      <AppFooter />
+
+      <nav className="app-bottom-nav fixed bottom-0 left-0 z-40 grid h-20 w-full grid-cols-5 border-t border-white/10 bg-black/90 px-2 backdrop-blur-2xl lg:hidden">
+        {mobileNavItems.map((item) => {
           const isActive = isNavItemActive(item.path, currentPath);
 
           return (
@@ -201,7 +220,7 @@ export function AppShell() {
               className={[
                 "focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold",
                 isActive
-                  ? "border-secondary-container bg-secondary-container/40 text-primary"
+                  ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-transparent text-on-surface-variant"
               ].join(" ")}
             >
@@ -210,26 +229,6 @@ export function AppShell() {
             </Link>
           );
         })}
-        {/* Profile button in mobile nav */}
-        <button
-          type="button"
-          onClick={handleSwitchProfile}
-          className="focus-card my-2 flex flex-col items-center justify-center gap-1 rounded-lg border border-transparent text-[11px] font-semibold text-on-surface-variant"
-        >
-          {activeProfile ? (
-            <div
-              className={[
-                "flex h-5 w-5 items-center justify-center rounded-full font-display text-[10px] font-bold text-white",
-                activeProfile.avatarColor
-              ].join(" ")}
-            >
-              {activeProfile.name.charAt(0).toUpperCase()}
-            </div>
-          ) : (
-            <UserRound size={19} />
-          )}
-          Perfil
-        </button>
       </nav>
     </div>
   );

@@ -1,7 +1,7 @@
 {
   "name": "play-tv-recolhe",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.4.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,18 +12,32 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:run": "npm run android:sync && npx cap run android",
+    "android:apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/android-build.ps1 -Configuration Debug",
+    "android:apk:release": "powershell -ExecutionPolicy Bypass -File scripts/android-build.ps1 -Configuration Release",
+    "android:keystore": "powershell -ExecutionPolicy Bypass -File scripts/create-android-keystore.ps1",
+    "subtitles:serve": "node server/subtitles/server.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/preferences": "^8.0.1",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "@vitejs/plugin-react": "^5.0.0",
     "hls.js": "^1.6.16",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.0.0",
+    "react-router-dom": "^7.18.2",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@eslint/js": "^9.19.0",
     "@playwright/test": "^1.50.0",
     "@testing-library/jest-dom": "^6.6.0",
@@ -37,7 +51,7 @@
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.14.0",
     "jsdom": "^26.0.0",
-    "postcss": "^8.5.1",
+    "postcss": "^8.5.26",
     "prettier": "^3.4.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",

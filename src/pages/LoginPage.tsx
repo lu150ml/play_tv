@@ -3,15 +3,21 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { connectServerSession } from "../services/sessionService";
+import { BrandWordmark } from "../components/BrandWordmark";
+import { startServerSession } from "../services/sessionService";
+import { credentialVault } from "../platform/credentialVault";
 import { useLibraryStore } from "../stores/libraryStore";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const setSessionName = useLibraryStore((state) => state.setSessionName);
   const setServerUrlInStore = useLibraryStore((state) => state.setServerUrl);
-  const setCatalog = useLibraryStore((state) => state.setCatalog);
+  const beginCatalogLoad = useLibraryStore((state) => state.beginCatalogLoad);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
+  const setCatalogStatus = useLibraryStore((state) => state.setCatalogStatus);
   const setConnection = useLibraryStore((state) => state.setConnection);
+  const profiles = useLibraryStore((state) => state.profiles);
+  const setActiveProfile = useLibraryStore((state) => state.setActiveProfile);
   const [remember, setRemember] = useState(true);
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -21,17 +27,47 @@ export function LoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const submittedServerUrl = readFormText(formData, "serverUrl", serverUrl);
+    const submittedUsername = readFormText(formData, "username", username);
+    const submittedPassword = readFormText(formData, "password", password);
+
+    // Alguns teclados e gerenciadores de senha do Android alteram o valor
+    // visível sem disparar o evento que atualiza o estado do React. Sincronizar
+    // com FormData evita enviar campos vazios e preserva tudo em caso de erro.
+    setServerUrl(submittedServerUrl);
+    setUsername(submittedUsername);
+    setPassword(submittedPassword);
     setError(undefined);
     setIsConnecting(true);
+    beginCatalogLoad();
 
     try {
-      const session = await connectServerSession({ serverUrl, username, password, remember });
+      const session = await startServerSession(
+        { serverUrl: submittedServerUrl, username: submittedUsername, password: submittedPassword, remember },
+        (update) => setCatalogSection(update.section, update.items, update.status, update.error)
+      );
       setSessionName(session.displayName);
       setServerUrlInStore(session.serverUrl);
-      setConnection(remember ? { serverUrl, username, password } : undefined);
-      setCatalog(session.catalog, session.source);
-      void navigate("/profiles");
+      const connection = session.connection;
+      setServerUrl(connection.serverUrl);
+      setUsername(connection.username);
+      setPassword(connection.password);
+      setConnection(connection);
+      if (remember) {
+        await credentialVault.save(connection);
+      } else {
+        await credentialVault.clear();
+      }
+      if (profiles.length === 1 && profiles[0]) {
+        setActiveProfile(profiles[0].id);
+        void navigate("/home");
+      } else {
+        void navigate("/profiles");
+      }
+      void session.catalogReady;
     } catch (connectionError) {
+      setCatalogStatus("error");
       setError(
         connectionError instanceof Error
           ? connectionError.message
@@ -43,42 +79,47 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-10 text-on-surface">
+    <main className="auth-screen flex min-h-screen items-center justify-center px-4 py-10 text-on-surface">
       <form
         onSubmit={(event) => {
           void handleSubmit(event);
         }}
-        className="glass-panel w-full max-w-md rounded-xl p-8 shadow-2xl"
+        className="glass-panel w-full max-w-md rounded-2xl p-8 shadow-2xl"
       >
         <header className="mb-8 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-primary-container/40 bg-surface-container-low text-primary shadow-glow">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary shadow-glow">
             <Server aria-hidden="true" size={34} />
           </div>
-          <h1 className="font-display text-3xl font-bold text-primary">Server Xtreme</h1>
-          <p className="mt-2 text-on-surface-variant">Secure connection gateway</p>
+          <div className="flex justify-center">
+            <BrandWordmark />
+          </div>
+          <p className="mt-2 text-on-surface-variant">Sua programação em um só lugar</p>
         </header>
 
         <div className="space-y-5">
           <InputField
-            label="Server URL"
+            name="serverUrl"
+            label="Endereço do servidor"
             value={serverUrl}
             onChange={setServerUrl}
             placeholder="http://host:port"
             icon={<LinkIcon aria-hidden="true" size={20} />}
           />
           <InputField
-            label="Username"
+            name="username"
+            label="Usuário"
             value={username}
             onChange={setUsername}
-            placeholder="Your Xtream username"
+            placeholder="Seu usuário Xtream"
             icon={<UserRound aria-hidden="true" size={20} />}
           />
           <InputField
-            label="Password"
+            name="password"
+            label="Senha"
             value={password}
             onChange={setPassword}
             type="password"
-            placeholder="Your Xtream password"
+            placeholder="Sua senha Xtream"
             icon={<Lock aria-hidden="true" size={20} />}
           />
         </div>
@@ -86,6 +127,12 @@ export function LoginPage() {
         {error ? (
           <div className="mt-5 rounded-lg border border-error/30 bg-error-container/30 px-4 py-3 text-sm leading-6 text-error">
             {error}
+          </div>
+        ) : null}
+
+        {serverUrl.trim().toLowerCase().startsWith("http://") ? (
+          <div className="mt-5 rounded-lg border border-tertiary-container/40 bg-tertiary-container/10 px-4 py-3 text-sm leading-6 text-tertiary">
+            Este servidor usa HTTP. Usuário, senha e conteúdo podem trafegar sem criptografia.
           </div>
         ) : null}
 
@@ -97,10 +144,10 @@ export function LoginPage() {
               onChange={(event) => setRemember(event.target.checked)}
               className="h-5 w-5 accent-primary-container"
             />
-            Remember Me
+            Lembrar acesso
           </label>
           <a className="font-mono text-xs uppercase text-primary" href="mailto:support@example.com">
-            Get Help
+            Ajuda
           </a>
         </div>
 
@@ -109,7 +156,7 @@ export function LoginPage() {
           disabled={isConnecting}
           className="focus-card flex w-full items-center justify-center gap-3 rounded-lg border border-primary-container/40 bg-primary px-6 py-4 font-display text-lg font-bold text-on-primary shadow-glow disabled:cursor-wait disabled:opacity-70"
         >
-          {isConnecting ? "Connecting..." : "Connect"}
+          {isConnecting ? "Conectando..." : "Entrar"}
           <ArrowRight aria-hidden="true" size={24} />
         </button>
       </form>
@@ -117,7 +164,13 @@ export function LoginPage() {
   );
 }
 
+function readFormText(formData: FormData, name: string, fallback: string): string {
+  const value = formData.get(name);
+  return typeof value === "string" ? value : fallback;
+}
+
 interface InputFieldProps {
+  name: "serverUrl" | "username" | "password";
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -126,7 +179,15 @@ interface InputFieldProps {
   placeholder?: string;
 }
 
-function InputField({ label, value, onChange, icon, type = "text", placeholder }: InputFieldProps) {
+function InputField({
+  name,
+  label,
+  value,
+  onChange,
+  icon,
+  type = "text",
+  placeholder
+}: InputFieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block font-mono text-xs uppercase tracking-normal text-on-surface-variant">
@@ -136,7 +197,14 @@ function InputField({ label, value, onChange, icon, type = "text", placeholder }
         {icon}
         <input
           data-focusable="true"
+          name={name}
           type={type}
+          autoComplete={
+            name === "password" ? "current-password" : name === "username" ? "username" : "url"
+          }
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
