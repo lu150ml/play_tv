@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
 public class MediaAssetsPlugin extends Plugin {
     private static final int MAX_IMAGE_BYTES = 2 * 1024 * 1024;
     private static final long MAX_CACHE_BYTES = 64L * 1024L * 1024L;
-    private final ExecutorService executor = Executors.newFixedThreadPool(3);
+    private final ExecutorService executor = Executors.newFixedThreadPool(6);
 
     @PluginMethod
     public void resolveImage(PluginCall call) {

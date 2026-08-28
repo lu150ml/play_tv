@@ -6,7 +6,10 @@ const live: ContentItem = { id: "live-1", title: "Canal", type: "channel", descr
 const movie: ContentItem = { id: "movie-1", title: "Filme", type: "movie", description: "", genres: ["Ação"], categories: ["Movies", "Ação"], quality: ["HD"], backdropTone: "", posterTone: "", addedAt: "2026-01-01", director: "", cast: [] };
 
 describe("progressive library store", () => {
-  beforeEach(() => { useLibraryStore.getState().beginCatalogLoad(); });
+  beforeEach(() => {
+    useLibraryStore.getState().clearSession();
+    useLibraryStore.getState().beginCatalogLoad();
+  });
   it("replaces one section without erasing sections already loaded", () => {
     useLibraryStore.getState().setCatalogSection("live", [live]);
     useLibraryStore.getState().setCatalogSection("vod", [movie]);
@@ -31,5 +34,14 @@ describe("progressive library store", () => {
     expect(isCatalogSectionPending("loading")).toBe(true);
     expect(isCatalogSectionPending("ready")).toBe(false);
     expect(isCatalogSectionPending("error")).toBe(false);
+  });
+  it("keeps existing catalog when reloading", () => {
+    useLibraryStore.getState().setCatalogSection("live", [live]);
+    useLibraryStore.getState().setCatalogSection("vod", [movie]);
+    useLibraryStore.getState().setCatalogSection("series", []);
+    expect(useLibraryStore.getState().catalog.length).toBe(2);
+    useLibraryStore.getState().beginCatalogLoad();
+    expect(useLibraryStore.getState().catalog.length).toBe(2);
+    expect(useLibraryStore.getState().catalogStatus).toBe("loading");
   });
 });

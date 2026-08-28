@@ -19,6 +19,7 @@ interface LibraryState {
   catalogStatus: "ready" | "loading" | "error";
   catalogSections: CatalogSections;
   catalogViewStates: Record<string, CatalogViewState>;
+  catalogCachedAt?: string;
   connection?: XtreamConnection;
   favorites: string[];
   playback: Record<string, PlaybackState>;
@@ -78,9 +79,29 @@ export function isCatalogSectionPending(status: CatalogSectionState["status"]): 
   return status === "idle" || status === "loading";
 }
 
+const CATALOG_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
+
+function isCatalogCacheValid(cachedAt?: string): boolean {
+  if (!cachedAt) return false;
+  const age = Date.now() - new Date(cachedAt).getTime();
+  return age >= 0 && age <= CATALOG_TTL_MS;
+}
+
 function migrateLibraryState(persistedState: unknown): Partial<LibraryState> {
-  const state = persistedState && typeof persistedState === "object" ? persistedState : {};
-  return { ...state, catalogSections: IDLE_SECTIONS, catalogViewStates: {} };
+  const state = (persistedState && typeof persistedState === "object" ? persistedState : {}) as Partial<LibraryState>;
+  const catalog = Array.isArray(state.catalog) ? state.catalog : [];
+  const catalogCachedAt = typeof state.catalogCachedAt === "string" ? state.catalogCachedAt : undefined;
+  const hasValidCache = state.catalogSource === "xtream" && isCatalogCacheValid(catalogCachedAt) && catalog.length > 0;
+
+  return {
+    ...state,
+    catalog: hasValidCache ? catalog : [],
+    catalogSource: hasValidCache ? "xtream" : (state.catalogSource === "xtream" ? "xtream" : "mock"),
+    catalogStatus: hasValidCache ? "ready" : (state.catalogSource === "xtream" ? "loading" : "ready"),
+    catalogSections: hasValidCache ? READY_SECTIONS : IDLE_SECTIONS,
+    catalogViewStates: {},
+    catalogCachedAt: hasValidCache ? catalogCachedAt : undefined
+  };
 }
 
 export const useLibraryStore = create<LibraryState>()(
@@ -112,13 +133,19 @@ export const useLibraryStore = create<LibraryState>()(
         });
       },
 
-      setCatalog: (catalog, source) => set({ catalog, catalogSource: source, catalogStatus: "ready", catalogSections: READY_SECTIONS }),
-      beginCatalogLoad: () => set({
-        catalog: [],
+      setCatalog: (catalog, source) => set({
+        catalog,
+        catalogSource: source,
+        catalogStatus: "ready",
+        catalogSections: READY_SECTIONS,
+        catalogCachedAt: source === "xtream" ? new Date().toISOString() : undefined
+      }),
+      beginCatalogLoad: () => set((current) => ({
+        catalog: current.catalog,
         catalogSource: "xtream",
         catalogStatus: "loading",
         catalogSections: { live: { status: "loading" }, vod: { status: "loading" }, series: { status: "loading" } }
-      }),
+      })),
       setCatalogSection: (section, items, status = "ready", error) => set((current) => {
         const belongs = (item: ContentItem) => section === "live" ? item.type === "channel" : section === "vod" ? item.type === "movie" : item.type === "series";
         const previousItems = current.catalog.filter(belongs);
@@ -131,7 +158,12 @@ export const useLibraryStore = create<LibraryState>()(
           ...(section === "series" ? items : current.catalog.filter((item) => item.type === "series"))
         ];
         const catalogSections = { ...current.catalogSections, [section]: { status, error } };
-        return { catalog, catalogSections, catalogStatus: overallStatus(catalogSections) };
+        return {
+          catalog,
+          catalogSections,
+          catalogStatus: overallStatus(catalogSections),
+          catalogCachedAt: status === "ready" ? new Date().toISOString() : current.catalogCachedAt
+        };
       }),
       setCatalogStatus: (catalogStatus) => set({ catalogStatus }),
       setSeriesEpisodes: (seriesId, episodes) => set((current) => {
@@ -177,7 +209,7 @@ export const useLibraryStore = create<LibraryState>()(
           }
         };
       }),
-      clearSession: () => set({ catalog: [], catalogSource: "mock", catalogStatus: "ready", catalogSections: IDLE_SECTIONS, connection: undefined, sessionName: "Play TV", serverUrl: undefined }),
+      clearSession: () => set({ catalog: [], catalogSource: "mock", catalogStatus: "ready", catalogSections: IDLE_SECTIONS, catalogCachedAt: undefined, connection: undefined, sessionName: "Play TV", serverUrl: undefined }),
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
 
@@ -211,7 +243,18 @@ export const useLibraryStore = create<LibraryState>()(
       version: 2,
       storage: createJSONStorage(() => platformStorage),
       migrate: migrateLibraryState,
-      partialize: (state) => ({ catalogSource: state.catalogSource, favorites: state.favorites, playback: state.playback, profiles: state.profiles, activeProfileId: state.activeProfileId, profileData: state.profileData, sessionName: state.sessionName, serverUrl: state.serverUrl })
+      partialize: (state) => ({
+        catalog: state.catalogSource === "xtream" ? state.catalog : [],
+        catalogSource: state.catalogSource,
+        catalogCachedAt: state.catalogCachedAt,
+        favorites: state.favorites,
+        playback: state.playback,
+        profiles: state.profiles,
+        activeProfileId: state.activeProfileId,
+        profileData: state.profileData,
+        sessionName: state.sessionName,
+        serverUrl: state.serverUrl
+      })
     }
   )
 );
