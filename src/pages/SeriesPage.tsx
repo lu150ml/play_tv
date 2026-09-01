@@ -1,6 +1,6 @@
 import { ArrowLeft, Heart, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
@@ -18,6 +18,7 @@ import { formatDuration, formatRemainingTime } from "../utils/format";
 
 export function SeriesPage() {
   const { seriesId } = useParams();
+  const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const playback = useLibraryStore((state) => state.playback);
@@ -25,6 +26,7 @@ export function SeriesPage() {
   const isFavorite = useLibraryStore((state) => seriesId ? state.isFavorite(seriesId) : false);
   const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const setSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
+  const removeSeriesProgress = useLibraryStore((state) => state.removeSeriesProgress);
   const item = seriesId ? getContentById(seriesId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
   const [episodes, setEpisodes] = useState<Episode[]>(() => series?.episodes ?? []);
@@ -110,7 +112,18 @@ export function SeriesPage() {
     [episodes, playback]
   );
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
-  const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
+  const continueLabel = continueProgress?.positionSeconds ? "Retomar" : "Assistir";
+
+  function handleWatchFromStart() {
+    const firstEpisode = episodes[0];
+    if (!firstEpisode || !series) return;
+    if (!window.confirm("Ver esta serie desde o começo? O progresso e as marcacoes de assistido desta serie serao apagados.")) {
+      return;
+    }
+    removeSeriesProgress(series.id, episodes.map((episode) => episode.id));
+    setSelectedSeason(firstEpisode.season);
+    void navigate(`/watch/${series.id}/${firstEpisode.id}`);
+  }
 
   if (!item) {
     return <Navigate to="/catalog/series" replace />;
@@ -200,6 +213,17 @@ export function SeriesPage() {
                   )}
                   {continueLabel}
                 </Link>
+              ) : null}
+              {episodes.length > 0 ? (
+                <button
+                  type="button"
+                  data-focusable="true"
+                  onClick={handleWatchFromStart}
+                  className="focus-card inline-flex h-12 items-center gap-2 rounded-lg border border-primary-container/60 bg-primary-container/20 px-4 font-display font-bold text-primary"
+                >
+                  <RotateCcw aria-hidden="true" size={19} />
+                  Ver do começo
+                </button>
               ) : null}
               <button
                 type="button"

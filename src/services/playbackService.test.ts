@@ -4,6 +4,8 @@ import {
   getPlaybackProgress,
   getProgressRatio,
   getRemainingSeconds,
+  isCorruptedPlaybackProgress,
+  isTrustedOnDemandDuration,
   savePlaybackProgress,
   shouldShowPlaybackProgress
 } from "./playbackService";
@@ -68,5 +70,24 @@ describe("playbackService", () => {
     expect(shouldShowPlaybackProgress("movie")).toBe(true);
     expect(shouldShowPlaybackProgress("episode")).toBe(true);
     expect(shouldShowPlaybackProgress("channel")).toBe(false);
+  });
+
+  it("rejects a transient short duration for a long episode", () => {
+    expect(isTrustedOnDemandDuration(12, 1_800)).toBe(false);
+    expect(isTrustedOnDemandDuration(1_760, 1_800)).toBe(true);
+  });
+
+  it("recognizes persisted progress created from a transient duration", () => {
+    expect(
+      isCorruptedPlaybackProgress(
+        {
+          contentId: "episode-1",
+          positionSeconds: 12,
+          durationSeconds: 12,
+          updatedAt: new Date().toISOString()
+        },
+        1_800
+      )
+    ).toBe(true);
   });
 });

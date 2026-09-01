@@ -12,6 +12,8 @@ import { getContentById } from "../services/catalogService";
 import {
   getProgressRatio,
   getRemainingSeconds,
+  isCorruptedPlaybackProgress,
+  isTrustedOnDemandDuration,
   normalizePlaybackState
 } from "../services/playbackService";
 import { getNextEpisode, invalidateSeriesDetails, isSeries, loadSeriesArtwork, loadSeriesEpisodes } from "../services/seriesService";
@@ -46,6 +48,7 @@ export function PlayerPage() {
   const series = isSeries(item) ? item : undefined;
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
+  const removeProgress = useLibraryStore((state) => state.removeProgress);
   const markWatched = useLibraryStore((state) => state.markWatched);
   const cacheSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const cacheSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
@@ -101,6 +104,7 @@ export function PlayerPage() {
   const playbackIntentRef = useRef(isPlaying);
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
+  const resumeRestoreKeyRef = useRef<string | undefined>(undefined);
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
   const handleStreamFailureRef = useRef<() => void>(() => {});
   const compatibilityRequestRef = useRef(false);
@@ -133,10 +137,16 @@ export function PlayerPage() {
     : transcodeSession?.ready
       ? transcodeSession.url
       : completedDownload ? getDownloadedMediaUrl(completedDownload.id) : streamCandidates[Math.min(streamAttempt, streamCandidates.length - 1)];
+  const declaredDurationSeconds = selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
+  // Para filmes e episodios, a duracao do catalogo e mais confiavel que uma
+  // playlist HLS parcial. TV ao vivo continua usando a duracao exposta pelo player.
   const durationSeconds =
-    mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
+    item?.type === "channel"
+      ? mediaDuration ?? declaredDurationSeconds
+      : declaredDurationSeconds || mediaDuration || 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
   const activePlayback = activePlaybackId ? playback[activePlaybackId] : undefined;
+  const playbackSessionKey = `${activePlaybackId ?? "none"}|${activeStreamUrl ?? "none"}`;
   const [positionSeconds, setPositionSeconds] = useState(0);
   const canSeek = durationSeconds > 0;
   const remainingLabel = formatRemainingTime(
@@ -661,6 +671,19 @@ export function PlayerPage() {
     return () => window.clearTimeout(startupTimeout);
   }, [activeStreamUrl, isPreparingCompatibleFormat, item?.type, transcodeSession]);
 
+  useEffect(() => {
+    if (
+      item?.type === "channel" ||
+      !activePlaybackId ||
+      !isCorruptedPlaybackProgress(activePlayback, declaredDurationSeconds)
+    ) {
+      return;
+    }
+
+    // Nao deixar uma gravacao de 12s continuar aparecendo como retomada.
+    removeProgress(activePlaybackId);
+  }, [activePlayback, activePlaybackId, declaredDurationSeconds, item?.type, removeProgress]);
+
   const activePlaybackRef = useRef(activePlayback);
   useEffect(() => {
     activePlaybackRef.current = activePlayback;
@@ -669,13 +692,11 @@ export function PlayerPage() {
   useEffect(() => {
     const nextPosition = activePlaybackRef.current?.positionSeconds ?? 0;
     setPositionSeconds(nextPosition);
-
-    if (videoRef.current && canSeek) {
-      videoRef.current.currentTime = nextPosition;
-    }
-    // Só restaura posição ao trocar de conteúdo — não reagir a saves de progresso
-    // durante reprodução (activePlayback?.positionSeconds causava seek a cada 5s)
-  }, [activePlaybackId, canSeek]);
+    lastSavedSecondRef.current = -1;
+    // O seek de retomada ocorre somente em handleLoadedMetadata, depois de
+    // validar a duracao real da fonte. Fazer isso aqui permite um seek antes de
+    // um manifesto temporario de 12 segundos estar pronto.
+  }, [activePlaybackId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -808,15 +829,26 @@ export function PlayerPage() {
       return;
     }
 
-    setMediaDuration(Math.floor(video.duration));
+    const observedDuration = Math.floor(video.duration);
+    const isLiveContent = content.type === "channel";
+    if (!isLiveContent && !isTrustedOnDemandDuration(observedDuration, declaredDurationSeconds)) {
+      return;
+    }
 
-    // Lê da ref (valor mais recente), não do closure capturado no render —
-    // senão o seek poderia pular para uma posição defasada quando os metadados
-    // chegam tarde (HLS carrega de forma assíncrona).
+    setMediaDuration(observedDuration);
+
+    // Metadados podem ser emitidos varias vezes por HLS e pelo fallback. Cada
+    // fonte recebe no maximo uma restauracao, evitando que saves posteriores
+    // arrastem o video de volta para uma posicao antiga.
+    if (resumeRestoreKeyRef.current === playbackSessionKey) {
+      return;
+    }
+
     const resumePosition = activePlaybackRef.current?.positionSeconds;
-    if (resumePosition) {
+    if (resumePosition && resumePosition < observedDuration) {
       video.currentTime = resumePosition;
     }
+    resumeRestoreKeyRef.current = playbackSessionKey;
   }
 
   function updateBufferedState() {

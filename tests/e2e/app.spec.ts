@@ -338,6 +338,68 @@ test("reloads Xtream series episodes from remembered server connection", async (
   await expect(page.getByText("Volte ao login")).not.toBeVisible();
 });
 
+test("retoma uma serie e permite reiniciar todo o historico da serie", async ({ page }) => {
+  await mockMediaPlay(page);
+  await page.addInitScript(() => {
+    window.confirm = () => true;
+  });
+  await connectToCatalog(page);
+
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await expect(page).toHaveURL(/\/series\/xtream-series-30$/);
+  await page.getByRole("link", { name: "Assistir" }).click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+
+  await page.locator("video").evaluate((element) => {
+    Object.defineProperty(element, "duration", { configurable: true, value: 1800 });
+    Object.defineProperty(element, "currentTime", { configurable: true, value: 120 });
+    element.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+
+  await page.getByRole("button", { name: "Serie" }).click();
+  await expect(page.getByRole("link", { name: "Retomar" })).toBeVisible();
+  await page.getByRole("button", { name: "Ver do começo" }).click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+
+  await page.getByRole("button", { name: "Serie" }).click();
+  await expect(page.getByRole("link", { name: "Assistir" })).toBeVisible();
+  await expect(page.getByText(/restantes/)).toHaveCount(0);
+});
+
+test("ignora metadado temporario de 12 segundos e restaura a posicao uma unica vez", async ({ page }) => {
+  await mockMediaPlay(page);
+  await connectToCatalog(page);
+  await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
+
+  const video = page.locator("video");
+  await video.evaluate((element) => {
+    Object.defineProperty(element, "duration", { configurable: true, value: 12 });
+    Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 12 });
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
+    element.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(page.getByText("30m").last()).toBeVisible();
+
+  await video.evaluate((element) => {
+    Object.defineProperty(element, "duration", { configurable: true, value: 1800 });
+    Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 120 });
+    element.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await page.waitForTimeout(100);
+  await video.evaluate((element) => {
+    (element as HTMLVideoElement).currentTime = 0;
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
+  });
+  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(120);
+
+  await video.evaluate((element) => {
+    (element as HTMLVideoElement).currentTime = 600;
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
+  });
+  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(600);
+});
+
 test("filters catalog results", async ({ page }) => {
   await page.goto("/catalog?search=open", { waitUntil: "domcontentloaded" });
   await page.locator('input[aria-label="Search catalog"]').fill("sports");
@@ -478,17 +540,18 @@ test("supports keyboard style navigation", async ({ page }) => {
   await expect(page).toHaveURL(/\/watch\//);
 });
 
-test("automatically starts the first series episode", async ({ page }) => {
+test("opens series details before the user chooses the first episode", async ({ page }) => {
   await mockMediaPlay(page);
   await connectToCatalog(page);
 
-  const startedAt = Date.now();
   await page.getByRole("link", { name: "Server Series series" }).first().click();
 
-  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/, { timeout: 3000 });
-  expect(Date.now() - startedAt).toBeLessThan(3000);
+  await expect(page).toHaveURL(/\/series\/xtream-series-30$/);
   await expect(page.locator("h1").filter({ hasText: "Server Series" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Pilot")).toBeVisible();
+  await expect(page.locator("video")).toHaveCount(0);
+  await page.getByRole("link", { name: "Assistir" }).click();
+  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
   await expectSeriesPlayerFocused(page);
   await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
 });
@@ -518,7 +581,8 @@ test("shows a bounded series error and retries without a loading loop", async ({
   await page.getByRole("link", { name: "Server Series series" }).first().click();
   await expect(page.getByText("Servidor de episodios indisponivel.")).toBeVisible();
   await page.getByRole("button", { name: "Tentar novamente" }).click();
-  await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
+  await expect(page).toHaveURL(/\/series\/xtream-series-30$/);
+  await expect(page.getByText("Pilot")).toBeVisible();
   expect(attempts).toBe(2);
 });
 
@@ -527,6 +591,7 @@ test("jumps to the next episode from player controls", async ({ page }) => {
   await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
   await expect(page.getByRole("button", { name: /^S1 E1 / })).toHaveAttribute("aria-pressed", "true");
 
@@ -543,6 +608,7 @@ test("focuses the player after selecting another series episode", async ({ page 
   await connectToCatalog(page);
 
   await page.getByRole("link", { name: "Server Series series" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
   await expect(page).toHaveURL(/\/watch\/xtream-series-30\/xtream-episode-3001$/);
 
   await page.getByRole("button", { name: /^S1 E2 / }).click();
