@@ -5,6 +5,34 @@ const os = require("node:os");
 const path = require("node:path");
 const { DownloadManager, sanitizeFilename } = require("./download-manager.cjs");
 
+function createManager(root, fetch) {
+  return new DownloadManager({
+    app: { getPath: (name) => name === "userData" ? root : path.join(root, "media") },
+    dialog: {},
+    shell: {},
+    safeStorage: { isEncryptionAvailable: () => false },
+    fetch,
+    emit: () => {}
+  });
+}
+
+function addJob(manager, root, overrides = {}) {
+  const job = {
+    id: overrides.id || "job",
+    contentId: "movie",
+    title: "Movie",
+    url: "https://example.test/movie.mp4",
+    finalPath: path.join(root, "movie.mp4"),
+    partPath: path.join(root, "movie.mp4.part"),
+    status: "queued",
+    receivedBytes: 0,
+    createdAt: new Date().toISOString(),
+    ...overrides
+  };
+  manager.jobs.set(job.id, job);
+  return job;
+}
+
 test("sanitizes Windows download filenames", () => {
   assert.equal(sanitizeFilename('Serie: S01/E01?*'), "Serie_ S01_E01__");
 });
@@ -40,6 +68,49 @@ test("rejects an unwritable download directory before queueing", () => {
     manager.downloadDirectory = path.join(root, "file-as-directory");
     fs.writeFileSync(manager.downloadDirectory, "not a directory");
     assert.throws(() => manager.enqueue({ contentId: "movie", title: "Movie", url: "https://example.test/movie.mp4" }), /nao existe ou nao permite/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("download rejects HTML responses instead of completing a fake media file", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "server-xtreme-download-test-"));
+  try {
+    const manager = createManager(root, async () =>
+      new Response("<html>login</html>", {
+        status: 200,
+        headers: { "content-type": "text/html", "content-length": "18" }
+      })
+    );
+    const job = addJob(manager, root);
+
+    await manager.start(job.id);
+
+    assert.equal(manager.jobs.get(job.id).status, "error");
+    assert.match(manager.jobs.get(job.id).error, /HTML/);
+    assert.equal(fs.existsSync(job.finalPath), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("download does not complete when the response body is truncated", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "server-xtreme-download-test-"));
+  try {
+    const manager = createManager(root, async () =>
+      new Response(Buffer.from("abc"), {
+        status: 200,
+        headers: { "content-type": "video/mp4", "content-length": "10" }
+      })
+    );
+    const job = addJob(manager, root);
+
+    await manager.start(job.id);
+
+    assert.equal(manager.jobs.get(job.id).status, "error");
+    assert.match(manager.jobs.get(job.id).error, /incompleto/);
+    assert.equal(fs.existsSync(job.finalPath), false);
+    assert.equal(fs.existsSync(job.partPath), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -13,6 +13,56 @@ function sanitizeFilename(value) {
     .slice(0, 160) || "download";
 }
 
+function isProbablyHtmlResponse(response) {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  return contentType.includes("text/html") || contentType.includes("application/xhtml");
+}
+
+function writeChunk(stream, chunk) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      stream.off("error", onError);
+      stream.off("drain", onDrain);
+    };
+
+    stream.once("error", onError);
+    if (stream.write(chunk)) {
+      cleanup();
+      resolve();
+      return;
+    }
+    stream.once("drain", onDrain);
+  });
+}
+
+function finishStream(stream) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onFinish = () => {
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      stream.off("error", onError);
+      stream.off("finish", onFinish);
+    };
+    stream.once("error", onError);
+    stream.once("finish", onFinish);
+    stream.end();
+  });
+}
+
 class DownloadManager {
   constructor({ app, dialog, shell, safeStorage, fetch = globalThis.fetch, emit }) {
     this.app = app;
@@ -23,6 +73,7 @@ class DownloadManager {
     this.emit = emit;
     this.jobs = new Map();
     this.controllers = new Map();
+    this.activeStreams = new Map();
     this.settingsPath = path.join(app.getPath("userData"), "downloads.json");
     this.downloadDirectory = app.getPath("downloads");
     this.load();
@@ -44,13 +95,13 @@ class DownloadManager {
 
   persist() {
     fs.mkdirSync(path.dirname(this.settingsPath), { recursive: true });
-    fs.writeFileSync(
-      this.settingsPath,
-      JSON.stringify({
-        directory: this.downloadDirectory,
-        jobs: [...this.jobs.values()].map(({ url, ...job }) => ({ ...job, encryptedUrl: this.encryptUrl(url) }))
-      }, null, 2)
-    );
+    const payload = JSON.stringify({
+      directory: this.downloadDirectory,
+      jobs: [...this.jobs.values()].map(({ url, ...job }) => ({ ...job, encryptedUrl: this.encryptUrl(url) }))
+    }, null, 2);
+    const temporaryPath = `${this.settingsPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryPath, payload);
+    fs.renameSync(temporaryPath, this.settingsPath);
   }
 
   snapshot() {
@@ -192,6 +243,16 @@ class DownloadManager {
         job.receivedBytes = 0;
       }
       if (!response.ok) throw new Error(`Servidor respondeu HTTP ${response.status}.`);
+      if (isProbablyHtmlResponse(response)) {
+        throw new Error("O servidor retornou uma pagina HTML em vez do arquivo de video.");
+      }
+      if (append) {
+        const range = String(response.headers.get("content-range") || "");
+        const rangeStart = Number(/^bytes\s+(\d+)-/i.exec(range)?.[1]);
+        if (!Number.isFinite(rangeStart) || rangeStart !== existing) {
+          throw new Error("O servidor retornou um Content-Range incompativel com a retomada.");
+        }
+      }
       const responseLength = Number(response.headers.get("content-length") || 0);
       job.totalBytes = responseLength > 0 ? job.receivedBytes + responseLength : undefined;
       if (responseLength > 0 && typeof fs.statfsSync === "function") {
@@ -201,15 +262,16 @@ class DownloadManager {
           throw new Error("Espaco em disco insuficiente para concluir o download.");
         }
       }
-      const stream = fs.createWriteStream(job.partPath, { flags: append ? "a" : "w" });
       const reader = response.body?.getReader();
       if (!reader) throw new Error("O servidor nao forneceu dados para download.");
+      const stream = fs.createWriteStream(job.partPath, { flags: append ? "a" : "w" });
+      this.activeStreams.set(id, stream);
       let lastNotify = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (!stream.write(Buffer.from(value))) await new Promise((resolve) => stream.once("drain", resolve));
+          await writeChunk(stream, Buffer.from(value));
           job.receivedBytes += value.byteLength;
           if (Date.now() - lastNotify > 300) {
             lastNotify = Date.now();
@@ -217,7 +279,14 @@ class DownloadManager {
           }
         }
       } finally {
-        await new Promise((resolve, reject) => stream.end((error) => (error ? reject(error) : resolve())));
+        try {
+          await finishStream(stream);
+        } finally {
+          this.activeStreams.delete(id);
+        }
+      }
+      if (responseLength > 0 && job.totalBytes !== undefined && job.receivedBytes !== job.totalBytes) {
+        throw new Error("O download terminou incompleto e pode ser retomado.");
       }
       fs.renameSync(job.partPath, job.finalPath);
       job.status = "completed";
@@ -260,8 +329,12 @@ class DownloadManager {
     const job = this.jobs.get(id);
     if (!job) return;
     job.status = "cancelled";
-    this.controllers.get(id)?.abort();
-    try { if (fs.existsSync(job.partPath)) fs.unlinkSync(job.partPath); } catch { /* Best-effort cleanup. */ }
+    const controller = this.controllers.get(id);
+    if (controller) {
+      controller.abort();
+    } else {
+      try { if (fs.existsSync(job.partPath)) fs.unlinkSync(job.partPath); } catch { /* Best-effort cleanup. */ }
+    }
     this.notify();
   }
 

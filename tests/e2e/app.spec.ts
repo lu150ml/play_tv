@@ -261,6 +261,8 @@ test("connects to catalog and opens a title", async ({ page }) => {
   await expect(page.getByText("Catálogo conectado")).toBeVisible();
   await expect(page.getByText("4 itens carregados")).toBeVisible();
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  await expect(page).toHaveURL(/\/movie\/xtream-movie-20$/);
+  await page.getByRole("link", { name: "Assistir" }).click();
   await expect(page.getByText("Now Playing")).toBeVisible();
   await expectSeriesPlayerFocused(page);
   await expect.poll(() => page.evaluate(() => window.playCalls)).toBeGreaterThan(0);
@@ -275,6 +277,7 @@ test("does not mute playback when play is aborted by a source change", async ({ 
   });
   await connectToCatalog(page);
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
   const video = page.locator("video");
   await expect(video).toBeVisible();
   await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).muted)).toBe(false);
@@ -296,6 +299,7 @@ test("offers a one-click audio activation when browser autoplay is blocked", asy
   });
   await connectToCatalog(page);
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
   const activate = page.locator("button").filter({ hasText: /^Ativar som$/ });
   await expect(activate).toBeVisible();
   await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).muted)).toBe(true);
@@ -353,6 +357,7 @@ test("retoma uma serie e permite reiniciar todo o historico da serie", async ({ 
   await page.locator("video").evaluate((element) => {
     Object.defineProperty(element, "duration", { configurable: true, value: 1800 });
     Object.defineProperty(element, "currentTime", { configurable: true, value: 120 });
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
     element.dispatchEvent(new Event("timeupdate", { bubbles: true }));
   });
 
@@ -384,20 +389,34 @@ test("ignora metadado temporario de 12 segundos e restaura a posicao uma unica v
   await video.evaluate((element) => {
     Object.defineProperty(element, "duration", { configurable: true, value: 1800 });
     Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 120 });
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
     element.dispatchEvent(new Event("timeupdate", { bubbles: true }));
   });
   await page.waitForTimeout(100);
+
+  await page.getByRole("button", { name: "Serie" }).click();
+  await page.getByRole("link", { name: "Retomar" }).click();
+  const reopenedVideo = page.locator("video");
+
+  await reopenedVideo.evaluate((element) => {
+    Object.defineProperty(element, "duration", { configurable: true, value: 12 });
+    Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 0 });
+    element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
+  });
+  await expect.poll(() => reopenedVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(0);
+
   await video.evaluate((element) => {
+    Object.defineProperty(element, "duration", { configurable: true, value: 1800 });
     (element as HTMLVideoElement).currentTime = 0;
     element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
   });
-  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(120);
+  await expect.poll(() => reopenedVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(120);
 
-  await video.evaluate((element) => {
+  await reopenedVideo.evaluate((element) => {
     (element as HTMLVideoElement).currentTime = 600;
     element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
   });
-  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(600);
+  await expect.poll(() => reopenedVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBe(600);
 });
 
 test("filters catalog results", async ({ page }) => {
@@ -467,7 +486,7 @@ test("opens the clickable catalog hero using card routing rules", async ({ page 
 
   await page.getByRole("link", { name: "Abrir Neon Genesis: The Awakening" }).click();
 
-  await expect(page).toHaveURL(/\/watch\/neon-genesis-awakening$/);
+  await expect(page).toHaveURL(/\/movie\/neon-genesis-awakening$/);
 
   await page.addInitScript(() => {
     window.localStorage.setItem(
@@ -493,7 +512,7 @@ test("opens the clickable catalog hero using card routing rules", async ({ page 
   await page.goto("/catalog");
   await page.getByRole("link", { name: "Abrir Machine Heart" }).click();
 
-  await expect(page).toHaveURL(/\/watch\/machine-heart\/machine-heart-s1e1$/);
+  await expect(page).toHaveURL(/\/series\/machine-heart$/);
 
   await page.goto("/catalog/tv", { waitUntil: "domcontentloaded" });
   await page.getByRole("link", { name: "Abrir Cine Max Live" }).click();
@@ -537,7 +556,7 @@ test("supports keyboard style navigation", async ({ page }) => {
   await page.getByRole("link", { name: "Neon Genesis: The Awakening movie" }).first().focus();
   await page.keyboard.press("Enter");
 
-  await expect(page).toHaveURL(/\/watch\//);
+  await expect(page).toHaveURL(/\/movie\/neon-genesis-awakening$/);
 });
 
 test("opens series details before the user chooses the first episode", async ({ page }) => {
@@ -666,6 +685,7 @@ test("preloads video without revealing hidden controls while buffering", async (
   await page.route("http://xtream.test/**", () => new Promise(() => undefined));
   await connectToCatalog(page);
   await page.getByRole("link", { name: "Server Movie 4K movie" }).first().click();
+  await page.getByRole("link", { name: "Assistir" }).click();
 
   const video = page.locator("video");
   const controls = page.getByTestId("player-controls");

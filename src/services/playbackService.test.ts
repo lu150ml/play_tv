@@ -77,6 +77,12 @@ describe("playbackService", () => {
     expect(isTrustedOnDemandDuration(1_760, 1_800)).toBe(true);
   });
 
+  it("accepts legitimately short or unknown on-demand durations", () => {
+    expect(isTrustedOnDemandDuration(24, 30)).toBe(true);
+    expect(isTrustedOnDemandDuration(12, 0)).toBe(true);
+    expect(isTrustedOnDemandDuration(0, 30)).toBe(false);
+  });
+
   it("recognizes persisted progress created from a transient duration", () => {
     expect(
       isCorruptedPlaybackProgress(
@@ -84,6 +90,20 @@ describe("playbackService", () => {
           contentId: "episode-1",
           positionSeconds: 12,
           durationSeconds: 12,
+          updatedAt: new Date().toISOString()
+        },
+        1_800
+      )
+    ).toBe(true);
+  });
+
+  it("recognizes progress whose position is incompatible with the catalog duration", () => {
+    expect(
+      isCorruptedPlaybackProgress(
+        {
+          contentId: "episode-1",
+          positionSeconds: 2_500,
+          durationSeconds: 0,
           updatedAt: new Date().toISOString()
         },
         1_800

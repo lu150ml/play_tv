@@ -50,6 +50,7 @@ export function PlayerPage() {
   const storeProgress = useLibraryStore((state) => state.saveProgress);
   const removeProgress = useLibraryStore((state) => state.removeProgress);
   const markWatched = useLibraryStore((state) => state.markWatched);
+  const activeProfileId = useLibraryStore((state) => state.activeProfileId);
   const cacheSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const cacheSeriesArtwork = useLibraryStore((state) => state.setSeriesArtwork);
   const setChannelHealth = useLibraryStore((state) => state.setChannelHealth);
@@ -104,6 +105,10 @@ export function PlayerPage() {
   const playbackIntentRef = useRef(isPlaying);
   const mediaErrorRef = useRef(mediaError);
   const lastSavedSecondRef = useRef(-1);
+  const lastProgressWriteAtRef = useRef(0);
+  const activePlaybackSessionRef = useRef("");
+  const isSwitchingSourceRef = useRef(false);
+  const pendingResumeRef = useRef<{ key: string; positionSeconds: number } | undefined>(undefined);
   const resumeRestoreKeyRef = useRef<string | undefined>(undefined);
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
   const handleStreamFailureRef = useRef<() => void>(() => {});
@@ -146,7 +151,12 @@ export function PlayerPage() {
       : declaredDurationSeconds || mediaDuration || 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
   const activePlayback = activePlaybackId ? playback[activePlaybackId] : undefined;
-  const playbackSessionKey = `${activePlaybackId ?? "none"}|${activeStreamUrl ?? "none"}`;
+  const playbackSessionKey = [
+    connectionKey || "local",
+    activeProfileId ?? "profile",
+    activePlaybackId ?? "none",
+    activeStreamUrl ?? "none"
+  ].join("|");
   const [positionSeconds, setPositionSeconds] = useState(0);
   const canSeek = durationSeconds > 0;
   const remainingLabel = formatRemainingTime(
@@ -508,6 +518,10 @@ export function PlayerPage() {
   }, [mediaError]);
 
   useEffect(() => {
+    activePlaybackSessionRef.current = playbackSessionKey;
+  }, [playbackSessionKey]);
+
+  useEffect(() => {
     if (!isPlaying) {
       clearBufferRecovery();
     }
@@ -529,6 +543,8 @@ export function PlayerPage() {
     setIsBuffering(false);
     setBufferedAheadSeconds(0);
     mediaRetryRef.current = 0;
+    isSwitchingSourceRef.current = true;
+    pendingResumeRef.current = undefined;
 
     let hls: Hls | undefined;
     let isDisposed = false;
@@ -642,6 +658,7 @@ export function PlayerPage() {
     }
 
     return () => {
+      isSwitchingSourceRef.current = true;
       isDisposed = true;
       clearBufferRecovery();
       hls?.destroy();
@@ -693,10 +710,12 @@ export function PlayerPage() {
     const nextPosition = activePlaybackRef.current?.positionSeconds ?? 0;
     setPositionSeconds(nextPosition);
     lastSavedSecondRef.current = -1;
+    lastProgressWriteAtRef.current = 0;
+    pendingResumeRef.current = undefined;
     // O seek de retomada ocorre somente em handleLoadedMetadata, depois de
     // validar a duracao real da fonte. Fazer isso aqui permite um seek antes de
     // um manifesto temporario de 12 segundos estar pronto.
-  }, [activePlaybackId]);
+  }, [activePlaybackId, activeProfileId, connectionKey]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -754,17 +773,48 @@ export function PlayerPage() {
 
   const content = item;
 
-  function handleSeek(nextPosition: number) {
-    if (videoRef.current && canSeek) {
-      videoRef.current.currentTime = nextPosition;
+  function getTrustedProgressDuration() {
+    if (content.type === "channel") {
+      return 0;
     }
 
-    setPositionSeconds(nextPosition);
+    return declaredDurationSeconds || mediaDuration || 0;
+  }
+
+  function savePlaybackPosition(
+    nextPosition: number,
+    options: { force?: boolean; allowDuringSourceSwitch?: boolean } = {}
+  ) {
+    if (content.type === "channel") {
+      return;
+    }
+
+    if (activePlaybackSessionRef.current !== playbackSessionKey) {
+      return;
+    }
+
+    if (isSwitchingSourceRef.current && !options.allowDuringSourceSwitch) {
+      return;
+    }
+
+    const trustedDuration = getTrustedProgressDuration();
+    if (trustedDuration > 0 && nextPosition / trustedDuration >= 0.95) {
+      markWatched(selectedEpisode?.id ?? content.id);
+      return;
+    }
+
+    const now = Date.now();
+    if (!options.force && now - lastProgressWriteAtRef.current < 5000) {
+      return;
+    }
+
+    lastProgressWriteAtRef.current = now;
+    lastSavedSecondRef.current = Math.floor(nextPosition);
     storeProgress(
       normalizePlaybackState({
         contentId: selectedEpisode?.id ?? content.id,
         positionSeconds: nextPosition,
-        durationSeconds: durationSeconds || content.durationSeconds || 0
+        durationSeconds: trustedDuration || selectedEpisode?.durationSeconds || content.durationSeconds || 0
       })
     );
 
@@ -773,10 +823,19 @@ export function PlayerPage() {
         normalizePlaybackState({
           contentId: content.id,
           positionSeconds: nextPosition,
-          durationSeconds: durationSeconds || selectedEpisode.durationSeconds || 0
+          durationSeconds: trustedDuration || selectedEpisode.durationSeconds || content.durationSeconds || 0
         })
       );
     }
+  }
+
+  function handleSeek(nextPosition: number) {
+    if (videoRef.current && canSeek) {
+      videoRef.current.currentTime = nextPosition;
+    }
+
+    setPositionSeconds(nextPosition);
+    savePlaybackPosition(nextPosition, { force: true, allowDuringSourceSwitch: true });
   }
 
   function handleTimeUpdate() {
@@ -789,40 +848,10 @@ export function PlayerPage() {
     const nextPosition = Math.floor(video.currentTime);
     setPositionSeconds(nextPosition);
 
-    if (
-      content.type !== "channel" &&
-      durationSeconds > 0 &&
-      nextPosition / durationSeconds >= 0.95
-    ) {
-      markWatched(selectedEpisode?.id ?? content.id);
-      return;
-    }
-
-    if (content.type !== "channel" && nextPosition - lastSavedSecondRef.current >= 5) {
-      lastSavedSecondRef.current = nextPosition;
-      storeProgress(
-        normalizePlaybackState({
-          contentId: selectedEpisode?.id ?? content.id,
-          positionSeconds: nextPosition,
-          durationSeconds:
-            durationSeconds || selectedEpisode?.durationSeconds || content.durationSeconds || 0
-        })
-      );
-
-      if (selectedEpisode) {
-        storeProgress(
-          normalizePlaybackState({
-            contentId: content.id,
-            positionSeconds: nextPosition,
-            durationSeconds:
-              durationSeconds || selectedEpisode.durationSeconds || content.durationSeconds || 0
-          })
-        );
-      }
-    }
+    savePlaybackPosition(nextPosition);
   }
 
-  function handleLoadedMetadata() {
+  function handlePlayableMetadata() {
     const video = videoRef.current;
 
     if (!video || !Number.isFinite(video.duration)) {
@@ -836,6 +865,7 @@ export function PlayerPage() {
     }
 
     setMediaDuration(observedDuration);
+    isSwitchingSourceRef.current = false;
 
     // Metadados podem ser emitidos varias vezes por HLS e pelo fallback. Cada
     // fonte recebe no maximo uma restauracao, evitando que saves posteriores
@@ -845,10 +875,42 @@ export function PlayerPage() {
     }
 
     const resumePosition = activePlaybackRef.current?.positionSeconds;
-    if (resumePosition && resumePosition < observedDuration) {
-      video.currentTime = resumePosition;
+    const referenceDuration = declaredDurationSeconds || observedDuration;
+    if (resumePosition && resumePosition < referenceDuration) {
+      pendingResumeRef.current = { key: playbackSessionKey, positionSeconds: resumePosition };
+      try {
+        video.currentTime = resumePosition;
+        if (Math.abs(video.currentTime - resumePosition) < 2) {
+          resumeRestoreKeyRef.current = playbackSessionKey;
+          pendingResumeRef.current = undefined;
+        }
+        return;
+      } catch {
+        pendingResumeRef.current = undefined;
+      }
     }
     resumeRestoreKeyRef.current = playbackSessionKey;
+  }
+
+  function handleLoadedMetadata() {
+    handlePlayableMetadata();
+  }
+
+  function handleDurationChange() {
+    handlePlayableMetadata();
+  }
+
+  function handleSeeked() {
+    const pending = pendingResumeRef.current;
+    const video = videoRef.current;
+    if (!pending || pending.key !== playbackSessionKey || !video) {
+      return;
+    }
+
+    if (Math.abs(video.currentTime - pending.positionSeconds) < 2) {
+      resumeRestoreKeyRef.current = playbackSessionKey;
+      pendingResumeRef.current = undefined;
+    }
   }
 
   function updateBufferedState() {
@@ -915,6 +977,7 @@ export function PlayerPage() {
     }
     clearBufferRecovery();
     updateBufferedState();
+    isSwitchingSourceRef.current = false;
     setIsBuffering(false);
   }
 
@@ -930,6 +993,7 @@ export function PlayerPage() {
       return;
     }
 
+    savePlaybackPosition(videoRef.current?.currentTime ?? positionSeconds, { force: true });
     const nextProgress = playback[nextEpisode.id];
     setSelectedEpisodeId(nextEpisode.id);
     setPositionSeconds(nextProgress?.positionSeconds ?? 0);
@@ -1206,17 +1270,20 @@ export function PlayerPage() {
             playsInline
             onCanPlay={handleBufferingEnd}
             onCanPlayThrough={handleBufferingEnd}
+            onDurationChange={handleDurationChange}
             onLoadedMetadata={handleLoadedMetadata}
             onPlaying={handlePlaybackStarted}
             onProgress={handleBufferingProgress}
+            onSeeked={handleSeeked}
             onStalled={handleBufferingStart}
             onTimeUpdate={handleTimeUpdate}
             onWaiting={handleBufferingStart}
             onPlay={() => setIsPlaying(true)}
             onPause={() => {
               setIsPlaying(false);
-              if (content.type !== "channel")
-                handleSeek(videoRef.current?.currentTime ?? positionSeconds);
+              if (content.type !== "channel" && !isSwitchingSourceRef.current) {
+                savePlaybackPosition(videoRef.current?.currentTime ?? positionSeconds, { force: true });
+              }
             }}
             onEnded={handleEnded}
             onError={handleStreamFailure}

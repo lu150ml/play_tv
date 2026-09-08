@@ -54,15 +54,22 @@ export function isTrustedOnDemandDuration(
   observedDurationSeconds: number,
   declaredDurationSeconds?: number
 ): boolean {
-  if (!Number.isFinite(observedDurationSeconds) || observedDurationSeconds < 60) {
+  if (!Number.isFinite(observedDurationSeconds) || observedDurationSeconds <= 0) {
     return false;
   }
 
-  if (!declaredDurationSeconds || declaredDurationSeconds < 120) {
-    return true;
+  if (!declaredDurationSeconds || declaredDurationSeconds <= 0) {
+    return observedDurationSeconds >= 1;
   }
 
-  return observedDurationSeconds >= declaredDurationSeconds * 0.2;
+  if (declaredDurationSeconds < 120) {
+    return observedDurationSeconds >= Math.max(1, declaredDurationSeconds * 0.5);
+  }
+
+  return (
+    observedDurationSeconds >= 60 &&
+    observedDurationSeconds >= declaredDurationSeconds * 0.2
+  );
 }
 
 export function isCorruptedPlaybackProgress(
@@ -74,8 +81,9 @@ export function isCorruptedPlaybackProgress(
   }
 
   return (
-    state.durationSeconds > 0 &&
-    state.durationSeconds < Math.max(60, declaredDurationSeconds * 0.2)
+    (state.durationSeconds > 0 &&
+      state.durationSeconds < Math.max(60, declaredDurationSeconds * 0.2)) ||
+    state.positionSeconds > declaredDurationSeconds * 1.1
   );
 }
 

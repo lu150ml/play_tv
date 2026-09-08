@@ -1,4 +1,4 @@
-import type { ContentItem, Episode, PlaybackState, Series } from "../types/catalog";
+import type { ContentItem, Episode, PlaybackState, Series, WatchedState } from "../types/catalog";
 import type { XtreamCredentials } from "./xtreamService";
 import { invalidateXtreamSeriesDetails, loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes } from "./xtreamService";
 
@@ -67,9 +67,10 @@ export function getNextEpisode(episodes: Episode[], episodeId?: string): Episode
 
 export function getContinueEpisode(
   episodes: Episode[],
-  playback: Record<string, PlaybackState>
+  playback: Record<string, PlaybackState>,
+  watched: Record<string, WatchedState> = {}
 ): Episode | undefined {
-  const watchedEpisodes = episodes
+  const partialEpisodes = episodes
     .map((episode) => ({ episode, progress: playback[episode.id] }))
     .filter(({ progress }) => progress && progress.positionSeconds > 0)
     .sort(
@@ -78,7 +79,11 @@ export function getContinueEpisode(
         new Date(left.progress?.updatedAt ?? 0).getTime()
     );
 
-  return watchedEpisodes[0]?.episode ?? sortEpisodes(episodes)[0];
+  if (partialEpisodes[0]?.episode) {
+    return partialEpisodes[0].episode;
+  }
+
+  return sortEpisodes(episodes).find((episode) => !watched[episode.id]) ?? sortEpisodes(episodes)[0];
 }
 
 export function sortEpisodes(episodes: Episode[]): Episode[] {

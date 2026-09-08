@@ -10,7 +10,8 @@ import {
   invalidateSeriesDetails,
   isSeries,
   loadSeriesArtwork,
-  loadSeriesEpisodes
+  loadSeriesEpisodes,
+  sortEpisodes
 } from "../services/seriesService";
 import { getServerAccountKey, useLibraryStore } from "../stores/libraryStore";
 import type { Episode } from "../types/catalog";
@@ -22,6 +23,7 @@ export function SeriesPage() {
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
   const playback = useLibraryStore((state) => state.playback);
+  const watched = useLibraryStore((state) => state.watched);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) => seriesId ? state.isFavorite(seriesId) : false);
   const setSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
@@ -51,13 +53,15 @@ export function SeriesPage() {
 
     if (!providerId || source !== "xtream") {
       setEpisodes(currentSeries.episodes);
-      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, useLibraryStore.getState().playback)?.season ?? currentSeries.episodes[0]?.season);
+      const state = useLibraryStore.getState();
+      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, state.playback, state.watched)?.season ?? sortEpisodes(currentSeries.episodes)[0]?.season);
       return undefined;
     }
 
     if (currentSeries.episodes.length > 0 && loadAttempt === 0) {
       setEpisodes(currentSeries.episodes);
-      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, useLibraryStore.getState().playback)?.season ?? currentSeries.episodes[0]?.season);
+      const state = useLibraryStore.getState();
+      setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(currentSeries.episodes, state.playback, state.watched)?.season ?? sortEpisodes(currentSeries.episodes)[0]?.season);
       return undefined;
     }
 
@@ -77,7 +81,8 @@ export function SeriesPage() {
 
         setEpisodes(nextEpisodes);
         setSeriesEpisodes(currentSeries.id, nextEpisodes);
-        setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(nextEpisodes, useLibraryStore.getState().playback)?.season ?? nextEpisodes[0]?.season);
+        const state = useLibraryStore.getState();
+        setSelectedSeason((currentSeason) => currentSeason ?? getContinueEpisode(nextEpisodes, state.playback, state.watched)?.season ?? sortEpisodes(nextEpisodes)[0]?.season);
 
         if (nextEpisodes.length === 0) {
           setEpisodeError("O servidor retornou a serie, mas nao retornou episodios.");
@@ -108,14 +113,14 @@ export function SeriesPage() {
   const activeEpisodes =
     seasonGroups.find((group) => group.season === activeSeason)?.episodes ?? [];
   const continueEpisode = useMemo(
-    () => getContinueEpisode(episodes, playback),
-    [episodes, playback]
+    () => getContinueEpisode(episodes, playback, watched),
+    [episodes, playback, watched]
   );
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
   const continueLabel = continueProgress?.positionSeconds ? "Retomar" : "Assistir";
 
   function handleWatchFromStart() {
-    const firstEpisode = episodes[0];
+    const firstEpisode = sortEpisodes(episodes)[0];
     if (!firstEpisode || !series) return;
     if (!window.confirm("Ver esta serie desde o começo? O progresso e as marcacoes de assistido desta serie serao apagados.")) {
       return;
