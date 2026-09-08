@@ -25,6 +25,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Clean release output
+        shell: pwsh
+        run: Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
+
       - name: Build Windows installer and portable app
         run: npm run dist:win
 
