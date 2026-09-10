@@ -38,6 +38,12 @@ const NEXT_EPISODE_PROMPT_SECONDS = 40;
 // ponto, oferecemos o salto direto para cá (fim aproximado da abertura ~30s).
 const INTRO_SKIP_TO_SECONDS = 30;
 
+// Canais já tinham um limite curto para não ficarem presos em uma tentativa
+// nativa ruim. Filmes e episódios também precisam de um limite, mas um pouco
+// maior para não punir MP4s legítimos que demoram alguns segundos para abrir.
+const LIVE_NATIVE_STARTUP_TIMEOUT_MS = 5_000;
+const VOD_NATIVE_STARTUP_TIMEOUT_MS = 8_000;
+
 export function PlayerPage() {
   const { contentId, episodeId, seriesId } = useParams();
   const navigate = useNavigate();
@@ -670,23 +676,31 @@ export function PlayerPage() {
 
   useEffect(() => {
     if (
-      item?.type !== "channel" ||
       !activeStreamUrl ||
       transcodeSession ||
       isPreparingCompatibleFormat ||
+      completedDownload ||
       !getDesktopBridge()?.media ||
       activeStreamUrl.includes("/media/transcode/")
     ) {
       return undefined;
     }
+
     const startupTimeout = window.setTimeout(() => {
       const video = videoRef.current;
-      if (video && video.currentTime <= 0.25 && video.readyState < 2) {
-        void startCompatibilityTranscodeRef.current();
+      if (!video || video.currentTime > 0.25 || video.readyState >= 2) {
+        return;
       }
-    }, 5000);
+
+      if (item?.type === "channel") {
+        void startCompatibilityTranscodeRef.current();
+        return;
+      }
+
+      handleStreamFailureRef.current();
+    }, item?.type === "channel" ? LIVE_NATIVE_STARTUP_TIMEOUT_MS : VOD_NATIVE_STARTUP_TIMEOUT_MS);
     return () => window.clearTimeout(startupTimeout);
-  }, [activeStreamUrl, isPreparingCompatibleFormat, item?.type, transcodeSession]);
+  }, [activeStreamUrl, completedDownload, isPreparingCompatibleFormat, item?.type, transcodeSession]);
 
   useEffect(() => {
     if (
@@ -1092,7 +1106,11 @@ export function PlayerPage() {
   }
 
   function handleStreamFailure() {
-    if (!videoRef.current?.currentSrc) return;
+    if (!activeStreamUrl) return;
+    if (completedDownload) {
+      setMediaError("Nao foi possivel reproduzir o arquivo baixado. Tente reproduzir pelo stream ou baixar novamente.");
+      return;
+    }
     if (content.type === "channel" && !transcodeSession && getDesktopBridge()?.media) {
       void startCompatibilityTranscode();
       return;

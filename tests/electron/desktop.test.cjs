@@ -228,3 +228,97 @@ test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test("desktop opens movie details and plays a direct MP4 movie", { timeout: 90000 }, async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-electron-movie-"));
+  const moviePath = path.join(temporaryDirectory, "movie.mp4");
+  execFileSync(ffmpegPath, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", "testsrc=size=320x180:rate=24:duration=8",
+    "-f", "lavfi", "-i", "sine=frequency=520:duration=8",
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "96k", "-shortest", moviePath
+  ], { windowsHide: true });
+
+  const movieBytes = fs.readFileSync(moviePath);
+  const server = http.createServer((request, response) => {
+    if (request.url === "/movie.mp4") {
+      response.writeHead(200, { "content-type": "video/mp4", "content-length": movieBytes.length });
+      response.end(movieBytes);
+      return;
+    }
+    response.writeHead(404, { "content-type": "text/plain" });
+    response.end("missing");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const streamUrl = `http://127.0.0.1:${port}/movie.mp4`;
+  const application = await electron.launch({
+    args: [path.resolve(__dirname, "..", ".."), `--user-data-dir=${path.join(temporaryDirectory, "profile")}`],
+    env: { ...process.env, NODE_ENV: "test", PLAY_TV_E2E: "1" }
+  });
+
+  try {
+    const window = await application.firstWindow();
+    await window.waitForLoadState("domcontentloaded");
+    await window.evaluate((url) => {
+      const movie = {
+        id: "movie-local",
+        providerId: "movie-local",
+        source: "mock",
+        title: "Local MP4 Movie",
+        type: "movie",
+        description: "Local validation movie.",
+        genres: ["Test"],
+        categories: ["Movies", "Test"],
+        providerCategoryId: "test",
+        quality: ["HD"],
+        durationSeconds: 8,
+        director: "Test",
+        cast: [],
+        backdropTone: "from-slate-900 to-black",
+        posterTone: "from-slate-800 to-black",
+        streamUrl: url,
+        streamCandidates: [url],
+        addedAt: new Date().toISOString()
+      };
+      window.localStorage.setItem("server-xtreme-library", JSON.stringify({
+        state: {
+          catalog: [movie],
+          catalogSource: "mock",
+          favorites: [],
+          playback: {},
+          watched: {},
+          profiles: [{ id: "profile-movie", name: "Movie", avatarColor: "from-blue-500 to-cyan-500", createdAt: new Date().toISOString() }],
+          activeProfileId: "profile-movie",
+          profileData: {
+            "profile-movie": { favorites: [], playback: {}, watched: {} }
+          },
+          sessionName: "Movie Validation",
+          rememberConnection: false,
+          serverAccounts: {},
+          activeAccountKey: null,
+          streamHealth: {}
+        },
+        version: 2
+      }));
+    }, streamUrl);
+    await window.goto("app://server-xtreme/movie/movie-local", { waitUntil: "domcontentloaded" });
+    await window.getByRole("link", { name: "Assistir" }).click();
+    const video = window.locator("video");
+    await video.waitFor({ state: "attached", timeout: 10000 });
+    await video.evaluate((element) => element.play().catch(() => undefined));
+    await window.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return Boolean(element && element.currentTime > 0.25 && element.readyState >= 2);
+    }, undefined, { timeout: 30000 });
+    const playback = await video.evaluate((element) => ({ currentTime: element.currentTime, muted: element.muted }));
+    assert.ok(playback.currentTime > 0.25);
+    assert.equal(playback.muted, false);
+  } finally {
+    await application.close();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
