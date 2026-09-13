@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadXtreamCatalog, loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes, normalizeCategory } from "./xtreamService";
+import { ensureUniqueContentIds, loadXtreamCatalog, loadXtreamSeriesArtwork, loadXtreamSeriesEpisodes, normalizeCategory } from "./xtreamService";
 
 describe("Xtream category names", () => {
   it("preserves the exact hierarchy supplied by the provider", () => {
@@ -79,5 +79,39 @@ describe("Xtream category names", () => {
     await load;
     expect(updates).toEqual(["live", "vod", "series"]);
     vi.unstubAllGlobals();
+  });
+
+  it("keeps duplicate provider IDs addressable without changing their stream provider ID", () => {
+    const first = {
+      id: "xtream-movie-7",
+      providerId: "7",
+      source: "xtream" as const,
+      type: "movie" as const,
+      title: "Movie A",
+      description: "A",
+      genres: ["Ação"],
+      categories: ["Movies", "Ação"],
+      providerCategoryId: "10",
+      quality: ["HD" as const],
+      streamUrl: "https://example.test/movie/u/p/7.mp4",
+      director: "Unknown",
+      cast: [],
+      backdropTone: "from-black to-black",
+      posterTone: "from-black to-black",
+      addedAt: "2026-01-01T00:00:00.000Z"
+    };
+    const second = {
+      ...first,
+      title: "Movie B",
+      description: "B",
+      providerCategoryId: "11"
+    };
+
+    const result = ensureUniqueContentIds([first, second]);
+
+    expect(result[0]?.id).toBe("xtream-movie-7");
+    expect(result[1]?.id).toMatch(/^xtream-movie-7-11-movie-b-1$/);
+    expect(result[1]?.providerId).toBe("7");
+    expect(new Set(result.map((item) => item.id)).size).toBe(2);
   });
 });

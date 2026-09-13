@@ -7,6 +7,7 @@ import { ContentCard } from "../components/ContentCard";
 import { SearchOverlay } from "../components/SearchOverlay";
 import { SecureImage } from "../components/SecureImage";
 import { searchCatalog } from "../services/catalogService";
+import { getMovieSegments } from "../services/movieSegmentService";
 import { isMusicChannel } from "../services/musicService";
 import { isTwentyFourHourChannel } from "../services/streamService";
 import {
@@ -140,8 +141,8 @@ export function CatalogPage({
     [favorites, playback, recommendedHero?.id, sectionItems]
   );
   const categoryGroups = useMemo(
-    () => groupByDisplayCategory(sectionItems, sectionConfig.broadCategories),
-    [sectionConfig.broadCategories, sectionItems]
+    () => groupByDisplayCategory(sectionItems, sectionConfig.broadCategories, sectionKey),
+    [sectionConfig.broadCategories, sectionItems, sectionKey]
   );
   const selectedCategory = categorySlug
     ? categoryGroups.find(
@@ -153,15 +154,16 @@ export function CatalogPage({
     () => ({
       ...filters,
       type: sectionType,
-      category: selectedCategory?.title ?? filters.category,
-      providerCategoryId: selectedCategory?.providerCategoryId
+      category: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.title ?? filters.category,
+      providerCategoryId: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.providerCategoryId
     }),
-    [filters, sectionType, selectedCategory]
+    [filters, sectionType, selectedCategory?.kind, selectedCategory?.providerCategoryId, selectedCategory?.title]
   );
   const deferredFilters = useDeferredValue(effectiveFilters);
+  const searchableItems = selectedCategory?.kind === "segment" ? selectedCategory.items : sectionItems;
   const results = useMemo(
-    () => searchCatalog(deferredFilters, favorites, sectionItems),
-    [deferredFilters, favorites, sectionItems]
+    () => searchCatalog(deferredFilters, favorites, searchableItems),
+    [deferredFilters, favorites, searchableItems]
   );
   const continueWatching = useMemo(
     () =>
@@ -328,8 +330,8 @@ export function CatalogPage({
             setFilters({
               ...nextFilters,
               type: sectionType,
-              category: selectedCategory?.title,
-              providerCategoryId: selectedCategory?.providerCategoryId
+              category: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.title,
+              providerCategoryId: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.providerCategoryId
             })
           }
         />
@@ -475,10 +477,11 @@ function CategoryRails({ groups, sectionPath }: { groups: CategoryGroup[]; secti
     <>
       {groups.map((group) => (
         <CatalogRail
-          key={group.title}
+          key={group.slug}
           title={group.title}
           items={group.items.slice(0, RAIL_LIMIT)}
           viewAllTo={`${sectionPath}/${group.slug}`}
+          viewMoreInRail
         />
       ))}
     </>
@@ -554,6 +557,7 @@ interface CategoryGroup {
   items: ContentItem[];
   slug: string;
   providerCategoryId?: string;
+  kind?: "provider" | "segment";
 }
 
 function getSectionKey(section?: string): SectionKey {
@@ -604,14 +608,29 @@ function isDefinitivelyUnavailable(health?: ChannelHealth) {
 
 function groupByDisplayCategory(
   items: ContentItem[],
-  broadCategories: readonly string[]
+  broadCategories: readonly string[],
+  section: SectionKey
 ): CategoryGroup[] {
   const groups = new Map<
     string,
-    { title: string; items: ContentItem[]; providerCategoryId?: string }
+    { title: string; items: ContentItem[]; providerCategoryId?: string; kind?: "provider" | "segment" }
   >();
 
   for (const item of items) {
+    if (section === "movies" && item.type === "movie") {
+      for (const segment of getMovieSegments(item)) {
+        const key = `segment:${segment}`;
+        const group = groups.get(key) ?? {
+          title: segment,
+          items: [],
+          kind: "segment" as const
+        };
+        group.items.push(item);
+        groups.set(key, group);
+      }
+      continue;
+    }
+
     const displayCategories = unique(item.categories).filter(
       (category) => !broadCategories.includes(category)
     );
@@ -622,7 +641,8 @@ function groupByDisplayCategory(
       const group = groups.get(key) ?? {
         title: category,
         items: [],
-        providerCategoryId: item.providerCategoryId
+        providerCategoryId: item.providerCategoryId,
+        kind: "provider" as const
       };
       group.items.push(item);
       groups.set(key, group);
@@ -634,7 +654,9 @@ function groupByDisplayCategory(
       ...group,
       slug: group.providerCategoryId
         ? `${slugify(group.title)}-${group.providerCategoryId}`
-        : slugify(group.title)
+        : group.kind === "segment"
+          ? `segmento-${slugify(group.title)}`
+          : slugify(group.title)
     }))
     .sort((left, right) => left.title.localeCompare(right.title));
 }

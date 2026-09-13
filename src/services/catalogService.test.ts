@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getCatalog, normalizeSearchText, searchCatalog, sortCatalog } from "./catalogService";
+import { getMovieSegments } from "./movieSegmentService";
 
 describe("catalogService", () => {
   it("normalizes accents for indexed search", () => {
@@ -31,5 +32,17 @@ describe("catalogService", () => {
 
     expect(results.every((item) => item.type === "movie")).toBe(true);
     expect(results.every((item) => item.quality.includes("4K"))).toBe(true);
+  });
+
+  it("classifies movies into useful local segments", () => {
+    const movie = getCatalog().find((item) => item.type === "movie")!;
+
+    expect(getMovieSegments({ ...movie, genres: ["Terror", "Suspense"], categories: ["Movies"] })).toEqual([
+      "Terror",
+      "Suspense"
+    ]);
+    expect(getMovieSegments({ ...movie, genres: ["Categoria sem mapa"], categories: ["Movies"] })).toEqual([
+      "Outros"
+    ]);
   });
 });

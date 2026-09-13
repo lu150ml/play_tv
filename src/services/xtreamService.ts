@@ -214,10 +214,29 @@ async function loadCatalogSection(
       : (itemResult.value as XtreamSeriesStream[]).map((item) => mapSeriesStream(item, categoryMap, credentials));
   return {
     section,
-    items,
+    items: ensureUniqueContentIds(items),
     status: "ready",
     warning: categoryResult.status === "rejected" ? "As categorias desta secao nao puderam ser carregadas." : undefined
   };
+}
+
+export function ensureUniqueContentIds(items: ContentItem[]): ContentItem[] {
+  const seen = new Map<string, number>();
+
+  return items.map((item, index) => {
+    const count = seen.get(item.id) ?? 0;
+    seen.set(item.id, count + 1);
+    if (count === 0) return item;
+
+    const categoryPart = item.providerCategoryId
+      ? slugIdPart(item.providerCategoryId)
+      : "uncategorized";
+    const titlePart = slugIdPart(item.title);
+    return {
+      ...item,
+      id: `${item.id}-${categoryPart}-${titlePart}-${index}`
+    };
+  });
 }
 
 export async function loadXtreamSeriesEpisodes(
@@ -527,6 +546,16 @@ function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefin
   } catch {
     return normalized;
   }
+}
+
+function slugIdPart(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "item";
 }
 
 function normalizeRemoteMediaUrl(value?: string): string | undefined {
