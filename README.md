@@ -7,11 +7,11 @@ Play TV X e um player IPTV para servidores compativeis com Xtream Codes. O proje
 
 ## Versoes disponiveis
 
-Em 28 de agosto de 2026, as versoes distribuidas deste projeto sao:
+Em 13 de setembro de 2026, as versoes distribuidas deste projeto sao:
 
-- APK Android: `1.4.4` (`versionCode 14`)
-- Instalador EXE Windows: `0.4.13`
-- EXE portatil Windows: `0.4.13`
+- APK Android: `1.4.5` (`versionCode 15`)
+- Instalador EXE Windows: `0.4.17`
+- EXE portatil Windows: `0.4.17`
 
 As versoes acima representam os artefatos distribuidos ao usuario. Nesta branch, a linha Android local pode avancar antes de uma nova release publica do Electron.
 

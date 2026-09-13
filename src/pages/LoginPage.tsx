@@ -1,6 +1,6 @@
 import { ArrowRight, Link as LinkIcon, Lock, Server, UserRound } from "lucide-react";
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useRef, useState } from "react";
+import type { FormEvent, Ref } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { BrandWordmark } from "../components/BrandWordmark";
@@ -24,6 +24,9 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>();
   const [isConnecting, setIsConnecting] = useState(false);
+  const usernameRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+  const submitRef = useRef<HTMLButtonElement | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,6 +107,8 @@ export function LoginPage() {
             onChange={setServerUrl}
             placeholder="http://host:port"
             icon={<LinkIcon aria-hidden="true" size={20} />}
+            enterKeyHint="next"
+            onEnter={() => usernameRef.current?.focus()}
           />
           <InputField
             name="username"
@@ -112,6 +117,9 @@ export function LoginPage() {
             onChange={setUsername}
             placeholder="Seu usuário Xtream"
             icon={<UserRound aria-hidden="true" size={20} />}
+            inputRef={usernameRef}
+            enterKeyHint="next"
+            onEnter={() => passwordRef.current?.focus()}
           />
           <InputField
             name="password"
@@ -121,6 +129,13 @@ export function LoginPage() {
             type="password"
             placeholder="Sua senha Xtream"
             icon={<Lock aria-hidden="true" size={20} />}
+            inputRef={passwordRef}
+            enterKeyHint="done"
+            onEnter={() => {
+              passwordRef.current?.blur();
+              submitRef.current?.focus();
+              submitRef.current?.click();
+            }}
           />
         </div>
 
@@ -152,6 +167,7 @@ export function LoginPage() {
         </div>
 
         <button
+          ref={submitRef}
           type="submit"
           disabled={isConnecting}
           className="focus-card flex w-full items-center justify-center gap-3 rounded-lg border border-primary-container/40 bg-primary px-6 py-4 font-display text-lg font-bold text-on-primary shadow-glow disabled:cursor-wait disabled:opacity-70"
@@ -177,6 +193,9 @@ interface InputFieldProps {
   icon: React.ReactNode;
   type?: string;
   placeholder?: string;
+  inputRef?: Ref<HTMLInputElement>;
+  enterKeyHint?: "next" | "done";
+  onEnter?: () => void;
 }
 
 function InputField({
@@ -186,7 +205,10 @@ function InputField({
   onChange,
   icon,
   type = "text",
-  placeholder
+  placeholder,
+  inputRef,
+  enterKeyHint,
+  onEnter
 }: InputFieldProps) {
   return (
     <label className="block">
@@ -196,9 +218,12 @@ function InputField({
       <span className="focus-card flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 text-on-surface-variant">
         {icon}
         <input
+          ref={inputRef}
           data-focusable="true"
           name={name}
           type={type}
+          enterKeyHint={enterKeyHint}
+          inputMode={name === "serverUrl" ? "url" : "text"}
           autoComplete={
             name === "password" ? "current-password" : name === "username" ? "username" : "url"
           }
@@ -207,6 +232,11 @@ function InputField({
           spellCheck={false}
           value={value}
           placeholder={placeholder}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            onEnter?.();
+          }}
           onChange={(event) => onChange(event.target.value)}
           className="w-full bg-transparent text-on-surface outline-none placeholder:text-on-surface-variant"
         />

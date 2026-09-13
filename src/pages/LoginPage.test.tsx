@@ -85,4 +85,30 @@ describe("LoginPage Android autofill", () => {
     expect(username).toHaveValue("viewer");
     expect(password).toHaveValue("secret-value");
   });
+
+  it("moves through fields with Enter and submits from the password field", async () => {
+    mockedConnect.mockRejectedValue(new Error("Tentativa enviada."));
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    );
+
+    const server = screen.getByLabelText("Endereço do servidor");
+    const username = screen.getByLabelText("Usuário");
+    const password = screen.getByLabelText("Senha");
+
+    fireEvent.change(server, { target: { value: "http://iptv.example:8080" } });
+    fireEvent.keyDown(server, { key: "Enter" });
+    expect(username).toHaveFocus();
+
+    fireEvent.change(username, { target: { value: "viewer" } });
+    fireEvent.keyDown(username, { key: "Enter" });
+    expect(password).toHaveFocus();
+
+    fireEvent.change(password, { target: { value: "secret-value" } });
+    fireEvent.keyDown(password, { key: "Enter" });
+
+    await waitFor(() => expect(mockedConnect).toHaveBeenCalled());
+  });
 });

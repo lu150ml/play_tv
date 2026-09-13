@@ -213,6 +213,10 @@ function useAndroidBackButton() {
     let disposed = false;
     let removeListener: (() => Promise<void>) | undefined;
     void CapacitorApp.addListener("backButton", () => {
+      if (closeFocusedTextInput()) {
+        return;
+      }
+
       const isRoot = location.pathname === "/login" || location.pathname === "/home";
       if (isRoot && !location.search) {
         void CapacitorApp.exitApp();
@@ -232,6 +236,23 @@ function useAndroidBackButton() {
       if (removeListener) void removeListener();
     };
   }, [location.pathname, location.search, navigate]);
+}
+
+function closeFocusedTextInput(): boolean {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement || !isTextInput(activeElement)) {
+    return false;
+  }
+
+  activeElement.blur();
+  document.body.focus();
+  return true;
+}
+
+function isTextInput(element: HTMLElement): element is HTMLInputElement | HTMLTextAreaElement {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (!(element instanceof HTMLInputElement)) return false;
+  return !new Set(["button", "checkbox", "radio", "range", "submit"]).has(element.type);
 }
 
 function LegacyCatalogRedirect() {

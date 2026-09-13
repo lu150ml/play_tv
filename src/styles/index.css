@@ -108,6 +108,41 @@ body {
   }
 }
 
+@media (min-width: 960px) and (orientation: landscape) {
+  .app-content {
+    padding-left: 2.25rem;
+    padding-right: 2.25rem;
+  }
+
+  .app-bottom-nav {
+    height: calc(5.75rem + env(safe-area-inset-bottom));
+  }
+
+  a[data-focusable="true"],
+  button[data-focusable="true"],
+  input[data-focusable="true"],
+  select[data-focusable="true"] {
+    min-height: 56px;
+  }
+
+  .focus-card:focus-visible {
+    outline: 3px solid rgb(var(--playtv-cyan));
+    outline-offset: 4px;
+    transform: scale(1.04);
+  }
+}
+
+@media (min-width: 1280px) and (orientation: landscape) {
+  .app-content {
+    padding-left: 3rem;
+    padding-right: 3rem;
+  }
+
+  .max-w-canvas {
+    max-width: 1680px;
+  }
+}
+
 button,
 a,
 input,
