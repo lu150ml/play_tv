@@ -9,7 +9,7 @@ Play TV X e um player IPTV para servidores compativeis com Xtream Codes. O proje
 
 Em 13 de setembro de 2026, as versoes distribuidas deste projeto sao:
 
-- APK Android: `1.4.5` (`versionCode 15`)
+- APK Android: `1.4.6` (`versionCode 16`)
 - Instalador EXE Windows: `0.4.17`
 - EXE portatil Windows: `0.4.17`
 

@@ -16,9 +16,10 @@ const shortcuts = [
   { label: "Favoritos", to: "/search?favorites=1", icon: Heart }
 ];
 
-const MAX_HOME_RAILS = 8;
-
 export function HomePage() {
+  const tvOptimized = isTvOptimizedLayout();
+  const maxHomeRails = tvOptimized ? 5 : 8;
+  const railItemLimit = tvOptimized ? 10 : 16;
   const catalog = useLibraryStore((state) => state.catalog);
   const catalogSource = useLibraryStore((state) => state.catalogSource);
   const catalogSections = useLibraryStore((state) => state.catalogSections);
@@ -43,7 +44,7 @@ export function HomePage() {
   ]
     .filter((category) => category.items.length > 0)
     .sort((a, b) => b.items.length - a.items.length)
-    .slice(0, MAX_HOME_RAILS);
+    .slice(0, maxHomeRails);
 
   const isCatalogLoading = catalogSource === "xtream" && Object.values(catalogSections).some((section) => section.status === "loading");
   const showSkeleton = isCatalogLoading && catalog.length === 0;
@@ -59,12 +60,16 @@ export function HomePage() {
       <CatalogRail
         key={`${category.basePath}:${category.id}`}
         title={category.title}
-        items={category.items.slice(0, 16)}
+        items={category.items.slice(0, railItemLimit)}
         viewAllTo={`${category.basePath}/category/${encodeURIComponent(category.id)}`}
         viewMoreInRail
       />
     ))}
   </div>;
+}
+
+function isTvOptimizedLayout(): boolean {
+  return window.matchMedia("(min-width: 960px) and (orientation: landscape)").matches;
 }
 
 function HomeSkeleton() {

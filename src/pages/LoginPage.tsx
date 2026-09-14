@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { BrandWordmark } from "../components/BrandWordmark";
 import { startServerSession } from "../services/sessionService";
 import { credentialVault } from "../platform/credentialVault";
+import { hideNativeKeyboard } from "../platform/keyboardControl";
 import { useLibraryStore } from "../stores/libraryStore";
 
 export function LoginPage() {
@@ -24,6 +25,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>();
   const [isConnecting, setIsConnecting] = useState(false);
+  const [focusedField, setFocusedField] = useState<InputFieldName | undefined>();
   const usernameRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
   const submitRef = useRef<HTMLButtonElement | null>(null);
@@ -82,14 +84,14 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-screen flex min-h-screen items-center justify-center px-4 py-10 text-on-surface">
+    <main className={`auth-screen login-screen flex min-h-screen items-center justify-center px-4 py-10 text-on-surface ${focusedField ? "login-screen--typing" : ""}`}>
       <form
         onSubmit={(event) => {
           void handleSubmit(event);
         }}
-        className="glass-panel w-full max-w-md rounded-2xl p-8 shadow-2xl"
+        className="glass-panel login-form w-full max-w-md rounded-2xl p-8 shadow-2xl"
       >
-        <header className="mb-8 text-center">
+        <header className="login-brand mb-8 text-center">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary shadow-glow">
             <Server aria-hidden="true" size={34} />
           </div>
@@ -109,6 +111,8 @@ export function LoginPage() {
             icon={<LinkIcon aria-hidden="true" size={20} />}
             enterKeyHint="next"
             onEnter={() => usernameRef.current?.focus()}
+            onFocus={() => setFocusedField("serverUrl")}
+            onBlur={() => setFocusedField(undefined)}
           />
           <InputField
             name="username"
@@ -120,6 +124,8 @@ export function LoginPage() {
             inputRef={usernameRef}
             enterKeyHint="next"
             onEnter={() => passwordRef.current?.focus()}
+            onFocus={() => setFocusedField("username")}
+            onBlur={() => setFocusedField(undefined)}
           />
           <InputField
             name="password"
@@ -133,9 +139,12 @@ export function LoginPage() {
             enterKeyHint="done"
             onEnter={() => {
               passwordRef.current?.blur();
+              void hideNativeKeyboard();
               submitRef.current?.focus();
               submitRef.current?.click();
             }}
+            onFocus={() => setFocusedField("password")}
+            onBlur={() => setFocusedField(undefined)}
           />
         </div>
 
@@ -176,6 +185,13 @@ export function LoginPage() {
           <ArrowRight aria-hidden="true" size={24} />
         </button>
       </form>
+      {focusedField ? (
+        <TypingPreview
+          label={getInputLabel(focusedField)}
+          value={focusedField === "serverUrl" ? serverUrl : focusedField === "username" ? username : password}
+          protectedValue={focusedField === "password"}
+        />
+      ) : null}
     </main>
   );
 }
@@ -185,8 +201,10 @@ function readFormText(formData: FormData, name: string, fallback: string): strin
   return typeof value === "string" ? value : fallback;
 }
 
+type InputFieldName = "serverUrl" | "username" | "password";
+
 interface InputFieldProps {
-  name: "serverUrl" | "username" | "password";
+  name: InputFieldName;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -196,6 +214,8 @@ interface InputFieldProps {
   inputRef?: Ref<HTMLInputElement>;
   enterKeyHint?: "next" | "done";
   onEnter?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 function InputField({
@@ -208,7 +228,9 @@ function InputField({
   placeholder,
   inputRef,
   enterKeyHint,
-  onEnter
+  onEnter,
+  onFocus,
+  onBlur
 }: InputFieldProps) {
   return (
     <label className="block">
@@ -237,10 +259,40 @@ function InputField({
             event.preventDefault();
             onEnter?.();
           }}
+          onFocus={onFocus}
+          onBlur={onBlur}
           onChange={(event) => onChange(event.target.value)}
           className="w-full bg-transparent text-on-surface outline-none placeholder:text-on-surface-variant"
         />
       </span>
     </label>
   );
+}
+
+function TypingPreview({
+  label,
+  value,
+  protectedValue
+}: {
+  label: string;
+  value: string;
+  protectedValue?: boolean;
+}) {
+  const visibleValue = protectedValue && value ? "•".repeat(Math.min(value.length, 18)) : value;
+
+  return (
+    <div className="login-typing-preview fixed inset-x-4 bottom-5 z-[100] rounded-xl border border-primary/35 bg-black/95 px-4 py-3 shadow-2xl">
+      <p className="font-mono text-[11px] uppercase text-primary">Digitando {label}</p>
+      <p className="mt-1 truncate font-display text-lg font-semibold text-on-surface">
+        {visibleValue || "Use o teclado para digitar"}
+      </p>
+      <p className="mt-1 text-xs text-on-surface-variant">Voltar fecha o teclado antes de sair da tela.</p>
+    </div>
+  );
+}
+
+function getInputLabel(name: InputFieldName): string {
+  if (name === "serverUrl") return "servidor";
+  if (name === "username") return "usuário";
+  return "senha";
 }

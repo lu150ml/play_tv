@@ -1,18 +1,36 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const focusSelector = "[data-focusable='true']:not([disabled])";
 
 export function useRemoteNavigation() {
+  const cachedElementsRef = useRef<HTMLElement[] | undefined>(undefined);
+  const clearFrameRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
+    function getFocusableElements() {
+      if (cachedElementsRef.current) {
+        return cachedElementsRef.current;
+      }
+
+      const elements = Array.from(
+        document.querySelectorAll<HTMLElement>(focusSelector)
+      ).filter((element) => element.offsetParent !== null);
+      cachedElementsRef.current = elements;
+      if (clearFrameRef.current) window.cancelAnimationFrame(clearFrameRef.current);
+      clearFrameRef.current = window.requestAnimationFrame(() => {
+        cachedElementsRef.current = undefined;
+        clearFrameRef.current = undefined;
+      });
+      return elements;
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         return;
       }
 
       const activeElement = document.activeElement as HTMLElement | null;
-      const focusableElements = Array.from(
-        document.querySelectorAll<HTMLElement>(focusSelector)
-      ).filter((element) => element.offsetParent !== null);
+      const focusableElements = getFocusableElements();
 
       if (focusableElements.length === 0) {
         return;
@@ -28,13 +46,18 @@ export function useRemoteNavigation() {
 
       if (nextElement) {
         nextElement.focus();
-        nextElement.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (!isMostlyVisible(nextElement)) {
+          nextElement.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
         event.preventDefault();
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (clearFrameRef.current) window.cancelAnimationFrame(clearFrameRef.current);
+    };
   }, []);
 }
 
@@ -88,4 +111,15 @@ function isInDirection(
 
 function distance(left: { x: number; y: number }, right: { x: number; y: number }): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function isMostlyVisible(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  const margin = 72;
+  return (
+    rect.top >= margin &&
+    rect.left >= 0 &&
+    rect.bottom <= window.innerHeight - margin &&
+    rect.right <= window.innerWidth
+  );
 }

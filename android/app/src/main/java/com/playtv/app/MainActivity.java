@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AndroidUpdaterPlugin.class);
         registerPlugin(MediaAssetsPlugin.class);
         registerPlugin(DownloadsPlugin.class);
+        registerPlugin(KeyboardControlPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

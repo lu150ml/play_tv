@@ -106,6 +106,29 @@ body {
   body {
     font-size: 17px;
   }
+
+  .focus-card {
+    transition:
+      border-color 100ms ease,
+      box-shadow 100ms ease,
+      background-color 100ms ease;
+  }
+
+  .login-screen--typing {
+    align-items: flex-end;
+    padding-bottom: 7.5rem;
+    padding-top: 1rem;
+  }
+
+  .login-screen--typing .login-form {
+    max-width: min(92vw, 38rem);
+    padding: 1rem 1.25rem;
+  }
+
+  .login-screen--typing .login-brand {
+    display: none;
+  }
+
 }
 
 @media (min-width: 960px) and (orientation: landscape) {
@@ -128,7 +151,7 @@ body {
   .focus-card:focus-visible {
     outline: 3px solid rgb(var(--playtv-cyan));
     outline-offset: 4px;
-    transform: scale(1.04);
+    transform: scale(1.02);
   }
 }
 
@@ -148,6 +171,10 @@ a,
 input,
 select {
   -webkit-tap-highlight-color: transparent;
+}
+
+.login-typing-preview {
+  pointer-events: none;
 }
 
 :focus-visible {

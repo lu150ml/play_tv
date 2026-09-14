@@ -15,6 +15,7 @@ import { ProfilesPage } from "./pages/ProfilesPage";
 import { SeriesPage } from "./pages/SeriesPage";
 import { MoviePage } from "./pages/MoviePage";
 import { credentialVault } from "./platform/credentialVault";
+import { hideNativeKeyboard } from "./platform/keyboardControl";
 import { isNativeAndroid } from "./platform/platformInfo";
 import { playerGateway } from "./platform/playerGateway";
 import { savePlaybackProgress } from "./services/playbackService";
@@ -213,16 +214,18 @@ function useAndroidBackButton() {
     let disposed = false;
     let removeListener: (() => Promise<void>) | undefined;
     void CapacitorApp.addListener("backButton", () => {
-      if (closeFocusedTextInput()) {
-        return;
-      }
+      void closeFocusedTextInput().then((closedInput) => {
+        if (closedInput) {
+          return;
+        }
 
-      const isRoot = location.pathname === "/login" || location.pathname === "/home";
-      if (isRoot && !location.search) {
-        void CapacitorApp.exitApp();
-        return;
-      }
-      void navigate(-1);
+        const isRoot = location.pathname === "/login" || location.pathname === "/home";
+        if (isRoot && !location.search) {
+          void CapacitorApp.exitApp();
+          return;
+        }
+        void navigate(-1);
+      });
     }).then((handle) => {
       if (disposed) {
         void handle.remove();
@@ -238,7 +241,7 @@ function useAndroidBackButton() {
   }, [location.pathname, location.search, navigate]);
 }
 
-function closeFocusedTextInput(): boolean {
+async function closeFocusedTextInput(): Promise<boolean> {
   const activeElement = document.activeElement as HTMLElement | null;
   if (!activeElement || !isTextInput(activeElement)) {
     return false;
@@ -246,6 +249,7 @@ function closeFocusedTextInput(): boolean {
 
   activeElement.blur();
   document.body.focus();
+  await hideNativeKeyboard();
   return true;
 }
 

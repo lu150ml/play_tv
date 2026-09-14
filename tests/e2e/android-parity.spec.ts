@@ -90,10 +90,13 @@ test("busca e filtros permanecem isolados por tela", async ({ page }) => {
   await expect(page.getByRole("link", { name: /MTV Music channel/ })).toBeVisible();
 });
 
-test("série abre o primeiro episódio imediatamente e foca o player", async ({ page }) => {
+test("série abre detalhes e só inicia o episódio ao escolher assistir", async ({ page }) => {
   await enterApp(page);
   await page.goto("/series");
   await page.getByRole("link", { name: /Série Horizonte series/ }).click();
+  await expect(page).toHaveURL(/\/series\/xtream-series-301$/);
+  await expect(page.getByRole("heading", { name: "Temporadas" })).toBeVisible();
+  await page.getByRole("link", { name: /Assistir/ }).first().click();
   await expect(page).toHaveURL(/\/watch\/xtream-series-301\/xtream-episode-401$/);
   const player = page.locator("section[tabindex='-1']").first();
   await expect(player).toBeVisible();

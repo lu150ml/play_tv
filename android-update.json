@@ -1,7 +1,7 @@
 {
-    "versionCode":  15,
-    "versionName":  "1.4.5",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.5-release.apk",
-    "sha256":  "BE8E4FB55AC06CC4DDD7515FF3226CE8977A4E6F1D46589330DFE877B9F290F7",
-    "releaseNotes":  "Correção rápida para Fire Stick e Android TV: o botão voltar fecha o teclado, o concluído avança/envia corretamente e a interface ganhou ajustes para telas grandes."
+    "versionCode":  16,
+    "versionName":  "1.4.6",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.6-release.apk",
+    "sha256":  "DFC199684DB707F8AD0B02E1E3BA446099E3F0D658239FF307ABBDC440C0A946",
+    "releaseNotes":  "Hotfix Android TV/Fire Stick: navegação mais leve entre seções, Filmes com Segmentos e Coleções, skeletons de loading e teclado corrigido com texto visível e Voltar fechando o IME."
 }
