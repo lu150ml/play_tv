@@ -1,12 +1,27 @@
 import { useEffect, useRef } from "react";
 
 const focusSelector = "[data-focusable='true']:not([disabled])";
+const BACK_KEYS = new Set(["Escape", "Backspace", "BrowserBack", "GoBack"]);
+
+function isEditable(element: Element | null): boolean {
+  if (!element) return false;
+  const tag = element.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    (element as HTMLElement).isContentEditable
+  );
+}
 
 export function useRemoteNavigation() {
   const cachedElementsRef = useRef<HTMLElement[] | undefined>(undefined);
-  const clearFrameRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    function invalidateCache() {
+      cachedElementsRef.current = undefined;
+    }
+
     function getFocusableElements() {
       if (cachedElementsRef.current) {
         return cachedElementsRef.current;
@@ -16,16 +31,35 @@ export function useRemoteNavigation() {
         document.querySelectorAll<HTMLElement>(focusSelector)
       ).filter((element) => element.offsetParent !== null);
       cachedElementsRef.current = elements;
-      if (clearFrameRef.current) window.cancelAnimationFrame(clearFrameRef.current);
-      clearFrameRef.current = window.requestAnimationFrame(() => {
-        cachedElementsRef.current = undefined;
-        clearFrameRef.current = undefined;
-      });
       return elements;
     }
 
+    // Invalida o cache quando o DOM muda (rails carregando sob demanda,
+    // menus abrindo, diálogos) em vez de varrer o documento a cada tecla.
+    const observer = new MutationObserver(invalidateCache);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["disabled", "data-focusable", "style", "class"]
+    });
+
     function handleKeyDown(event: KeyboardEvent) {
+      // Tecla "Voltar" do controle remoto / Fire Stick fora de inputs.
+      if (BACK_KEYS.has(event.key) && !isEditable(document.activeElement)) {
+        if (window.history.length > 1) {
+          event.preventDefault();
+          window.history.back();
+        }
+        return;
+      }
+
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        return;
+      }
+
+      // Não rouba setas de campos de texto (cursor do texto / IME da TV).
+      if (isEditable(document.activeElement)) {
         return;
       }
 
@@ -55,8 +89,8 @@ export function useRemoteNavigation() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
+      observer.disconnect();
       document.removeEventListener("keydown", handleKeyDown);
-      if (clearFrameRef.current) window.cancelAnimationFrame(clearFrameRef.current);
     };
   }, []);
 }

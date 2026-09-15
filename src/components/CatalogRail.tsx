@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { ContentItem } from "../types/catalog";
@@ -11,7 +12,37 @@ interface CatalogRailProps {
   viewMoreInRail?: boolean;
 }
 
-export function CatalogRail({ title, items, viewAllTo, viewMoreInRail = false }: CatalogRailProps) {
+// Renderiza os cards em fatias: aparelhos fracos (Fire Stick) não montam
+// dezenas de imagens de uma vez. Conforme o usuário rola o rail, mais
+// fatias são montadas via IntersectionObserver no sentinela.
+const RAIL_PAGE_SIZE = 8;
+
+export const CatalogRail = memo(function CatalogRail({ title, items, viewAllTo, viewMoreInRail = false }: CatalogRailProps) {
+  const [visibleCount, setVisibleCount] = useState(RAIL_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const hasMore = visibleCount < items.length;
+
+  useEffect(() => {
+    setVisibleCount(RAIL_PAGE_SIZE);
+  }, [items]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || typeof IntersectionObserver === "undefined") {
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((count) => Math.min(count + RAIL_PAGE_SIZE, items.length));
+        }
+      },
+      { root: sentinel.parentElement, rootMargin: "0px 320px 0px 0px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, items.length]);
+
   if (items.length === 0) {
     return null;
   }
@@ -31,9 +62,18 @@ export function CatalogRail({ title, items, viewAllTo, viewMoreInRail = false }:
         ) : null}
       </div>
       <div className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-3 lg:mx-0 lg:px-0">
-        {items.map((item) => (
+        {items.slice(0, visibleCount).map((item) => (
           <ContentCard key={item.id} item={item} compact />
         ))}
+        {hasMore ? (
+          <div
+            ref={sentinelRef}
+            aria-hidden="true"
+            className="flex w-44 shrink-0 items-center justify-center sm:w-52"
+          >
+            <div className="aspect-[2/3] w-full animate-pulse rounded-lg bg-white/10" />
+          </div>
+        ) : null}
         {viewAllTo && viewMoreInRail ? (
           <Link
             to={viewAllTo}
@@ -48,4 +88,4 @@ export function CatalogRail({ title, items, viewAllTo, viewMoreInRail = false }:
       </div>
     </section>
   );
-}
+});

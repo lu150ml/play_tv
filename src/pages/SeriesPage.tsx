@@ -1,10 +1,11 @@
 import { ArrowLeft, Download, Heart, Play, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 
 import { getContentById } from "../services/catalogService";
 import { getProgressRatio, getRemainingSeconds } from "../services/playbackService";
 import { downloads } from "../platform/downloads";
+import { isTvMode } from "../platform/device";
 import {
   getContinueEpisode,
   groupEpisodesBySeason,
@@ -94,6 +95,19 @@ export function SeriesPage() {
   const continueProgress = continueEpisode ? playback[continueEpisode.id] : undefined;
   const continueLabel = continueProgress?.positionSeconds ? "Continuar" : "Assistir";
 
+  // Em TV (controle remoto), o foco inicial vai direto para Assistir/Continuar,
+  // poupando navegação por setas desde o topo da página.
+  const primaryFocusDoneRef = useRef(false);
+  useEffect(() => {
+    if (primaryFocusDoneRef.current || !continueEpisode || !isTvMode()) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    primaryFocusDoneRef.current = true;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-primary-action='true']")?.focus();
+    });
+  }, [continueEpisode]);
+
   async function handleDownloadEpisode(episode: Episode) {
     const candidates = episode.streamCandidates ?? (episode.streamUrl ? [episode.streamUrl] : []);
     if (!series || !downloads.isAvailable() || candidates.length === 0) return;
@@ -175,6 +189,7 @@ export function SeriesPage() {
                 <Link
                   to={`/watch/${series.id}/${continueEpisode.id}`}
                   data-focusable="true"
+                  data-primary-action="true"
                   className="focus-card inline-flex h-12 items-center gap-2 rounded-lg border border-primary-container/40 bg-primary px-4 font-display font-bold text-on-primary shadow-glow"
                 >
                   {continueProgress?.positionSeconds ? (

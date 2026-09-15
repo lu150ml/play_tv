@@ -7,6 +7,7 @@ import { startServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { BrandWordmark } from "./BrandWordmark";
 import { LogoutButton } from "./LogoutButton";
+import { OptionsMenu } from "./OptionsMenu";
 import { AppFooter } from "./AppFooter";
 
 const navItems = [
@@ -145,6 +146,7 @@ export function AppShell() {
             <button
               type="button"
               onClick={handleSwitchProfile}
+              data-focusable="true"
               className="focus-card mt-3 flex w-full items-center gap-3 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-left transition hover:border-primary-container/30 hover:bg-surface-container-high"
             >
               <div
@@ -167,12 +169,16 @@ export function AppShell() {
             <button
               type="button"
               onClick={handleSwitchProfile}
+              data-focusable="true"
               className="focus-card mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-white/10 px-3 py-2 text-sm text-on-surface-variant hover:text-on-surface"
             >
               <UserRound size={16} />
               Selecionar perfil
             </button>
           )}
+        </div>
+        <div className="mt-3">
+          <OptionsMenu expanded />
         </div>
         <LogoutButton />
       </aside>
@@ -184,6 +190,7 @@ export function AppShell() {
             <button
               type="button"
               onClick={handleSwitchProfile}
+              data-focusable="true"
               className="focus-card flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant hover:text-on-surface lg:hidden"
             >
               <div
@@ -197,6 +204,7 @@ export function AppShell() {
               {activeProfile.name}
             </button>
           ) : null}
+          <OptionsMenu />
           <LogoutButton compact />
         </div>
       </header>

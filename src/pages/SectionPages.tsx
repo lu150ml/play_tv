@@ -8,6 +8,7 @@ import { groupContentByProviderCategory, type CategoryGroup } from "../services/
 import { isMusicChannel } from "../services/musicService";
 import { normalizeSearchText } from "../services/catalogService";
 import { groupMoviesBySegment } from "../services/movieSegmentService";
+import { isTvMode } from "../platform/device";
 import { hideNativeKeyboard } from "../platform/keyboardControl";
 import { useLibraryStore, isCatalogSectionPending } from "../stores/libraryStore";
 import type { ContentItem, XtreamCatalogSection } from "../types/catalog";
@@ -30,7 +31,7 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
   const { categoryId } = useParams();
   const routeKey = categoryId ? `${screen}:${categoryId}` : screen;
   const saved = useLibraryStore.getState().getViewState(routeKey);
-  const tvOptimized = isTvOptimizedLayout();
+  const tvOptimized = isTvMode();
   const railItemLimit = tvOptimized ? 10 : 16;
   const initialRailCount = tvOptimized ? 5 : 10;
   const gridPageStep = tvOptimized ? 36 : 60;
@@ -172,10 +173,6 @@ function SectionSkeleton({ title }: { title: string }) {
       </div>
     </div>
   );
-}
-
-function isTvOptimizedLayout(): boolean {
-  return window.matchMedia("(min-width: 960px) and (orientation: landscape)").matches;
 }
 
 function SectionMessage({ text, error = false }: { text: string; error?: boolean }) {

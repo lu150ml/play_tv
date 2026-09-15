@@ -51,7 +51,10 @@ try {
 
         $artifactDirectory = Join-Path $projectRoot "artifacts"
         $artifactPath = Join-Path $artifactDirectory "play-tv-$($package.version)-release.apk"
-        $builtApk = Join-Path $projectRoot "android\app\build\outputs\apk\release\app-release.apk"
+        $builtApkSigned = Join-Path $projectRoot "android\app\build\outputs\apk\release\app-release.apk"
+        $builtApkUnsigned = Join-Path $projectRoot "android\app\build\outputs\apk\release\app-release-unsigned.apk"
+        $builtApk = if (Test-Path -LiteralPath $builtApkSigned) { $builtApkSigned } else { $builtApkUnsigned }
+        if (-not (Test-Path -LiteralPath $builtApk)) { throw "APK não encontrado após o build." }
         New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
         Copy-Item -LiteralPath $builtApk -Destination $artifactPath -Force
 

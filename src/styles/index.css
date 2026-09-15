@@ -103,6 +103,23 @@ body {
     transform: scale(1.035);
   }
 
+  /* TVs e Fire Stick têm GPU fraca: blur de fundo e sombras animadas
+     causam travamentos. Usa fundo sólido no lugar. */
+  .app-sidebar,
+  .app-header,
+  .app-footer,
+  .app-bottom-nav,
+  .glass-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(10, 10, 8, 0.97);
+  }
+
+  .focus-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
   body {
     font-size: 17px;
   }

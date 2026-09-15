@@ -1,4 +1,5 @@
 import { Heart, Play, Tv } from "lucide-react";
+import { memo } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -16,7 +17,7 @@ interface ContentCardProps {
   compact?: boolean;
 }
 
-export function ContentCard({ item, compact = false }: ContentCardProps) {
+export const ContentCard = memo(function ContentCard({ item, compact = false }: ContentCardProps) {
   const playback = useLibraryStore((state) => state.playback[item.id]);
   const isFavorite = useLibraryStore((state) => state.isFavorite(item.id));
   const showProgress = shouldShowPlaybackProgress(item.type);
@@ -103,4 +104,4 @@ export function ContentCard({ item, compact = false }: ContentCardProps) {
       </div>
     </Link>
   );
-}
+});
