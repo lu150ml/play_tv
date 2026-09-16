@@ -12,4 +12,4 @@ test-results/
 *.jks
 *.keystore
 android/keystore.properties
-artifacts/*.apk
+# artifacts/*.apk — APKs rastreados para servir via raw.githubusercontent.com
