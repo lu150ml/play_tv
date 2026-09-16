@@ -7,8 +7,15 @@ export interface HttpResponse<T> {
   status: number;
 }
 
+export interface HttpGetOptions {
+  /** Timeout de leitura em ms (padrão: 60 000). Seções grandes como VOD podem
+   *  precisar de mais tempo em conexões lentas. */
+  readTimeout?: number;
+  connectTimeout?: number;
+}
+
 export interface HttpClient {
-  get<T>(url: string): Promise<HttpResponse<T>>;
+  get<T>(url: string, options?: HttpGetOptions): Promise<HttpResponse<T>>;
 }
 
 function parseNativeData<T>(data: unknown): T {
@@ -27,28 +34,34 @@ function parseNativeData<T>(data: unknown): T {
 }
 
 export const httpClient: HttpClient = {
-  async get<T>(url: string): Promise<HttpResponse<T>> {
+  async get<T>(url: string, options?: HttpGetOptions): Promise<HttpResponse<T>> {
+    const readTimeout = options?.readTimeout ?? 60_000;
+    const connectTimeout = options?.connectTimeout ?? 15_000;
+
     if (isNativeAndroid()) {
-      // Catálogos VOD/séries podem ser bem maiores que a TV ao vivo; 60s evita
-      // marcar filmes/séries como erro enquanto o live já terminou.
       const response = await CapacitorHttp.get({
         url,
         headers: {
           Accept: "application/json, text/plain, */*",
           "User-Agent": "PlayTV-Android/1.0"
         },
-        connectTimeout: 15_000,
-        readTimeout: 60_000
+        connectTimeout,
+        readTimeout
       });
 
       return { data: parseNativeData<T>(response.data), status: response.status };
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error((await response.text()) || `Request failed with status ${response.status}.`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), readTimeout);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error((await response.text()) || `Request failed with status ${response.status}.`);
+      }
+      return { data: (await response.json()) as T, status: response.status };
+    } finally {
+      clearTimeout(timer);
     }
-
-    return { data: (await response.json()) as T, status: response.status };
   }
 };

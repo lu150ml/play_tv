@@ -8,6 +8,7 @@ import { groupContentByProviderCategory, type CategoryGroup } from "../services/
 import { isMusicChannel } from "../services/musicService";
 import { normalizeSearchText } from "../services/catalogService";
 import { groupMoviesBySegment } from "../services/movieSegmentService";
+import { reloadXtreamSection } from "../services/xtreamService";
 import { isTvMode } from "../platform/device";
 import { hideNativeKeyboard } from "../platform/keyboardControl";
 import { useLibraryStore, isCatalogSectionPending } from "../stores/libraryStore";
@@ -87,7 +88,12 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
     return <SectionSkeleton title={`Carregando ${config[screen].title.toLowerCase()}…`} />;
   }
   if (sectionState.status === "error" && sectionItems.length === 0) {
-    return <SectionMessage text={sectionState.error ?? "Não foi possível carregar esta seção."} error />;
+    return (
+      <SectionError
+        text={sectionState.error ?? "Não foi possível carregar esta seção."}
+        section={config[screen].section}
+      />
+    );
   }
 
   return (
@@ -177,6 +183,45 @@ function SectionSkeleton({ title }: { title: string }) {
 
 function SectionMessage({ text, error = false }: { text: string; error?: boolean }) {
   return <div className={`mx-auto mt-20 max-w-lg rounded-xl border p-6 text-center ${error ? "border-error/40 text-error" : "border-white/10 text-on-surface-variant"}`}>{text}</div>;
+}
+
+function SectionError({ text, section }: { text: string; section: XtreamCatalogSection }) {
+  const connection = useLibraryStore((state) => state.connection);
+  const reloadSection = useLibraryStore((state) => state.reloadSection);
+  const setCatalogSection = useLibraryStore((state) => state.setCatalogSection);
+  const [retrying, setRetrying] = useState(false);
+
+  async function handleRetry() {
+    if (!connection || retrying) return;
+    setRetrying(true);
+    reloadSection(section);
+    try {
+      await reloadXtreamSection(connection, section, (update) =>
+        setCatalogSection(update.section, update.items, update.status, update.error)
+      );
+    } catch {
+      // O erro já é registrado em setCatalogSection via onSection callback.
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto mt-20 max-w-lg rounded-xl border border-error/40 p-6 text-center text-error">
+      <p className="mb-5">{text}</p>
+      {connection ? (
+        <button
+          type="button"
+          data-focusable="true"
+          disabled={retrying}
+          onClick={() => void handleRetry()}
+          className="focus-card rounded-lg border border-primary/40 bg-primary px-6 py-3 font-bold text-on-primary disabled:opacity-60"
+        >
+          {retrying ? "Tentando novamente…" : "Tentar novamente"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function EmptyMessage({ text }: { text: string }) {

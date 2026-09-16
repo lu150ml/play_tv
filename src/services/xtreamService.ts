@@ -6,6 +6,7 @@ import type {
 } from "../types/catalog";
 import { httpClient } from "../platform/httpClient";
 import { isNativeAndroid } from "../platform/platformInfo";
+import { diagnostics } from "./diagnosticsService";
 
 export interface XtreamCredentials {
   serverUrl: string;
@@ -191,6 +192,16 @@ export async function beginXtreamCatalogLoad(
   return { profile, completion };
 }
 
+/** Recarrega apenas uma seção específica (usado pelo botão "Tentar novamente"). */
+export async function reloadXtreamSection(
+  credentials: XtreamCredentials,
+  section: XtreamCatalogSection,
+  onSection: SectionListener
+): Promise<void> {
+  const normalizedCredentials = normalizeXtreamCredentials(credentials);
+  await loadSection(normalizedCredentials, section, onSection);
+}
+
 async function loadSection(
   credentials: XtreamCredentials,
   section: XtreamCatalogSection,
@@ -348,17 +359,41 @@ async function requestXtream<T>(
   params: Record<string, string> = {}
 ): Promise<T> {
   const url = buildXtreamRequestUrl(credentials, action, params, isNativeAndroid());
+  // VOD e séries têm payloads maiores; dar mais tempo de leitura.
+  const isHeavyAction = action === "get_vod_streams" || action === "get_series";
+  const readTimeout = isHeavyAction ? 90_000 : 30_000;
 
-  try {
-    const response = await httpClient.get<T>(url);
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`status ${response.status}`);
+  const start = Date.now();
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await httpClient.get<T>(url, { readTimeout, connectTimeout: 15_000 });
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`status ${response.status}`);
+      }
+      diagnostics.record({ action: action ?? "auth", attempt, durationMs: Date.now() - start, status: response.status });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message.toLowerCase() : "";
+      // Não retentar erros definitivos: auth, not found, servidor inválido.
+      const isDefinitive = /401|403|404|status 4/.test(msg) || /usuário|senha|endereço|recusado|inválid/i.test(msg);
+      // Só retentar erros de rede/timeout (não erros genéricos de servidor).
+      const isRetryable = !isDefinitive && (
+        msg.includes("timed out") || msg.includes("connect timeout") || msg.includes("read timeout") ||
+        msg.includes("network") || msg.includes("econnreset") || msg.includes("econnrefused") ||
+        msg.includes("socket") || msg.includes("status 5") || msg.includes("abort") ||
+        msg.includes("request failed") || msg.includes("demorou")
+      );
+      diagnostics.record({ action: action ?? "auth", attempt, durationMs: Date.now() - start, status: /status (\d+)/.exec(msg)?.[1] ? Number(/status (\d+)/.exec(msg)?.[1]) : undefined, error: msg });
+      if (!isRetryable || attempt === 3) break;
+      // Backoff progressivo: 2s na 1ª retentativa, 5s na 2ª.
+      await new Promise<void>((resolve) => setTimeout(resolve, attempt === 1 ? 2_000 : 5_000));
     }
-
-    return response.data;
-  } catch (error) {
-    throw new Error(describeConnectionError(error));
   }
+
+  throw new Error(describeConnectionError(lastError));
 }
 
 export function buildXtreamRequestUrl(

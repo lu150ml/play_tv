@@ -185,3 +185,51 @@ describe("loadXtreamCatalog", () => {
     ]);
   });
 });
+
+describe("retry com backoff em loadSection", () => {
+  it("tenta novamente após erro de rede e retorna itens no 2º try", async () => {
+    let callCount = 0;
+    vi.spyOn(httpClient, "get").mockImplementation(async (url) => {
+      const action = new URL(url, "http://localhost").searchParams.get("action");
+      if (!action) return { data: { user_info: { auth: 1 } }, status: 200 };
+      if (action === "get_vod_categories") return { data: [], status: 200 };
+      if (action === "get_vod_streams") {
+        callCount++;
+        if (callCount === 1) throw new Error("network timed out");        return { data: [{ stream_id: 1, name: "Filme Teste", category_id: "1" }], status: 200 };
+      }
+      return { data: [], status: 200 };
+    });
+    // Avançar timers para pular o backoff de 2s
+    vi.useFakeTimers();
+    const sections: string[] = [];
+    const loadPromise = beginXtreamCatalogLoad(credentials, (update) => sections.push(`${update.section}:${update.status}`));
+    await vi.runAllTimersAsync();
+    const load = await loadPromise;
+    await vi.runAllTimersAsync();
+    await load.completion;
+    vi.useRealTimers();
+
+    expect(callCount).toBe(2);
+    expect(sections).toContain("vod:ready");
+  });
+
+  it("não retenta erros 401 (credenciais inválidas)", async () => {
+    let callCount = 0;
+    vi.spyOn(httpClient, "get").mockImplementation(async (url) => {
+      const action = new URL(url, "http://localhost").searchParams.get("action");
+      if (!action) return { data: { user_info: { auth: 1 } }, status: 200 };
+      if (action === "get_vod_categories") return { data: [], status: 200 };
+      if (action === "get_vod_streams") {
+        callCount++;
+        throw new Error("status 401");
+      }
+      return { data: [], status: 200 };
+    });
+    const sections: string[] = [];
+    const load = await beginXtreamCatalogLoad(credentials, (update) => sections.push(`${update.section}:${update.status}`));
+    await load.completion;
+
+    expect(callCount).toBe(1); // sem retry para 401
+    expect(sections).toContain("vod:error");
+  });
+});

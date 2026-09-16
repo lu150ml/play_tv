@@ -44,6 +44,7 @@ interface LibraryState {
   clearSession: () => void;
   setSessionName: (name: string) => void;
   setServerUrl: (serverUrl: string) => void;
+  reloadSection: (section: XtreamCatalogSection) => void;
   createProfile: (name: string, avatarColor: string) => Profile;
   deleteProfile: (profileId: string) => void;
   setActiveProfile: (profileId: string) => void;
@@ -210,6 +211,11 @@ export const useLibraryStore = create<LibraryState>()(
         };
       }),
       clearSession: () => set({ catalog: [], catalogSource: "mock", catalogStatus: "ready", catalogSections: IDLE_SECTIONS, catalogCachedAt: undefined, connection: undefined, sessionName: "Play TV", serverUrl: undefined }),
+      reloadSection: (section) => set((current) => {
+        // Marca apenas a seção como loading para rebuscar sem apagar o resto.
+        const catalogSections = { ...current.catalogSections, [section]: { status: "loading" as const } };
+        return { catalogSections, catalogStatus: overallStatus(catalogSections) };
+      }),
       setSessionName: (name) => set({ sessionName: name }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
 
