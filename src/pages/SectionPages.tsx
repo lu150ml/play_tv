@@ -104,7 +104,7 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
       </header>
       {!selectedCategory ? (
         <>
-          <label className="mb-6 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input data-focusable="true" enterKeyHint="done" value={query} onKeyDown={(event) => { if (event.key === "Enter") { event.currentTarget.blur(); void hideNativeKeyboard(); } }} onChange={(event) => { setQuery(event.target.value); setPageSize(gridPageStep); setVisibleRailCount(initialRailCount); }} placeholder={`Buscar em ${config[screen].title}`} className="w-full bg-transparent outline-none" /></label>
+          <label className="mb-6 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input data-focusable="true" enterKeyHint="done" value={query} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); event.currentTarget.blur(); void hideNativeKeyboard(); } }} onChange={(event) => { setQuery(event.target.value); setPageSize(gridPageStep); setVisibleRailCount(initialRailCount); }} placeholder={`Buscar em ${config[screen].title}`} className="w-full bg-transparent outline-none" /></label>
           {filtered.length === 0 ? <EmptyMessage text="Nenhum item encontrado nesta tela." /> : null}
           {screen === "movies" ? <RailGroupTitle title="Segmentos" /> : null}
           {renderRails(movieSegments, visibleRailCount, railItemLimit, filtered, normalizedQuery, config[screen].path)}
@@ -116,7 +116,7 @@ function SectionPage({ screen }: { screen: ScreenKey }) {
         </>
       ) : (
         <>
-          <label className="mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input data-focusable="true" enterKeyHint="done" value={query} onKeyDown={(event) => { if (event.key === "Enter") { event.currentTarget.blur(); void hideNativeKeyboard(); } }} onChange={(event) => { setQuery(event.target.value); setPageSize(gridPageStep); }} placeholder={`Buscar em ${selectedCategory.title}`} className="w-full bg-transparent outline-none" /></label>
+          <label className="mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-surface-container px-4 py-3"><Search size={19} className="text-primary"/><input data-focusable="true" enterKeyHint="done" value={query} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); event.currentTarget.blur(); void hideNativeKeyboard(); } }} onChange={(event) => { setQuery(event.target.value); setPageSize(gridPageStep); }} placeholder={`Buscar em ${selectedCategory.title}`} className="w-full bg-transparent outline-none" /></label>
           <p className="mb-4 font-mono text-xs uppercase text-on-surface-variant">{filtered.length} itens</p>
           {filtered.length === 0 ? <EmptyMessage text="Nenhum item nesta categoria." /> : null}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{filtered.slice(0, pageSize).map((item) => <div key={item.id} data-content-id={item.id}><ContentCard item={item} compact /></div>)}</div>

@@ -5,8 +5,7 @@ const config: CapacitorConfig = {
   appName: "Play TV",
   webDir: "dist",
   android: {
-    allowMixedContent: true,
-    captureInput: true
+    allowMixedContent: true
   },
   plugins: {
     CapacitorHttp: {
