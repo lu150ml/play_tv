@@ -1,10 +1,13 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Heart, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Download, Heart, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
+import { isNativeAndroid } from "../platform/platformInfo";
+import { playerGateway } from "../platform/playerGateway";
+import { downloads } from "../platform/downloads";
 import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
 import {
@@ -13,7 +16,7 @@ import {
   savePlaybackProgress
 } from "../services/playbackService";
 import { getNextEpisode, isSeries, loadSeriesEpisodes } from "../services/seriesService";
-import { getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
+import { cleanTitle, getSubtitleTrackUrl, searchSubtitles } from "../services/subtitleService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { Episode, SubtitleResult } from "../types/catalog";
 import { formatDuration, formatRemainingTime } from "../utils/format";
@@ -23,11 +26,14 @@ export function PlayerPage() {
   const navigate = useNavigate();
   const catalog = useLibraryStore((state) => state.catalog);
   const connection = useLibraryStore((state) => state.connection);
+  const catalogSource = useLibraryStore((state) => state.catalogSource);
+  const catalogStatus = useLibraryStore((state) => state.catalogStatus);
   const routeContentId = seriesId ?? contentId;
   const item = routeContentId ? getContentById(routeContentId, catalog) : undefined;
   const series = isSeries(item) ? item : undefined;
   const playback = useLibraryStore((state) => state.playback);
   const storeProgress = useLibraryStore((state) => state.saveProgress);
+  const storeSeriesEpisodes = useLibraryStore((state) => state.setSeriesEpisodes);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const isFavorite = useLibraryStore((state) =>
     routeContentId ? state.isFavorite(routeContentId) : false
@@ -49,6 +55,10 @@ export function PlayerPage() {
   const [subtitleError, setSubtitleError] = useState<string | undefined>();
   const [subtitleUrl, setSubtitleUrl] = useState<string | undefined>();
   const [activeSubtitleId, setActiveSubtitleId] = useState<string | undefined>();
+  const [nativeLaunchToken, setNativeLaunchToken] = useState(0);
+  const [nativePlayerState, setNativePlayerState] = useState<"idle" | "opening" | "error">("idle");
+  const [localStreamUri, setLocalStreamUri] = useState<string>();
+  const [downloadNotice, setDownloadNotice] = useState<string>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerShellRef = useRef<HTMLElement | null>(null);
   const hlsRef = useRef<Hls | undefined>(undefined);
@@ -59,7 +69,13 @@ export function PlayerPage() {
     () => seriesEpisodes.find((episode) => episode.id === (episodeId ?? selectedEpisodeId)),
     [episodeId, selectedEpisodeId, seriesEpisodes]
   );
-  const activeStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const remoteStreamUrl = selectedEpisode?.streamUrl ?? item?.streamUrl;
+  const downloadContentId = selectedEpisode?.id ?? item?.id;
+  const activeStreamUrl = localStreamUri ?? remoteStreamUrl;
+  const activeStreamCandidates = useMemo(
+    () => localStreamUri ? [localStreamUri] : selectedEpisode?.streamCandidates ?? item?.streamCandidates ?? (remoteStreamUrl ? [remoteStreamUrl] : []),
+    [item?.streamCandidates, localStreamUri, remoteStreamUrl, selectedEpisode?.streamCandidates]
+  );
   const durationSeconds =
     mediaDuration ?? selectedEpisode?.durationSeconds ?? item?.durationSeconds ?? 0;
   const activePlaybackId = selectedEpisode?.id ?? contentId;
@@ -84,6 +100,22 @@ export function PlayerPage() {
     : seriesEpisodes;
   const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+  const nativeLaunchKeyRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    setLocalStreamUri(undefined);
+    if (!downloadContentId) return;
+    void downloads.completedUri(downloadContentId).then((uri) => { if (active) setLocalStreamUri(uri); });
+    return () => { active = false; };
+  }, [downloadContentId]);
+
+  useEffect(() => {
+    const player = playerShellRef.current;
+    if (!player || !downloadContentId) return;
+    player.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => player.focus({ preventScroll: true }), 180);
+  }, [downloadContentId]);
 
   const clearBufferRecovery = useCallback(() => {
     if (bufferRecoveryTimeoutRef.current === undefined) {
@@ -184,6 +216,7 @@ export function PlayerPage() {
         }
 
         setSeriesEpisodes(episodes);
+        storeSeriesEpisodes(series.id, episodes);
         setSelectedEpisodeId(episodeId ?? episodes[0]?.id);
 
         if (episodes.length === 0) {
@@ -208,7 +241,7 @@ export function PlayerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [connection, episodeId, series]);
+  }, [connection, episodeId, series, storeSeriesEpisodes]);
 
   useEffect(() => {
     if (episodeId) {
@@ -371,7 +404,127 @@ export function PlayerPage() {
     return () => window.clearTimeout(timeoutId);
   }, [isPlaying, lastInteractionAt, mediaError]);
 
+  useEffect(() => {
+    if (!isNativeAndroid() || !item || !activeStreamUrl || (series && !selectedEpisode)) {
+      return;
+    }
+
+    const playbackId = selectedEpisode?.id ?? item.id;
+    const launchKey = `${playbackId}:${nativeLaunchToken}`;
+    if (nativeLaunchKeyRef.current === launchKey) return;
+    nativeLaunchKeyRef.current = launchKey;
+    setNativePlayerState("opening");
+    setMediaError(undefined);
+
+    const playlist = selectedEpisode
+      ? seriesEpisodes
+          .map((episode) => ({
+            contentId: episode.id,
+            title: episode.title,
+            streamUrl: episode.streamUrl ?? "",
+            streamCandidates: episode.streamCandidates,
+            kind: "episode" as const,
+            startPositionMs: (playback[episode.id]?.positionSeconds ?? 0) * 1000,
+            season: episode.season,
+            episode: episode.episode
+          }))
+          .filter((episode) => episode.streamUrl.length > 0)
+      : undefined;
+
+    const request = {
+      contentId: playbackId,
+      title: selectedEpisode?.title ?? item.title,
+      streamUrl: activeStreamUrl,
+      streamCandidates: activeStreamCandidates,
+      kind: item.type === "channel" ? "live" : selectedEpisode ? "episode" : "movie",
+      startPositionMs: (playback[playbackId]?.positionSeconds ?? 0) * 1000,
+      season: selectedEpisode?.season,
+      episode: selectedEpisode?.episode,
+      posterUrl: item.imageUrl,
+      playlist,
+      subtitleQuery:
+        item.type === "channel"
+          ? undefined
+          : {
+              title: cleanTitle(item.title),
+              season: selectedEpisode?.season,
+              episode: selectedEpisode?.episode
+            },
+      subtitleApiBaseUrl: import.meta.env.VITE_SUBTITLE_API_BASE_URL
+    } as const;
+
+    void (async () => {
+      if (await playerGateway.hasActiveSession()) {
+        const shouldReplace = window.confirm(
+          "Já existe um vídeo em reprodução. Deseja salvar o progresso e reproduzir este título?"
+        );
+        if (!shouldReplace) {
+          nativeLaunchKeyRef.current = undefined;
+          void navigate(-1);
+          return;
+        }
+        await playerGateway.close("replaced");
+      }
+      return playerGateway.open(request);
+    })()
+      .then((result) => {
+        if (!result) return;
+        for (const entry of result.progress ?? [result]) {
+          if (entry.durationMs <= 0) continue;
+          storeProgress(
+            savePlaybackProgress({
+              contentId: entry.contentId,
+              positionSeconds: Math.floor(entry.positionMs / 1000),
+              durationSeconds: Math.floor(entry.durationMs / 1000)
+            })
+          );
+        }
+
+        if (selectedEpisode && result.durationMs > 0) {
+          storeProgress(
+            savePlaybackProgress({
+              contentId: item.id,
+              positionSeconds: Math.floor(result.positionMs / 1000),
+              durationSeconds: Math.floor(result.durationMs / 1000)
+            })
+          );
+        }
+
+        if (result.reason === "error") {
+          setNativePlayerState("error");
+          setMediaError("Não foi possível reproduzir esta mídia neste aparelho.");
+          return;
+        }
+
+      if (result.reason !== "replaced" && window.location.pathname.startsWith("/watch/")) {
+          void navigate(series ? "/series" : item.type === "channel" ? "/tv" : "/movies", { replace: true });
+        }
+      })
+      .catch(() => {
+        setNativePlayerState("error");
+        setMediaError("Não foi possível abrir o player nativo.");
+      });
+  }, [
+    activeStreamUrl,
+    activeStreamCandidates,
+    item,
+    nativeLaunchToken,
+    navigate,
+    playback,
+    selectedEpisode,
+    series,
+    seriesEpisodes,
+    storeProgress
+  ]);
+
   if (!item) {
+    if (catalogSource === "xtream" && catalogStatus !== "error") {
+      return (
+        <div className="flex min-h-[60dvh] items-center justify-center text-on-surface-variant">
+          Recarregando catálogo...
+        </div>
+      );
+    }
     return <Navigate to="/catalog" replace />;
   }
 
@@ -380,6 +533,31 @@ export function PlayerPage() {
   }
 
   const content = item;
+
+  if (isNativeAndroid()) {
+    return (
+      <div className="mx-auto flex min-h-[70dvh] max-w-lg flex-col items-center justify-center px-4 text-center">
+        <div className="glass-panel w-full rounded-2xl p-8">
+          <h1 className="font-display text-2xl font-bold text-on-surface">{content.title}</h1>
+          <p className="mt-3 text-on-surface-variant">
+            {nativePlayerState === "error" ? mediaError : "Abrindo o player em tela cheia..."}
+          </p>
+          {nativePlayerState === "error" ? (
+            <button
+              type="button"
+              onClick={() => {
+                nativeLaunchKeyRef.current = undefined;
+                setNativeLaunchToken((value) => value + 1);
+              }}
+              className="focus-card mx-auto mt-6 flex min-h-12 items-center gap-2 rounded-xl bg-primary px-6 py-3 font-bold text-on-primary"
+            >
+              <Play size={20} /> Tentar novamente
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   function handleSeek(nextPosition: number) {
     if (videoRef.current && canSeek) {
@@ -402,6 +580,18 @@ export function PlayerPage() {
           durationSeconds: durationSeconds || selectedEpisode.durationSeconds || 0
         })
       );
+    }
+  }
+
+  async function handleDownload() {
+    if (!downloads.isAvailable() || !downloadContentId || activeStreamCandidates.length === 0 || item?.type === "channel") return;
+    if (!window.confirm(`Baixar ${selectedEpisode?.title ?? item?.title ?? "este conteúdo"}?`)) return;
+    setDownloadNotice("Adicionando à fila…");
+    try {
+      await downloads.start({ contentId: downloadContentId, parentId: selectedEpisode ? item?.id : undefined, title: selectedEpisode ? `${item?.title ?? "Série"} - S${selectedEpisode.season}E${selectedEpisode.episode}` : item?.title ?? "Filme", kind: selectedEpisode ? "episode" : "movie", candidates: activeStreamCandidates.filter((candidate) => candidate !== localStreamUri) });
+      setDownloadNotice("Download adicionado à fila.");
+    } catch (error) {
+      setDownloadNotice(error instanceof Error ? error.message : "Não foi possível iniciar o download.");
     }
   }
 
@@ -605,7 +795,7 @@ export function PlayerPage() {
   return (
     <div className="mx-auto max-w-canvas">
       <Link
-        to={series ? `/series/${series.id}` : "/catalog"}
+        to={series ? "/series" : content.type === "channel" ? "/tv" : "/movies"}
         data-focusable="true"
         className="focus-card mb-4 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
       >
@@ -615,6 +805,7 @@ export function PlayerPage() {
 
       <section
         ref={playerShellRef}
+        tabIndex={-1}
         onClick={revealControls}
         onFocusCapture={() => {
           revealControls();
@@ -683,7 +874,7 @@ export function PlayerPage() {
             {mediaError}
           </div>
         ) : null}
-        {isBuffering && !mediaError ? (
+        {isBuffering && !mediaError && content.type !== "channel" ? (
           <div
             data-testid="buffering-indicator"
             className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/80 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl"
@@ -789,12 +980,6 @@ export function PlayerPage() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <ActionButton label="Add to list">
-              <Plus aria-hidden="true" size={20} />
-            </ActionButton>
-            <ActionButton label="Share">
-              <Share2 aria-hidden="true" size={20} />
-            </ActionButton>
             <button
               type="button"
               data-focusable="true"
@@ -808,7 +993,9 @@ export function PlayerPage() {
               />
               Favorite
             </button>
+            {content.type !== "channel" && downloads.isAvailable() ? <button type="button" data-focusable="true" onClick={() => void handleDownload()} className="focus-card flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"><Download size={20}/>Baixar</button> : null}
           </div>
+          {downloadNotice ? <p className="mt-3 text-sm text-primary-container">{downloadNotice}</p> : null}
 
           {content.type === "series" ? (
             <section className="mt-8">
@@ -881,24 +1068,6 @@ export function PlayerPage() {
 
       <CatalogRail title="Up Next" items={related} />
     </div>
-  );
-}
-
-interface ActionButtonProps {
-  label: string;
-  children: React.ReactNode;
-}
-
-function ActionButton({ label, children }: ActionButtonProps) {
-  return (
-    <button
-      type="button"
-      data-focusable="true"
-      className="focus-card flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-surface-container px-4 text-on-surface"
-    >
-      {children}
-      {label}
-    </button>
   );
 }
 

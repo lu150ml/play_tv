@@ -1,0 +1,7 @@
+{
+    "versionCode":  20,
+    "versionName":  "1.5.0",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.5.0-release.apk",
+    "sha256":  "659F247F96B561F8D21BB0B194FDA8BB2A97FB1A70E3C1F091160AB2BEDC2F72",
+    "releaseNotes":  "Play TV 1.4.8: login pré-preenchido com usuário e senha salvos, sem precisar digitar novamente ao sair da tela."
+}

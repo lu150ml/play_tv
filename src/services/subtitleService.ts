@@ -22,7 +22,7 @@ export async function searchSubtitles(
     params.set("episode", String(episode.episode));
   }
 
-  const response = await fetch(`/api/subtitles?${params.toString()}`);
+  const response = await fetch(`${subtitleApiBaseUrl()}/api/subtitles?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error(await response.text());
@@ -34,7 +34,9 @@ export async function searchSubtitles(
 // Baixa a legenda (já convertida para VTT no proxy) e devolve um Blob URL
 // pronto para ser usado no <track> do <video>.
 export async function getSubtitleTrackUrl(fileId: string): Promise<string> {
-  const response = await fetch(`/api/subtitles/file?fileId=${encodeURIComponent(fileId)}`);
+  const response = await fetch(
+    `${subtitleApiBaseUrl()}/api/subtitles/file?fileId=${encodeURIComponent(fileId)}`
+  );
 
   if (!response.ok) {
     throw new Error(await response.text());
@@ -42,4 +44,8 @@ export async function getSubtitleTrackUrl(fileId: string): Promise<string> {
 
   const vtt = await response.text();
   return URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+}
+
+function subtitleApiBaseUrl(): string {
+  return (import.meta.env.VITE_SUBTITLE_API_BASE_URL ?? "").replace(/\/$/, "");
 }
