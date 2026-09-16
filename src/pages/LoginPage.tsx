@@ -19,10 +19,20 @@ export function LoginPage() {
   const setConnection = useLibraryStore((state) => state.setConnection);
   const profiles = useLibraryStore((state) => state.profiles);
   const setActiveProfile = useLibraryStore((state) => state.setActiveProfile);
+  // Pré-preenche com a conexão salva (carregada pelo boot via credentialVault).
+  const savedConnection = useLibraryStore((state) => state.connection);
   const [remember, setRemember] = useState(true);
-  const [serverUrl, setServerUrl] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [serverUrl, setServerUrl] = useState(() => savedConnection?.serverUrl ?? "");
+  const [username, setUsername] = useState(() => savedConnection?.username ?? "");
+  const [password, setPassword] = useState(() => savedConnection?.password ?? "");
+  // Preenche os campos quando a conexão salva chega do vault (pode ser async).
+  const prefilledRef = useRef(false);
+  if (!prefilledRef.current && savedConnection && !serverUrl && !username) {
+    prefilledRef.current = true;
+    setServerUrl(savedConnection.serverUrl);
+    setUsername(savedConnection.username);
+    setPassword(savedConnection.password);
+  }
   const [error, setError] = useState<string | undefined>();
   const [isConnecting, setIsConnecting] = useState(false);
   const [focusedField, setFocusedField] = useState<InputFieldName | undefined>();

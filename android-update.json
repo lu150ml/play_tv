@@ -1,7 +1,7 @@
 {
-    "versionCode":  17,
-    "versionName":  "1.4.7",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.7-release.apk",
-    "sha256":  "FDA36448B1A02B9577B618CA5579A5829BF338F1C8669839BC10A92346EFF75D",
+    "versionCode":  18,
+    "versionName":  "1.4.8",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.4.8-release.apk",
+    "sha256":  "C94DE81B1DD385CBB5BDBFE95FD024491AB361BF2E10163A180E6039B5DAAB6B",
     "releaseNotes":  "Play TV 1.4.7: menu Opções com Buscar Atualizações, navegação D-pad otimizada (MutationObserver), tecla Voltar no controle remoto, foco automático em séries/filmes, cards memoizados, rails com carregamento progressivo, CSS otimizado para GPU fraca do Fire Stick."
 }
