@@ -57,6 +57,25 @@ describe("Xtream category names", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps using the typed server URL even when server_info points to a CDN", async () => {
+    const serverUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { action?: string; serverUrl: string };
+      serverUrls.push(body.serverUrl);
+      const payload = body.action === undefined
+        ? { user_info: { auth: 1 }, server_info: { url: "cache.b-cdn.net", port: "80", server_protocol: "http" } }
+        : body.action === "get_vod_streams" ? [{ stream_id: 7, name: "Filme" }] : [];
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }));
+    }));
+
+    const result = await loadXtreamCatalog({ serverUrl: "http://painel.example", username: "viewer", password: "secret" });
+
+    expect(new Set(serverUrls)).toEqual(new Set(["http://painel.example"]));
+    expect(result.serverUrl).toBe("http://painel.example");
+    expect(result.catalog[0]?.streamUrl).toContain("http://painel.example/movie/");
+    vi.unstubAllGlobals();
+  });
+
   it("emits live channels without waiting for slow VOD and series responses", async () => {
     const pending = new Map<string, (value: Response) => void>();
     vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {

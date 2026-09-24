@@ -150,7 +150,11 @@ export async function loadXtreamCatalog(
 
   const canonicalCredentials = {
     ...credentials,
-    serverUrl: getCanonicalServerUrl(credentials.serverUrl, profile)
+    // Usa sempre o endereco digitado pelo usuario. O server_info.url do painel
+    // pode apontar para uma CDN (ex.: testmx.b-cdn.net) que faz cache do
+    // player_api.php ignorando a query string e devolve respostas de outras
+    // contas/acoes, deixando o catalogo vazio ou corrompido.
+    serverUrl: normalizeServerUrl(credentials.serverUrl)
   };
   await options.onAuthenticated?.({ profile, serverUrl: canonicalCredentials.serverUrl });
 
@@ -544,17 +548,6 @@ export function normalizeServerUrl(serverUrl: string): string {
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
-}
-
-function getCanonicalServerUrl(fallback: string, profile: XtreamProfileResponse): string {
-  const info = profile.server_info;
-  if (!info?.url) return normalizeServerUrl(fallback);
-  try {
-    const protocol = info.server_protocol === "https" ? "https" : "http";
-    return normalizeServerUrl(`${protocol}://${info.url}${info.port ? `:${info.port}` : ""}`);
-  } catch {
-    return normalizeServerUrl(fallback);
-  }
 }
 
 function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefined {
