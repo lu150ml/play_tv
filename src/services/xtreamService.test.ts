@@ -233,3 +233,60 @@ describe("retry com backoff em loadSection", () => {
     expect(sections).toContain("vod:error");
   });
 });
+
+describe("VOD loaded by category", () => {
+  const categories = [{ category_id: "1", category_name: "Acao" }, { category_id: "2", category_name: "Drama" }];
+  const byCategory: Record<string, unknown[]> = {
+    "1": [{ stream_id: 10, name: "A", category_id: "1" }, { stream_id: 11, name: "B", category_id: "1", category_ids: [1, 2] }],
+    "2": [{ stream_id: 11, name: "B", category_id: "1", category_ids: [1, 2] }, { stream_id: 12, name: "C", category_id: "2" }]
+  };
+  function stubServer(vod: (categoryId: string | null) => unknown) {
+    const calls: Array<{ action: string | null; categoryId: string | null }> = [];
+    vi.spyOn(httpClient, "get").mockImplementation(async (url) => {
+      const params = new URL(url, "http://localhost").searchParams;
+      const action = params.get("action");
+      const categoryId = params.get("category_id");
+      calls.push({ action, categoryId });
+      const data = !action ? { user_info: { auth: 1 } }
+        : action === "get_vod_categories" ? categories
+        : action === "get_vod_streams" ? vod(categoryId)
+        : [];
+      if (data instanceof Error) throw new Error("status 404");
+      return { data: data as never, status: 200 };
+    });
+    return calls;
+  }
+  const movieTitles = (catalog: Array<{ type: string; title: string }>) =>
+    catalog.filter((item) => item.type === "movie").map((item) => item.title).sort();
+
+  it("merges categories, drops duplicates and reports partial progress", async () => {
+    const calls = stubServer((categoryId) => (categoryId ? byCategory[categoryId] : new Error("full list")));
+    const statuses: string[] = [];
+    const load = await beginXtreamCatalogLoad(credentials, (update) => {
+      if (update.section === "vod") statuses.push(update.status);
+    });
+    expect(movieTitles(await load.completion)).toEqual(["A", "B", "C"]);
+    expect(calls.filter((call) => call.action === "get_vod_streams" && !call.categoryId)).toHaveLength(0);
+    expect(statuses[0]).toBe("loading");
+    expect(statuses.at(-1)).toBe("ready");
+  });
+
+  it("uses the first answer as the full list when the server ignores the filter", async () => {
+    const full = [byCategory["1"][1], { stream_id: 12, name: "C", category_id: "2" }, { stream_id: 13, name: "D", category_id: "2" }];
+    const calls = stubServer(() => full);
+    const load = await beginXtreamCatalogLoad(credentials);
+    expect(movieTitles(await load.completion)).toEqual(["B", "C", "D"]);
+    expect(calls.filter((call) => call.action === "get_vod_streams")).toHaveLength(1);
+  });
+
+  it("falls back to the full list, then to what loaded, when categories fail", async () => {
+    stubServer((categoryId) => (categoryId === "2" ? new Error("x") : categoryId ? byCategory["1"] : [...byCategory["1"], byCategory["2"][1]]));
+    let load = await beginXtreamCatalogLoad(credentials);
+    expect(movieTitles(await load.completion)).toEqual(["A", "B", "C"]);
+
+    vi.restoreAllMocks();
+    stubServer((categoryId) => (categoryId === "1" ? byCategory["1"] : new Error("x")));
+    load = await beginXtreamCatalogLoad(credentials);
+    expect(movieTitles(await load.completion)).toEqual(["A", "B"]);
+  });
+});

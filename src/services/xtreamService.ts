@@ -138,7 +138,8 @@ export interface XtreamCatalogResult {
 export interface XtreamCatalogSectionUpdate {
   section: XtreamCatalogSection;
   items: ContentItem[];
-  status: "ready" | "error";
+  // "loading" = parcial: a secao ainda esta chegando por categoria.
+  status: "ready" | "error" | "loading";
   error?: string;
 }
 
@@ -214,27 +215,54 @@ async function loadSection(
       : (["get_series_categories", "get_series"] as const);
 
   try {
-    // Categorias e streams são independentes: falha em categorias não pode
-    // derrubar filmes/séries inteiros (comum em alguns painéis Xtream).
-    const [categoryResult, streamResult] = await Promise.allSettled([
-      requestXtream<XtreamCategory[]>(credentials, actions[0]),
-      requestXtream<Array<XtreamLiveStream | XtreamVodStream | XtreamSeriesStream>>(
-        credentials,
-        actions[1]
-      )
-    ]);
-
-    if (streamResult.status === "rejected") {
-      throw streamResult.reason instanceof Error
-        ? streamResult.reason
-        : new Error("Falha ao carregar esta seção.");
+    let categories: XtreamCategory[] = [];
+    let streams: unknown;
+    if (section === "live") {
+      // Categorias e streams são independentes: falha em categorias não pode
+      // derrubar a seção inteira (comum em alguns painéis Xtream).
+      const [categoryResult, streamResult] = await Promise.allSettled([
+        requestXtream<XtreamCategory[]>(credentials, actions[0]),
+        requestXtream<XtreamLiveStream[]>(credentials, actions[1])
+      ]);
+      if (streamResult.status === "rejected") {
+        throw streamResult.reason instanceof Error
+          ? streamResult.reason
+          : new Error("Falha ao carregar esta seção.");
+      }
+      categories =
+        categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value)
+          ? categoryResult.value
+          : [];
+      streams = streamResult.value;
+    } else {
+      // Filmes/séries podem passar de 15 MB e o painel às vezes leva mais de
+      // 90 s para gerar a lista inteira (estoura o timeout). Carrega por
+      // categoria (respostas pequenas) e mostra o que já chegou; se o servidor
+      // ignorar o filtro ou categorias falharem, usa a lista completa.
+      categories = await requestXtream<XtreamCategory[]>(credentials, actions[0])
+        .then((value) => (Array.isArray(value) ? value : []))
+        .catch(() => []);
+      const partialMap = mapCategories(categories);
+      const mapPartial = (raw: unknown[]) =>
+        section === "vod"
+          ? (raw as XtreamVodStream[]).map((stream) => mapVodStream(stream, partialMap, credentials))
+          : (raw as XtreamSeriesStream[]).map((stream) => mapSeriesStream(stream, partialMap, credentials));
+      const byCategory = await loadStreamsByCategory(credentials, actions[1], section, categories, (partial) => {
+        onSection?.({ section, items: mapPartial(partial), status: "loading" });
+      }).catch(() => undefined);
+      if (byCategory?.complete) {
+        streams = byCategory.items;
+      } else {
+        try {
+          streams = await requestXtream<unknown[]>(credentials, actions[1]);
+        } catch (error) {
+          // Lista completa também falhou: fica com as categorias que chegaram.
+          if (!byCategory || byCategory.items.length === 0) throw error;
+          streams = byCategory.items;
+        }
+      }
     }
 
-    const categories =
-      categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value)
-        ? categoryResult.value
-        : [];
-    const streams = streamResult.value;
     const categoryMap = mapCategories(categories);
     const safeStreams = Array.isArray(streams) ? streams : [];
     const items = section === "live"
@@ -256,6 +284,91 @@ async function loadSection(
     onSection?.({ section, items: [], status: "error", error: message });
     return [];
   }
+}
+
+const CATEGORY_CONCURRENCY = 6;
+// Cada parcial re-renderiza o catálogo inteiro (dezenas de milhares de itens);
+// espaçar evita travar a interface (TV Box/Fire Stick) enquanto chegam.
+const PARTIAL_EMIT_INTERVAL_MS = 5000;
+
+type RawCategorized = { category_id?: string | number; category_ids?: Array<string | number>; stream_id?: string | number; series_id?: string | number };
+
+// Retorna os itens de todas as categorias, ou undefined para o chamador usar a
+// lista completa (sem categorias ou servidor ignorando o filtro).
+// requestXtream já retenta cada requisição; aqui só há uma rodada extra no
+// final para as categorias que falharam.
+export async function loadStreamsByCategory(
+  credentials: XtreamCredentials,
+  action: string,
+  section: "vod" | "series",
+  categories: XtreamCategory[],
+  onPartial?: (items: unknown[]) => void
+): Promise<{ items: unknown[]; complete: boolean } | undefined> {
+  const categoryIds = [...new Set(categories.map((category) => String(category.category_id ?? "")).filter(Boolean))];
+  if (categoryIds.length === 0) return undefined;
+
+  const fetchCategory = async (categoryId: string) => {
+    const value = await requestXtream<RawCategorized[]>(credentials, action, { category_id: categoryId });
+    if (!Array.isArray(value)) throw new Error("Resposta inválida.");
+    return value;
+  };
+  const belongsTo = (item: RawCategorized, categoryId: string) =>
+    String(item?.category_id ?? "") === categoryId || (item?.category_ids ?? []).some((id) => String(id) === categoryId);
+
+  // Primeira categoria sozinha: se o servidor ignorar o filtro, a resposta já
+  // é a lista completa e não faz sentido pedir de novo por categoria.
+  const first = await fetchCategory(categoryIds[0]);
+  if (first.length > 0 && first.filter((item) => belongsTo(item, categoryIds[0])).length < first.length / 2) {
+    return { items: first, complete: true };
+  }
+
+  const idKey = section === "series" ? "series_id" : "stream_id";
+  const seen = new Set<string>();
+  const collected: unknown[] = [];
+  const add = (items: RawCategorized[]) => {
+    for (const item of items) {
+      const id = item?.[idKey];
+      if (id !== undefined) {
+        const key = String(id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      collected.push(item);
+    }
+  };
+  add(first);
+  let lastEmit = 0;
+  const emit = (force = false) => {
+    if (!onPartial || collected.length === 0) return;
+    const now = Date.now();
+    if (!force && now - lastEmit < PARTIAL_EMIT_INTERVAL_MS) return;
+    lastEmit = now;
+    onPartial([...collected]);
+  };
+  emit(true);
+
+  const failed: string[] = [];
+  const queue = categoryIds.slice(1);
+  await Promise.all(Array.from({ length: Math.min(CATEGORY_CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const categoryId = queue.shift() as string;
+      try {
+        add(await fetchCategory(categoryId));
+      } catch {
+        failed.push(categoryId);
+      }
+      emit();
+    }
+  }));
+  const stillFailed: string[] = [];
+  for (const categoryId of failed) {
+    try {
+      add(await fetchCategory(categoryId));
+    } catch {
+      stillFailed.push(categoryId);
+    }
+  }
+  return { items: collected, complete: stillFailed.length === 0 };
 }
 
 export async function loadXtreamSeriesEpisodes(

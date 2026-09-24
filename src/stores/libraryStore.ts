@@ -33,7 +33,7 @@ interface LibraryState {
   saveProgress: (state: PlaybackState) => void;
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   beginCatalogLoad: () => void;
-  setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error", error?: string) => void;
+  setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error" | "loading", error?: string) => void;
   setCatalogStatus: (status: LibraryState["catalogStatus"]) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageCandidates: string[]) => void;
