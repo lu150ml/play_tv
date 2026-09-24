@@ -3,6 +3,7 @@ import {
   Film,
   Home,
   MonitorPlay,
+  RefreshCw,
   Search,
   Settings,
   Tv,
@@ -12,7 +13,7 @@ import {
   Download,
   Music2
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
@@ -36,6 +37,24 @@ const navItems = [
   { label: "Buscar", path: "/search", icon: Search },
   { label: "Downloads", path: "/downloads", icon: Download }
 ];
+
+// Renovação automática da lista: busca tudo que entrou de novo no servidor a
+// cada 3 dias, sem precisar reiniciar o app. O timestamp fica no localStorage
+// (não no libraryStore) porque o catálogo em si não é persistido - só o
+// "quando foi a última renovação completa" precisa sobreviver a um restart.
+const AUTO_REFRESH_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
+const AUTO_REFRESH_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const LAST_REFRESH_STORAGE_KEY = "play-tv:catalog-last-refresh";
+
+function getLastCatalogRefresh(): number {
+  const raw = window.localStorage.getItem(LAST_REFRESH_STORAGE_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function setLastCatalogRefresh(timestamp: number): void {
+  window.localStorage.setItem(LAST_REFRESH_STORAGE_KEY, String(timestamp));
+}
 
 export function AppShell() {
   const updateState = useUpdateState();
@@ -65,6 +84,7 @@ export function AppShell() {
   const catalogReady = catalogSource !== "xtream" || (requiredSection
     ? new Set(["ready", "error"]).has(catalogSections[requiredSection].status)
     : hasXtreamCatalog || Object.values(catalogSections).some((entry) => new Set(["ready", "error"]).has(entry.status)));
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   useEffect(() => {
     if (!connection || connection.password) {
@@ -93,6 +113,27 @@ export function AppShell() {
   // se há conexão salva mas o catálogo em memória ainda é o mock, recarrega
   // do servidor uma única vez.
   const isRefetchingRef = useRef(false);
+
+  const refreshCatalogFromServer = useCallback(() => {
+    if (!connection?.password || isRefetchingRef.current) return Promise.resolve();
+
+    isRefetchingRef.current = true;
+    beginCatalogLoad();
+    return connectServerSession({ ...connection, remember: true }, {
+      onSection: (update) => setCatalogSection(update.section, update.items, update.status, update.warning)
+    })
+      .then((session) => {
+        setCatalog(session.catalog, session.source);
+        setLastCatalogRefresh(Date.now());
+      })
+      .catch(() => {
+        // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
+      })
+      .finally(() => {
+        isRefetchingRef.current = false;
+      });
+  }, [beginCatalogLoad, connection, setCatalog, setCatalogSection]);
+
   useEffect(() => {
     if (
       catalogSource !== "xtream" ||
@@ -104,21 +145,36 @@ export function AppShell() {
       return;
     }
 
-    isRefetchingRef.current = true;
-    beginCatalogLoad();
-    void connectServerSession({ ...connection, remember: true }, {
-      onSection: (update) => setCatalogSection(update.section, update.items, update.status, update.warning)
-    })
-      .then((session) => {
-        setCatalog(session.catalog, session.source);
-      })
-      .catch(() => {
-        // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
-      })
-      .finally(() => {
-        isRefetchingRef.current = false;
-      });
-  }, [beginCatalogLoad, catalog, catalogSections, catalogSource, connection, hasXtreamCatalog, setCatalog, setCatalogSection]);
+    void refreshCatalogFromServer();
+  }, [catalog, catalogSections, catalogSource, connection, hasXtreamCatalog, refreshCatalogFromServer]);
+
+  // Renovação automática: a cada 3 dias, busca tudo que entrou de novo no
+  // servidor mesmo sem reiniciar o app. Não dispara durante a reprodução
+  // (rota /watch/...) para não interromper o vídeo em andamento.
+  useEffect(() => {
+    if (catalogSource !== "xtream" || !connection?.password) return undefined;
+
+    const interval = window.setInterval(() => {
+      const isSectionLoading = Object.values(catalogSections).some((entry) => entry.status === "loading");
+      if (isSectionLoading || isRefetchingRef.current || location.pathname.startsWith("/watch/")) return;
+
+      if (Date.now() - getLastCatalogRefresh() >= AUTO_REFRESH_INTERVAL_MS) {
+        void refreshCatalogFromServer();
+      }
+    }, AUTO_REFRESH_CHECK_INTERVAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [catalogSource, connection, catalogSections, location.pathname, refreshCatalogFromServer]);
+
+  async function handleManualRefresh() {
+    if (isManualRefreshing || isRefetchingRef.current) return;
+    setIsManualRefreshing(true);
+    try {
+      await refreshCatalogFromServer();
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -175,6 +231,17 @@ export function AppShell() {
             );
           })}
         </nav>
+
+        <button
+          type="button"
+          data-focusable="true"
+          onClick={() => void handleManualRefresh()}
+          disabled={!connection?.password || isManualRefreshing}
+          className="focus-card mb-4 flex items-center gap-3 rounded-lg border border-transparent px-4 py-3 text-sm font-semibold text-on-surface-variant hover:bg-white/[0.04] hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw aria-hidden="true" size={20} className={isManualRefreshing ? "animate-spin" : ""} />
+          {isManualRefreshing ? "Atualizando lista…" : "Atualizar lista"}
+        </button>
 
         {/* Profile card */}
         <div className="rounded-lg border border-white/10 bg-surface-container/70 p-4">
