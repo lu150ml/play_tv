@@ -48,6 +48,8 @@ const AUTO_REFRESH_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 const AUTO_REFRESH_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const LAST_REFRESH_STORAGE_KEY = "play-tv:catalog-last-refresh";
 
+const SECTION_ITEM_TYPE = { live: "channel", vod: "movie", series: "series" } as const;
+
 function getLastCatalogRefresh(): number {
   const raw = window.localStorage.getItem(LAST_REFRESH_STORAGE_KEY);
   const parsed = raw ? Number(raw) : NaN;
@@ -120,33 +122,64 @@ export function AppShell() {
     if (!connection?.password || isRefetchingRef.current) return Promise.resolve();
 
     isRefetchingRef.current = true;
+    // beginCatalogLoad() zera o catálogo. Guarda o que já estava carregado para
+    // que uma falha do servidor (fora do ar, 404, resposta corrompida) não
+    // deixe o app vazio: a seção que falhar volta com os itens anteriores.
+    const previousCatalog = useLibraryStore.getState().catalog.filter((item) => item.source === "xtream");
+    const previousItems = (section: XtreamCatalogSection) =>
+      previousCatalog.filter((item) => item.type === SECTION_ITEM_TYPE[section]);
     beginCatalogLoad();
     return connectServerSession({ ...connection, remember: true }, {
-      onSection: (update) => setCatalogSection(update.section, update.items, update.status, update.warning)
+      onSection: (update) => {
+        const items = update.status === "error" && update.items.length === 0 ? previousItems(update.section) : update.items;
+        setCatalogSection(update.section, items, update.status, update.warning);
+      }
     })
       .then((session) => {
-        setCatalog(session.catalog, session.source);
+        // Só substitui tudo quando as três seções vieram certas; senão mantém
+        // o estado montado pelo onSection (com os erros visíveis).
+        const sections = useLibraryStore.getState().catalogSections;
+        if (Object.values(sections).every((entry) => entry.status === "ready")) {
+          setCatalog(session.catalog, session.source);
+        }
         setLastCatalogRefresh(Date.now());
       })
-      .catch(() => {
-        // Mantém o catálogo atual em caso de falha; o usuário pode reconectar.
+      .catch((error: unknown) => {
+        // Falha antes/depois das seções (login recusado, servidor fora do ar,
+        // catálogo vazio): restaura o que havia e marca as seções como erro em
+        // vez de deixá-las presas em "carregando" com 0 itens.
+        const reason = error instanceof Error && error.message ? error.message : "erro desconhecido";
+        const sections = useLibraryStore.getState().catalogSections;
+        for (const section of ["live", "vod", "series"] as const) {
+          if (sections[section].status === "loading") {
+            setCatalogSection(section, previousItems(section), "error", `Nao foi possivel conectar ao servidor (${reason}).`);
+          }
+        }
       })
       .finally(() => {
         isRefetchingRef.current = false;
       });
   }, [beginCatalogLoad, connection, setCatalog, setCatalogSection]);
 
+  // Carga automática só uma vez por conta. Sem isso, quando todas as seções
+  // falham o catálogo continua vazio e o efeito dispara de novo em loop,
+  // martelando o servidor (que pode acabar bloqueando o IP). Novas tentativas
+  // ficam no botão "Atualizar lista".
+  const autoLoadedAccountRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    const accountKey = connection ? `${connection.serverUrl}|${connection.username}` : undefined;
     if (
       catalogSource !== "xtream" ||
       !connection?.password ||
       hasXtreamCatalog ||
       Object.values(catalogSections).some((entry) => entry.status === "loading") ||
-      isRefetchingRef.current
+      isRefetchingRef.current ||
+      autoLoadedAccountRef.current === accountKey
     ) {
       return;
     }
 
+    autoLoadedAccountRef.current = accountKey;
     void refreshCatalogFromServer();
   }, [catalog, catalogSections, catalogSource, connection, hasXtreamCatalog, refreshCatalogFromServer]);
 

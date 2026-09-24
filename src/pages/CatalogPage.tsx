@@ -126,6 +126,10 @@ export function CatalogPage({
       : sectionKey === "series"
         ? catalogSections.series
         : undefined;
+  const catalogErrors = catalogSource === "xtream"
+    ? [...new Set(Object.values(catalogSections).flatMap((entry) =>
+        entry.status === "error" ? [entry.error ?? "Nao foi possivel carregar uma secao."] : []))]
+    : [];
   const recommendedHero = useMemo(
     () =>
       getRecommendedHero(sectionItems, playback, favorites, {
@@ -281,6 +285,11 @@ export function CatalogPage({
         {loadingSection?.status === "error" ? (
           <p className="mb-4 rounded-lg border border-error/30 bg-error-container/30 p-4 text-sm text-error">
             {loadingSection.error ?? "Nao foi possivel carregar esta secao."}
+          </p>
+        ) : null}
+        {sectionKey === "all" && catalogErrors.length > 0 ? (
+          <p className="mb-4 rounded-lg border border-error/30 bg-error-container/30 p-4 text-sm text-error">
+            {catalogErrors.join(" ")} Use "Atualizar lista" para tentar novamente.
           </p>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
