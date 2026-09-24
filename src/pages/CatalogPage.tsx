@@ -1,4 +1,4 @@
-import { Clapperboard, Film, Grid2x2, Search, Tv } from "lucide-react";
+import { Play, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -12,6 +12,7 @@ import {
 } from "../services/recommendationService";
 import { useLibraryStore } from "../stores/libraryStore";
 import type { CatalogFilter, ContentItem, ContentType } from "../types/catalog";
+import { formatDuration } from "../utils/format";
 
 const RAIL_LIMIT = 10;
 
@@ -21,7 +22,6 @@ const sectionConfigs = {
     title: "Catalogo completo",
     path: "/catalog/all",
     type: "all",
-    icon: Grid2x2,
     broadCategories: []
   },
   tv: {
@@ -29,7 +29,6 @@ const sectionConfigs = {
     title: "TV ao vivo",
     path: "/catalog/tv",
     type: "channel",
-    icon: Tv,
     broadCategories: ["Live TV"]
   },
   movies: {
@@ -37,7 +36,6 @@ const sectionConfigs = {
     title: "Filmes",
     path: "/catalog/movies",
     type: "movie",
-    icon: Film,
     broadCategories: ["Movies"]
   },
   series: {
@@ -45,7 +43,6 @@ const sectionConfigs = {
     title: "Series",
     path: "/catalog/series",
     type: "series",
-    icon: Clapperboard,
     broadCategories: ["Series"]
   }
 } as const;
@@ -63,7 +60,6 @@ export function CatalogPage() {
     sort: "featured"
   });
   const catalog = useLibraryStore((state) => state.catalog);
-  const catalogSource = useLibraryStore((state) => state.catalogSource);
   const favoriteIds = useLibraryStore((state) => state.favorites);
   const playback = useLibraryStore((state) => state.playback);
   const favorites = useMemo(() => new Set(favoriteIds), [favoriteIds]);
@@ -143,64 +139,30 @@ export function CatalogPage() {
     <div className="mx-auto max-w-canvas">
       {!selectedCategory && recommendedHero ? <FeaturedHero item={recommendedHero} /> : null}
 
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
-          {catalogSource === "xtream" ? "Xtream server catalog" : "Demo catalog"}
-        </span>
-        <span className="rounded-md border border-white/10 bg-surface-container px-3 py-2 font-mono text-xs uppercase text-on-surface-variant">
-          {catalog.length} items loaded
-        </span>
-      </div>
-
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="font-mono text-xs uppercase text-primary-container">Navegacao</p>
-            <h1 className="mt-1 font-display text-3xl font-bold text-on-surface lg:text-4xl">
-              {pageTitle}
-            </h1>
+      {sectionKey !== "all" || selectedCategory ? (
+        <section className="mb-8 pt-2">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">Catálogo</p>
+              <h1 className="mt-1 font-cinema text-4xl font-semibold text-on-surface lg:text-5xl">
+                {pageTitle}
+              </h1>
+            </div>
+            {selectedCategory ? (
+              <Link
+                to={sectionConfig.path}
+                data-focusable="true"
+                className="focus-card rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
+              >
+                Voltar para {sectionConfig.label}
+              </Link>
+            ) : null}
           </div>
-          {selectedCategory ? (
-            <Link
-              to={sectionConfig.path}
-              data-focusable="true"
-              className="focus-card rounded-lg border border-white/10 bg-surface-container px-3 py-2 text-sm text-on-surface-variant"
-            >
-              Voltar para {sectionConfig.label}
-            </Link>
-          ) : null}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <TypeLink
-            label="Todos"
-            count={typeCounts.all}
-            isActive={sectionKey === "all"}
-            icon={<Grid2x2 aria-hidden="true" size={22} />}
-            to="/catalog/all"
-          />
-          <TypeLink
-            label="TV ao vivo"
-            count={typeCounts.channel}
-            isActive={sectionKey === "tv"}
-            icon={<Tv aria-hidden="true" size={22} />}
-            to="/catalog/tv"
-          />
-          <TypeLink
-            label="Filmes"
-            count={typeCounts.movie}
-            isActive={sectionKey === "movies"}
-            icon={<Film aria-hidden="true" size={22} />}
-            to="/catalog/movies"
-          />
-          <TypeLink
-            label="Series"
-            count={typeCounts.series}
-            isActive={sectionKey === "series"}
-            icon={<Clapperboard aria-hidden="true" size={22} />}
-            to="/catalog/series"
-          />
-        </div>
-      </section>
+          <p className="font-mono text-xs uppercase text-on-surface-variant">
+            {typeCounts[sectionType]} itens disponíveis
+          </p>
+        </section>
+      ) : null}
 
       {showSearch ? (
         <SearchOverlay
@@ -225,10 +187,10 @@ export function CatalogPage() {
       ) : (
         <>
           {recommendations.length > 0 ? (
-            <CatalogRail title="Baseado no que voce assiste" items={recommendations.slice(0, 5)} />
+            <CatalogRail title="Recomendados para você" items={recommendations.slice(0, 5)} />
           ) : null}
-          <CatalogRail title="Continue Watching" items={continueWatching.slice(0, RAIL_LIMIT)} />
-          <CatalogRail title="Favorites" items={favoritesList.slice(0, RAIL_LIMIT)} />
+          <CatalogRail title="Continuar assistindo" items={continueWatching.slice(0, RAIL_LIMIT)} />
+          <CatalogRail title="Favoritos" items={favoritesList.slice(0, RAIL_LIMIT)} />
 
           {sectionKey === "all" ? (
             <HomeRails catalog={catalog} />
@@ -256,34 +218,50 @@ function FeaturedHero({ item }: { item: ContentItem }) {
       data-focusable="true"
       aria-label={`Abrir ${item.title}`}
       className={[
-        "focus-card group mb-8 block overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br p-5 shadow-2xl transition duration-200 hover:border-primary-container/45 lg:p-8",
+        "cinematic-hero focus-card group relative mb-8 block overflow-hidden rounded-none border-x-0 border-y border-white/10 bg-gradient-to-br shadow-2xl transition duration-200 hover:border-primary/45 lg:-mx-10 lg:border-x-0",
         item.backdropTone
       ].join(" ")}
     >
-      <div className="max-w-3xl">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {item.quality.map((quality) => (
-            <span
-              key={quality}
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 font-mono text-xs uppercase text-on-surface"
-            >
-              {quality}
-            </span>
-          ))}
-        </div>
-        <h1 className="font-display text-4xl font-bold text-on-surface lg:text-6xl">
+      {item.imageUrl ? (
+        <img
+          src={item.imageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center opacity-70 transition duration-700 group-hover:scale-[1.02]"
+        />
+      ) : null}
+      <div className="relative z-10 flex min-h-[inherit] max-w-3xl flex-col justify-center px-5 py-12 lg:px-14">
+        <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+          {item.type === "channel" ? "Ao vivo" : item.type === "series" ? "Série" : "Filme"}
+        </p>
+        <h1 className="font-cinema text-5xl font-semibold leading-[0.98] text-on-surface drop-shadow-2xl lg:text-7xl">
           {item.title}
         </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-on-surface-variant lg:text-lg">
+        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-on-surface-variant">
+          {item.year ? <span>{item.year}</span> : null}
+          {item.quality[0] ? (
+            <span className="rounded border border-primary/45 bg-primary/15 px-2 py-0.5 text-on-surface">
+              {item.quality[0]}
+            </span>
+          ) : null}
+          {item.durationSeconds ? <span>{formatDuration(item.durationSeconds)}</span> : null}
+          {item.genres.slice(0, 2).map((genre) => (
+            <span key={genre}>{genre}</span>
+          ))}
+        </div>
+        <p className="mt-5 max-w-2xl line-clamp-3 text-base leading-7 text-on-surface-variant lg:text-lg">
           {item.description}
         </p>
+        <span className="mt-7 inline-flex h-14 w-fit items-center gap-3 rounded-lg bg-primary px-7 font-display text-base font-bold text-on-primary shadow-glow">
+          <Play aria-hidden="true" fill="currentColor" size={21} />
+          Assistir
+        </span>
       </div>
     </Link>
   );
 }
 
 function getContentHref(item: ContentItem): string {
-  return item.type === "series" ? `/series/${item.id}` : `/watch/${item.id}`;
+  return item.type === "series" ? `/series/${item.id}` : item.type === "movie" ? `/movie/${item.id}` : `/watch/${item.id}`;
 }
 
 function HomeRails({ catalog }: { catalog: ContentItem[] }) {
@@ -351,40 +329,6 @@ function sortByProgressDate(playback: Record<string, { updatedAt: string }>) {
   return (left: ContentItem, right: ContentItem) =>
     new Date(playback[right.id]?.updatedAt ?? 0).getTime() -
     new Date(playback[left.id]?.updatedAt ?? 0).getTime();
-}
-
-interface TypeLinkProps {
-  label: string;
-  count: number;
-  isActive: boolean;
-  icon: React.ReactNode;
-  to: string;
-}
-
-function TypeLink({ label, count, isActive, icon, to }: TypeLinkProps) {
-  return (
-    <Link
-      to={to}
-      data-focusable="true"
-      className={[
-        "focus-card flex items-center justify-between rounded-xl border p-4 text-left",
-        isActive
-          ? "border-primary-container bg-primary-container/15 text-primary shadow-glow"
-          : "border-white/10 bg-surface-container/70 text-on-surface hover:bg-surface-container"
-      ].join(" ")}
-      aria-current={isActive ? "page" : undefined}
-    >
-      <span className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-black/20">
-          {icon}
-        </span>
-        <span>
-          <span className="block font-display text-lg font-semibold">{label}</span>
-          <span className="font-mono text-xs uppercase text-on-surface-variant">{count} itens</span>
-        </span>
-      </span>
-    </Link>
-  );
 }
 
 interface CategoryGroup {
