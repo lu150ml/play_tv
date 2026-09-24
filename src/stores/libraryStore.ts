@@ -71,7 +71,7 @@ interface LibraryState {
   // Catalog actions
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
   beginCatalogLoad: () => void;
-  setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error", error?: string) => void;
+  setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error" | "loading", error?: string) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
   setSeriesArtwork: (seriesId: string, imageUrl: string) => void;
   setMovieDetails: (movie: Movie) => void;

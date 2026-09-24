@@ -123,7 +123,8 @@ export type XtreamCatalogSection = "live" | "vod" | "series";
 export interface XtreamCatalogSectionUpdate {
   section: XtreamCatalogSection;
   items: ContentItem[];
-  status: "ready" | "error";
+  // "loading" = parcial: a secao ainda esta chegando por categoria.
+  status: "ready" | "error" | "loading";
   warning?: string;
 }
 export interface XtreamCatalogLoadOptions {
@@ -159,9 +160,9 @@ export async function loadXtreamCatalog(
   await options.onAuthenticated?.({ profile, serverUrl: canonicalCredentials.serverUrl });
 
   const sectionTasks = [
-    loadCatalogSection("live", canonicalCredentials),
-    loadCatalogSection("vod", canonicalCredentials),
-    loadCatalogSection("series", canonicalCredentials)
+    loadCatalogSection("live", canonicalCredentials, options.onSection),
+    loadCatalogSection("vod", canonicalCredentials, options.onSection),
+    loadCatalogSection("series", canonicalCredentials, options.onSection)
   ].map((task) => task.then((update) => {
     options.onSection?.(update);
     return update;
@@ -188,41 +189,75 @@ export async function loadXtreamCatalog(
 
 async function loadCatalogSection(
   section: XtreamCatalogSection,
-  credentials: XtreamCredentials
+  credentials: XtreamCredentials,
+  onSection?: (update: XtreamCatalogSectionUpdate) => void
 ): Promise<XtreamCatalogSectionUpdate> {
   const actions = section === "live"
     ? ["get_live_categories", "get_live_streams"] as const
     : section === "vod"
       ? ["get_vod_categories", "get_vod_streams"] as const
       : ["get_series_categories", "get_series"] as const;
-  const [categoryResult, itemResult] = await Promise.allSettled([
-    requestXtream<XtreamCategory[]>(credentials, actions[0]),
-    section === "live"
-      ? requestXtream<XtreamLiveStream[]>(credentials, actions[1])
-      : section === "vod"
-        ? requestXtream<XtreamVodStream[]>(credentials, actions[1])
-        : requestXtream<XtreamSeriesStream[]>(credentials, actions[1])
-  ]);
-  const categories = categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value)
-    ? categoryResult.value
-    : [];
-  if (itemResult.status === "rejected" || !Array.isArray(itemResult.value)) {
-    const label = section === "live" ? "canais" : section === "vod" ? "filmes" : "series";
+  const label = section === "live" ? "canais" : section === "vod" ? "filmes" : "series";
+  const mapItems = (raw: unknown[]) => {
+    const categoryMap = mapCategories(categories);
+    return raw
+      .map((item) => section === "live"
+        ? mapLiveStream(item as XtreamLiveStream, categoryMap, credentials)
+        : section === "vod"
+          ? mapVodStream(item as XtreamVodStream, categoryMap, credentials)
+          : mapSeriesStream(item as XtreamSeriesStream, categoryMap, credentials))
+      .filter((item): item is ContentItem => item !== undefined);
+  };
+
+  let categories: XtreamCategory[] = [];
+  let categoriesFailed = false;
+  let rawItems: unknown[] | undefined;
+  let incompleteWarning: string | undefined;
+  if (section === "live") {
+    // Canais sao leves (~2 MB): uma requisicao so, em paralelo com as categorias.
+    const [categoryResult, itemResult] = await Promise.allSettled([
+      requestXtream<XtreamCategory[]>(credentials, actions[0]),
+      requestXtream<unknown[]>(credentials, actions[1])
+    ]);
+    categoriesFailed = categoryResult.status === "rejected";
+    categories = categoryResult.status === "fulfilled" && Array.isArray(categoryResult.value) ? categoryResult.value : [];
+    rawItems = itemResult.status === "fulfilled" && Array.isArray(itemResult.value) ? itemResult.value : undefined;
+  } else {
+    // Filmes/series podem passar de 15 MB e o servidor as vezes leva minutos
+    // para gerar a lista inteira. Carrega por categoria (respostas pequenas e
+    // rapidas) e vai mostrando o que ja chegou; se o servidor nao filtrar por
+    // categoria ou alguma falhar, cai para a lista completa.
+    try {
+      const result = await requestXtream<XtreamCategory[]>(credentials, actions[0]);
+      categories = Array.isArray(result) ? result : [];
+    } catch {
+      categoriesFailed = true;
+    }
+    const byCategory = await loadStreamsByCategory(credentials, actions[1], section, categories, (partial) => {
+      onSection?.({ section, items: ensureUniqueContentIds(mapItems(partial)), status: "loading" });
+    }).catch(() => undefined);
+    rawItems = byCategory?.complete ? byCategory.items : undefined;
+    if (!rawItems) {
+      rawItems = await requestXtream<unknown[]>(credentials, actions[1])
+        .then((value) => (Array.isArray(value) ? value : undefined))
+        .catch(() => undefined);
+    }
+    // Lista completa tambem falhou: fica com as categorias que chegaram.
+    if (!rawItems && byCategory && byCategory.items.length > 0) {
+      rawItems = byCategory.items;
+      incompleteWarning = `Algumas categorias de ${label} nao carregaram. Use "Atualizar lista" para tentar de novo.`;
+    }
+  }
+
+  if (!rawItems) {
     return { section, items: [], status: "error", warning: `Nao foi possivel carregar ${label}.` };
   }
-  const categoryMap = mapCategories(categories);
-  const rawItems = section === "live"
-    ? (itemResult.value as XtreamLiveStream[]).map((item) => mapLiveStream(item, categoryMap, credentials))
-    : section === "vod"
-      ? (itemResult.value as XtreamVodStream[]).map((item) => mapVodStream(item, categoryMap, credentials))
-      : (itemResult.value as XtreamSeriesStream[]).map((item) => mapSeriesStream(item, categoryMap, credentials));
-  const items = rawItems.filter((item): item is ContentItem => item !== undefined);
+  const items = mapItems(rawItems);
 
   // Se o servidor devolveu uma lista nao-vazia mas quase tudo veio sem nome/id
   // (resposta truncada ou corrompida no meio do caminho, ex.: antivirus/proxy
   // interferindo na conexao), nao mostra um catalogo incompleto como se
   // estivesse tudo certo: trata como erro para o usuario poder tentar de novo.
-  const label = section === "live" ? "canais" : section === "vod" ? "filmes" : "series";
   if (rawItems.length > 0 && items.length / rawItems.length < 0.5) {
     return {
       section,
@@ -236,8 +271,102 @@ async function loadCatalogSection(
     section,
     items: ensureUniqueContentIds(items),
     status: "ready",
-    warning: categoryResult.status === "rejected" ? "As categorias desta secao nao puderam ser carregadas." : undefined
+    warning: incompleteWarning ?? (categoriesFailed ? "As categorias desta secao nao puderam ser carregadas." : undefined)
   };
+}
+
+const CATEGORY_CONCURRENCY = 6;
+const CATEGORY_ATTEMPTS = 3;
+// Cada parcial re-renderiza o catalogo inteiro (dezenas de milhares de itens);
+// espaçar evita travar a interface enquanto as categorias chegam.
+const PARTIAL_EMIT_INTERVAL_MS = 4000;
+
+type RawCategorized = { category_id?: string | number; category_ids?: Array<string | number>; stream_id?: string | number; series_id?: string | number };
+
+// Retorna os itens de todas as categorias, ou undefined para o chamador usar
+// a lista completa (sem categorias, servidor ignorando o filtro, ou falha).
+export async function loadStreamsByCategory(
+  credentials: XtreamCredentials,
+  action: string,
+  section: "vod" | "series",
+  categories: XtreamCategory[],
+  onPartial?: (items: unknown[]) => void
+): Promise<{ items: unknown[]; complete: boolean } | undefined> {
+  const categoryIds = [...new Set(categories.map((category) => String(category.category_id ?? "")).filter(Boolean))];
+  if (categoryIds.length === 0) return undefined;
+
+  const fetchCategory = async (categoryId: string) => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < CATEGORY_ATTEMPTS; attempt += 1) {
+      try {
+        const value = await requestXtream<RawCategorized[]>(credentials, action, { category_id: categoryId });
+        if (Array.isArray(value)) return value;
+        lastError = new Error("Resposta invalida.");
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  };
+  const belongsTo = (item: RawCategorized, categoryId: string) =>
+    String(item?.category_id ?? "") === categoryId || (item?.category_ids ?? []).some((id) => String(id) === categoryId);
+
+  // Primeira categoria sozinha: se o servidor ignorar o filtro, a resposta ja
+  // e a lista completa e nao faz sentido pedir de novo por categoria.
+  const first = await fetchCategory(categoryIds[0]);
+  if (first.length > 0 && first.filter((item) => belongsTo(item, categoryIds[0])).length < first.length / 2) {
+    return { items: first, complete: true };
+  }
+
+  const idKey = section === "series" ? "series_id" : "stream_id";
+  const seen = new Set<string>();
+  const collected: unknown[] = [];
+  const add = (items: RawCategorized[]) => {
+    for (const item of items) {
+      const id = item?.[idKey];
+      if (id !== undefined) {
+        const key = String(id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      collected.push(item);
+    }
+  };
+  add(first);
+  let lastEmit = 0;
+  const emit = (force = false) => {
+    if (!onPartial || collected.length === 0) return;
+    const now = Date.now();
+    if (!force && now - lastEmit < PARTIAL_EMIT_INTERVAL_MS) return;
+    lastEmit = now;
+    onPartial([...collected]);
+  };
+  emit(true);
+
+  // Categoria que falhar nao derruba as outras: fica para uma nova rodada
+  // no final (o Cloudflare do painel corta requisicoes lentas com erro 524).
+  const failed: string[] = [];
+  const queue = categoryIds.slice(1);
+  await Promise.all(Array.from({ length: Math.min(CATEGORY_CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const categoryId = queue.shift() as string;
+      try {
+        add(await fetchCategory(categoryId));
+      } catch {
+        failed.push(categoryId);
+      }
+      emit();
+    }
+  }));
+  const stillFailed: string[] = [];
+  for (const categoryId of failed) {
+    try {
+      add(await fetchCategory(categoryId));
+    } catch {
+      stillFailed.push(categoryId);
+    }
+  }
+  return { items: collected, complete: stillFailed.length === 0 };
 }
 
 export function ensureUniqueContentIds(items: ContentItem[]): ContentItem[] {

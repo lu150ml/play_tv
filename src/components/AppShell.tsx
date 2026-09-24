@@ -85,8 +85,15 @@ export function AppShell() {
   );
   const hasXtreamCatalog = catalog.some((item) => item.source === "xtream");
   const requiredSection = getRequiredCatalogSection(location.pathname);
+  // Nas telas de catálogo, uma seção que ainda está chegando por categoria já
+  // pode ser exibida (a página mostra "Carregando..." junto dos itens). Rotas de
+  // player/detalhe continuam esperando a seção inteira para achar o item.
+  const requiredSectionHasItems = requiredSection !== undefined &&
+    location.pathname.startsWith("/catalog/") &&
+    catalogSections[requiredSection].status === "loading" &&
+    catalog.some((item) => item.type === SECTION_ITEM_TYPE[requiredSection]);
   const catalogReady = catalogSource !== "xtream" || (requiredSection
-    ? new Set(["ready", "error"]).has(catalogSections[requiredSection].status)
+    ? new Set(["ready", "error"]).has(catalogSections[requiredSection].status) || requiredSectionHasItems
     : hasXtreamCatalog || Object.values(catalogSections).some((entry) => new Set(["ready", "error"]).has(entry.status)));
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 

@@ -57,6 +57,74 @@ describe("Xtream category names", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("VOD loaded by category", () => {
+    function stubServer(handler: (body: { action?: string; params?: Record<string, string> }) => unknown) {
+      const calls: Array<{ action?: string; params?: Record<string, string> }> = [];
+      vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { action?: string; params?: Record<string, string> };
+        calls.push(body);
+        const payload = handler(body);
+        if (payload instanceof Error) return Promise.resolve(new Response("fail", { status: 500 }));
+        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }));
+      }));
+      return calls;
+    }
+    const credentials = { serverUrl: "http://painel.example", username: "viewer", password: "secret" };
+    const categories = [{ category_id: "1", category_name: "Acao" }, { category_id: "2", category_name: "Drama" }];
+    const byCategory: Record<string, unknown[]> = {
+      "1": [{ stream_id: 10, name: "A", category_id: "1" }, { stream_id: 11, name: "B", category_id: "1", category_ids: [1, 2] }],
+      "2": [{ stream_id: 11, name: "B", category_id: "1", category_ids: [1, 2] }, { stream_id: 12, name: "C", category_id: "2" }]
+    };
+    const base = (body: { action?: string }) => body.action === undefined
+      ? { user_info: { auth: 1 } }
+      : body.action === "get_vod_categories" ? categories : [];
+
+    it("merges categories, drops duplicates and reports partial progress", async () => {
+      const calls = stubServer((body) => body.action === "get_vod_streams"
+        ? body.params?.category_id ? byCategory[body.params.category_id] : new Error("full list should not be needed")
+        : base(body));
+      const updates: string[] = [];
+      const result = await loadXtreamCatalog(credentials, { onSection: (u) => { if (u.section === "vod") updates.push(u.status); } });
+
+      expect(result.catalog.filter((item) => item.type === "movie").map((item) => item.title).sort()).toEqual(["A", "B", "C"]);
+      expect(calls.filter((c) => c.action === "get_vod_streams" && !c.params?.category_id)).toHaveLength(0);
+      expect(updates[0]).toBe("loading");
+      expect(updates.at(-1)).toBe("ready");
+      vi.unstubAllGlobals();
+    });
+
+    it("uses the first answer as the full list when the server ignores the category filter", async () => {
+      const full = [...byCategory["1"], { stream_id: 12, name: "C", category_id: "2" }, { stream_id: 13, name: "D", category_id: "2" }];
+      const calls = stubServer((body) => body.action === "get_vod_streams" ? full.slice(1) : base(body));
+      const result = await loadXtreamCatalog(credentials);
+
+      expect(result.catalog.filter((item) => item.type === "movie")).toHaveLength(3);
+      expect(calls.filter((c) => c.action === "get_vod_streams")).toHaveLength(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("falls back to the full list when a category keeps failing", async () => {
+      stubServer((body) => body.action === "get_vod_streams"
+        ? body.params?.category_id === "2" ? new Error("boom") : body.params?.category_id ? byCategory["1"] : [...byCategory["1"], ...byCategory["2"].slice(1)]
+        : base(body));
+      const result = await loadXtreamCatalog(credentials);
+
+      expect(result.catalog.filter((item) => item.type === "movie").map((item) => item.title).sort()).toEqual(["A", "B", "C"]);
+      vi.unstubAllGlobals();
+    });
+
+    it("keeps the categories that loaded when the full list also fails", async () => {
+      stubServer((body) => body.action === "get_vod_streams"
+        ? body.params?.category_id === "1" ? byCategory["1"] : new Error("524")
+        : base(body));
+      const result = await loadXtreamCatalog(credentials);
+
+      expect(result.catalog.filter((item) => item.type === "movie").map((item) => item.title).sort()).toEqual(["A", "B"]);
+      expect(result.warnings.some((warning) => warning.includes("Algumas categorias de filmes"))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+  });
+
   it("keeps using the typed server URL even when server_info points to a CDN", async () => {
     const serverUrls: string[] = [];
     vi.stubGlobal("fetch", vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
