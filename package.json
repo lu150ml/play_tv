@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "test:electron-e2e": "node --test tests/electron/*.test.cjs",
     "electron:dev": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win --x64 --publish never"
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "release:win": "node scripts/publish-release.mjs"
   },
   "build": {
     "appId": "com.serverxtreme.app",
