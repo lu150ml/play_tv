@@ -1,100 +1,70 @@
-# Server Xtreme
+# Play TV
 
-Player IPTV com interface estilo streaming para servidores compatíveis com **Xtream Codes**. Conecta ao seu servidor, baixa o catálogo completo (TV ao vivo, filmes e séries) e oferece navegação por categorias, perfis de usuário e progresso de reprodução persistido localmente.
+Player IPTV com interface estilo streaming para servidores **Xtream Codes**. Conecta ao seu servidor e mostra TV ao vivo, filmes e séries organizados por categoria, com perfis, favoritos e progresso de reprodução.
 
----
+## Download
 
-## Funcionalidades
+| Plataforma | Link | Observação |
+|---|---|---|
+| **Windows (instalador)** | [Play-TV-X-Setup.exe](https://github.com/lu150ml/play_tv/releases/latest/download/Play-TV-X-Setup.exe) | Recomendado. Atualiza sozinho quando sai versão nova. |
+| Windows (portátil) | [Play-TV-X-Portable.exe](https://github.com/lu150ml/play_tv/releases/latest/download/Play-TV-X-Portable.exe) | Roda sem instalar. |
+| **Android / Android TV / Fire Stick** | [Play-TV-Android.apk](https://github.com/lu150ml/play_tv/releases/latest/download/Play-TV-Android.apk) | Permita "instalar apps de fontes desconhecidas". Atualiza pelo próprio app. |
 
-- **Login com servidor Xtream Codes** — autentica via `player_api.php` e carrega o catálogo real
-- **Catálogo organizado** — TV ao vivo, Filmes e Séries em seções separadas com subcategorias normalizadas
-- **Hero banner dinâmico** — destaque personalizado por seção com base no histórico de reprodução
-- **Player com HLS e MP4** — suporte a streams `.m3u8` via hls.js e vídeos nativos; retoma do ponto salvo
-- **Progresso de reprodução** — salvo localmente por conteúdo e por episódio, com barra de progresso nos cards
-- **Perfis de usuário** — múltiplos perfis com favoritos e histórico independentes
-- **Busca** — filtra título, descrição, gênero e categoria em tempo real
-- **Recomendações personalizadas** — sugere conteúdo com base no que foi assistido por perfil
-- **Página de detalhes de série** — temporadas, lista de episódios e navegação direta para cada um
-- **Navegação por controle remoto** — suporte a teclado e navegação direcional para uso em TV
+Os links sempre apontam para a versão mais recente. Histórico e notas de cada versão: [Releases](https://github.com/lu150ml/play_tv/releases).
 
----
+> No Windows pode aparecer o aviso "O Windows protegeu o computador" porque o instalador não é assinado. Clique em **Mais informações → Executar assim mesmo**.
 
-## Stack
+## Como usar
 
-| Camada | Tecnologia |
-|---|---|
-| UI | React 18 + TypeScript |
-| Estilo | Tailwind CSS com design tokens customizados |
-| Roteamento | React Router v6 |
-| Estado | Zustand com persistência via localStorage |
-| Player HLS | hls.js (carregado dinamicamente) |
-| Proxy IPTV | Plugin Vite — repassa chamadas Xtream sem CORS |
-| Testes unitários | Vitest + jsdom |
-| Testes E2E | Playwright (browser, mobile e layout TV) |
-| Qualidade | ESLint, Prettier, TypeScript strict |
+1. Instale e abra o app.
+2. Informe o endereço do servidor (ex.: `http://meuservidor.com`), usuário e senha da assinatura.
+3. O catálogo carrega sozinho. Filmes e séries aparecem conforme cada categoria chega.
+4. Use **Atualizar lista** no menu lateral para buscar novidades do servidor a qualquer momento.
 
----
+## Organização do repositório
 
-## Estrutura
+O repositório tem **dois apps**, cada um na sua branch:
 
-```
-src/
-├── components/        # AppShell, CatalogRail, ContentCard, PlayerControls, SearchOverlay
-├── data/              # mockCatalog — catálogo de demonstração local
-├── hooks/             # useRemoteNavigation — navegação por teclado/controle
-├── pages/             # LoginPage, ProfilesPage, CatalogPage, SeriesPage, PlayerPage
-├── services/          # catalogService, xtreamService, playbackService,
-│                      # bufferService, seriesService, recommendationService, sessionService
-├── stores/            # libraryStore — catálogo, perfis, favoritos, progresso
-├── styles/            # index.css com variáveis do design system
-├── types/             # catalog.ts — tipos ContentItem, Episode, Profile, etc.
-└── utils/             # format.ts — formatação de duração e tempo restante
-```
+| App | Branch | Tecnologia | Versão |
+|---|---|---|---|
+| **Play TV X** (Windows) | `codex/electron-catalog-refresh-fix-v0.4.20` | React + Electron | 0.4.x |
+| **Play TV** (Android) | `codex/android-details-v1.4.2` | React + Capacitor | 1.5.x |
 
----
+A branch `main` guarda só a versão web inicial e este README.
 
-## Primeiros passos
+### Gerar e publicar a versão Windows
+
+Na branch do Windows:
 
 ```bash
 npm install
-npm run dev        # Inicia em http://localhost:5173
+npm test
+npm run dist:win      # gera o instalador em release/
+npm run release:win   # gera e publica a release no GitHub (requer GitHub CLI)
 ```
 
-Na tela de login informe a URL do seu servidor Xtream Codes (ex: `http://meuservidor.com`), usuário e senha. O catálogo é carregado automaticamente — até 800 itens por tipo (TV, filmes, séries).
+A configuração do instalador (nome, ícone, tipo de pacote) fica na seção `"build"` do `package.json`. O código do Electron fica em `electron/` (`main.cjs` janela, `updater.cjs` atualização automática, `server.cjs` proxy do servidor IPTV). Antes de publicar, suba a versão em `package.json`.
 
-Para explorar sem servidor, o app inicia com um catálogo de demonstração local.
+### Gerar e publicar a versão Android
 
----
-
-## Comandos
+Na branch do Android:
 
 ```bash
-npm run dev          # Servidor de desenvolvimento com proxy Xtream embutido
-npm run build        # Build de produção (type-check + Vite)
-npm run lint         # ESLint
-npm run test         # Testes unitários (Vitest)
-npm run test:e2e     # Testes E2E (Playwright)
+npm install
+npm test
+npm run android:apk:release   # APK assinado em android/app/build/outputs/apk/release/
 ```
 
----
+Para publicar: suba `versionCode`/`versionName` em `android/app/build.gradle`, copie o APK para `artifacts/play-tv-<versão>-release.apk` e atualize `android-update.json` (versão, link e sha256). Os aparelhos leem esse arquivo para se atualizar. A assinatura usa `android/keystore.properties` (fora do git).
 
-## Arquitetura do proxy
+## Desenvolvimento
 
-O Vite dev server inclui um plugin (`xtreamProxyPlugin`) que intercepta `/api/xtream?*` e repassa para `player_api.php` no servidor configurado. Isso evita erros de CORS durante o desenvolvimento. Em produção, o mesmo proxy precisa ser configurado no servidor web (nginx, Caddy, etc.).
-
----
-
-## Padrão de commits
-
-Conventional Commits em inglês:
-
-```
-feat: add catalog home rails
-fix: persist playback progress after refresh
-refactor: split player controls
-test: cover catalog filtering
-docs: update readme
-chore: configure eslint and prettier
+```bash
+npm install
+npm run dev        # http://localhost:5173 com proxy Xtream embutido
+npm run lint
+npm run test       # testes unitários (Vitest)
+npm run test:e2e   # testes E2E (Playwright)
 ```
 
-Nomes de branch curtos e com escopo: `feat/series-detail`, `fix/hls-buffer`, `chore/deps`.
+Commits em Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`...).
