@@ -3,6 +3,7 @@ import {
   Film,
   Home,
   MonitorPlay,
+  Power,
   RefreshCw,
   Search,
   Settings,
@@ -19,6 +20,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { connectServerSession } from "../services/sessionService";
 import { clearRememberedPassword, loadRememberedPassword } from "../services/credentialService";
+import { getDesktopBridge } from "../services/desktopService";
 import { useLibraryStore } from "../stores/libraryStore";
 import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { UpdateBanner } from "./UpdateBanner";
@@ -191,6 +193,13 @@ export function AppShell() {
     void navigate("/login", { replace: true });
   }
 
+  function handleRestartApp() {
+    setIsSettingsOpen(false);
+    const bridge = getDesktopBridge();
+    if (bridge) void bridge.app.relaunch();
+    else window.location.reload();
+  }
+
   return (
     <div className="min-h-screen bg-background text-on-surface">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-60 border-r border-white/5 bg-surface-dim px-4 py-7 lg:flex lg:flex-col">
@@ -330,6 +339,15 @@ export function AppShell() {
                 >
                   <Users aria-hidden="true" size={18} />
                   Trocar perfil
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleRestartApp}
+                  className="focus-card flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-on-surface hover:bg-white/5"
+                >
+                  <Power aria-hidden="true" size={18} />
+                  Reiniciar app
                 </button>
                 <button
                   type="button"

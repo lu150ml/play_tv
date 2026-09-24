@@ -43,6 +43,7 @@ export interface DownloadInput {
 }
 
 interface DesktopBridge {
+  app: { relaunch(): Promise<void> };
   credentials: { save(value: string): Promise<boolean>; load(): Promise<string | undefined>; clear(): Promise<void> };
   updates: {
     getState(): Promise<UpdateState>;

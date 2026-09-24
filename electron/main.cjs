@@ -119,6 +119,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("updates:get-state", () => updater.getState());
   ipcMain.handle("updates:check", () => updater.check());
   ipcMain.handle("updates:install", () => updater.install());
+  ipcMain.handle("app:relaunch", () => {
+    app.relaunch();
+    app.exit(0);
+  });
   ipcMain.handle("downloads:get-state", () => downloadManager.snapshot());
   ipcMain.handle("downloads:choose-directory", () => downloadManager.chooseDirectory(mainWindow));
   ipcMain.handle("downloads:enqueue", (_event, input) => downloadManager.enqueue(input));

@@ -207,11 +207,27 @@ async function loadCatalogSection(
     return { section, items: [], status: "error", warning: `Nao foi possivel carregar ${label}.` };
   }
   const categoryMap = mapCategories(categories);
-  const items = section === "live"
+  const rawItems = section === "live"
     ? (itemResult.value as XtreamLiveStream[]).map((item) => mapLiveStream(item, categoryMap, credentials))
     : section === "vod"
       ? (itemResult.value as XtreamVodStream[]).map((item) => mapVodStream(item, categoryMap, credentials))
       : (itemResult.value as XtreamSeriesStream[]).map((item) => mapSeriesStream(item, categoryMap, credentials));
+  const items = rawItems.filter((item): item is ContentItem => item !== undefined);
+
+  // Se o servidor devolveu uma lista nao-vazia mas quase tudo veio sem nome/id
+  // (resposta truncada ou corrompida no meio do caminho, ex.: antivirus/proxy
+  // interferindo na conexao), nao mostra um catalogo incompleto como se
+  // estivesse tudo certo: trata como erro para o usuario poder tentar de novo.
+  const label = section === "live" ? "canais" : section === "vod" ? "filmes" : "series";
+  if (rawItems.length > 0 && items.length / rawItems.length < 0.5) {
+    return {
+      section,
+      items: [],
+      status: "error",
+      warning: `A resposta do servidor para ${label} veio incompleta. Tente atualizar a lista novamente.`
+    };
+  }
+
   return {
     section,
     items: ensureUniqueContentIds(items),
@@ -403,8 +419,13 @@ function mapLiveStream(
   stream: XtreamLiveStream,
   categories: Map<string, string>,
   credentials: XtreamCredentials
-): ContentItem {
-  const providerId = String(stream.stream_id ?? stream.name ?? crypto.randomUUID());
+): ContentItem | undefined {
+  // O servidor as vezes devolve entradas sem nome/stream_id (resposta truncada,
+  // proxy/antivirus interferindo na conexao, etc). Sem esses dois campos nao ha
+  // como identificar o canal de verdade, entao descartamos em vez de mostrar um
+  // titulo placeholder com UUID aleatorio.
+  if (stream.stream_id === undefined && !stream.name?.trim()) return undefined;
+  const providerId = String(stream.stream_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Live TV";
   const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Channel ${providerId}`;
@@ -442,8 +463,9 @@ function mapVodStream(
   stream: XtreamVodStream,
   categories: Map<string, string>,
   credentials: XtreamCredentials
-): ContentItem {
-  const providerId = String(stream.stream_id ?? stream.name ?? crypto.randomUUID());
+): ContentItem | undefined {
+  if (stream.stream_id === undefined && !stream.name?.trim()) return undefined;
+  const providerId = String(stream.stream_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Movies";
   const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Movie ${providerId}`;
@@ -474,8 +496,9 @@ function mapVodStream(
   };
 }
 
-function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>, credentials: XtreamCredentials): ContentItem {
-  const providerId = String(stream.series_id ?? stream.name ?? crypto.randomUUID());
+function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>, credentials: XtreamCredentials): ContentItem | undefined {
+  if (stream.series_id === undefined && !stream.name?.trim()) return undefined;
+  const providerId = String(stream.series_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Series";
   const categoryName = normalizeCategory(rawCategory);
   const title = stream.name?.trim() || `Series ${providerId}`;

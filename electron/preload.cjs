@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("serverXtreme", {
+  app: {
+    relaunch: () => ipcRenderer.invoke("app:relaunch")
+  },
   credentials: {
     save: (value) => ipcRenderer.invoke("credentials:save", value),
     load: () => ipcRenderer.invoke("credentials:load"),
