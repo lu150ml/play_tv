@@ -44,4 +44,12 @@ describe("progressive library store", () => {
     expect(useLibraryStore.getState().catalog.length).toBe(2);
     expect(useLibraryStore.getState().catalogStatus).toBe("loading");
   });
+  it("substitui capa/video gravados errado mesmo com os mesmos ids", () => {
+    useLibraryStore.getState().setCatalogSection("vod", [movie]);
+    useLibraryStore.getState().setMovieDetails({ ...movie, imageUrl: "http://img/outro.jpg", streamUrl: "http://x/outro.mp4" });
+    useLibraryStore.getState().setCatalogSection("vod", [movie]);
+    const stored = useLibraryStore.getState().catalog.find((item) => item.id === "movie-1");
+    expect(stored?.imageUrl).toBeUndefined();
+    expect(stored?.streamUrl).toBeUndefined();
+  });
 });

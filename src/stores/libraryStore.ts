@@ -90,9 +90,22 @@ function isCatalogCacheValid(cachedAt?: string): boolean {
   return age >= 0 && age <= CATALOG_TTL_MS;
 }
 
-function migrateLibraryState(persistedState: unknown): Partial<LibraryState> {
+function sameListing(left: ContentItem, right?: ContentItem): boolean {
+  return Boolean(right) &&
+    left.id === right?.id &&
+    left.title === right.title &&
+    left.imageUrl === right.imageUrl &&
+    left.streamUrl === right.streamUrl;
+}
+
+// v3: catálogos salvos até a 1.5.1 podem ter capa/sinopse/vídeo de outro
+// título (get_vod_info/get_series_info devolvendo o item errado). Descarta e
+// recarrega do servidor.
+const CATALOG_SCHEMA_VERSION = 3;
+
+function migrateLibraryState(persistedState: unknown, version = CATALOG_SCHEMA_VERSION): Partial<LibraryState> {
   const state = (persistedState && typeof persistedState === "object" ? persistedState : {}) as Partial<LibraryState>;
-  const catalog = Array.isArray(state.catalog) ? state.catalog : [];
+  const catalog = Array.isArray(state.catalog) && version >= CATALOG_SCHEMA_VERSION ? state.catalog : [];
   const catalogCachedAt = typeof state.catalogCachedAt === "string" ? state.catalogCachedAt : undefined;
   const hasValidCache = state.catalogSource === "xtream" && isCatalogCacheValid(catalogCachedAt) && catalog.length > 0;
 
@@ -152,7 +165,9 @@ export const useLibraryStore = create<LibraryState>()(
       setCatalogSection: (section, items, status = "ready", error) => set((current) => {
         const belongs = (item: ContentItem) => section === "live" ? item.type === "channel" : section === "vod" ? item.type === "movie" : item.type === "series";
         const previousItems = current.catalog.filter(belongs);
-        const unchanged = previousItems.length === items.length && previousItems.every((item, index) => item.id === items[index]?.id);
+        // Compara também capa/título/vídeo: só o id não basta, senão detalhes
+        // gravados antes (ex.: capa de outro título) nunca seriam substituídos.
+        const unchanged = previousItems.length === items.length && previousItems.every((item, index) => sameListing(item, items[index]));
         const previousSection = current.catalogSections[section];
         if (unchanged && previousSection.status === status && previousSection.error === error) return current;
         const catalog = [
@@ -248,7 +263,7 @@ export const useLibraryStore = create<LibraryState>()(
     }),
     {
       name: "server-xtreme-library",
-      version: 2,
+      version: CATALOG_SCHEMA_VERSION,
       storage: createJSONStorage(() => platformStorage),
       migrate: migrateLibraryState,
       partialize: (state) => ({

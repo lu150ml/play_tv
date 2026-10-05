@@ -11,6 +11,8 @@ export function SecureImage({ candidates, onError, ...props }: SecureImageProps)
 
   useEffect(() => {
     let active = true;
+    // Troca de item: não deixa a capa anterior na tela se a nova falhar.
+    setSource(candidateKey.split("\n").find(Boolean));
     void resolveSecureImage(candidateKey.split("\n")).then((value) => {
       if (active && value) setSource(value);
     });
