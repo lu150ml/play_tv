@@ -2,6 +2,7 @@ import { Clapperboard, Download, Film, Home, MonitorPlay, Music2, Search, Tv, Us
 import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { useAutoCatalogRefresh } from "../hooks/useAutoCatalogRefresh";
 import { useRemoteNavigation } from "../hooks/useRemoteNavigation";
 import { startServerSession } from "../services/sessionService";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -39,6 +40,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   useRemoteNavigation();
+  useAutoCatalogRefresh(location.pathname);
   const currentPath = `${location.pathname}${location.search}`;
 
   const catalogSections = useLibraryStore((state) => state.catalogSections);

@@ -1,8 +1,9 @@
-import { Activity, Download, RefreshCw, Settings, UserRound, X } from "lucide-react";
+import { Activity, Download, ListRestart, RefreshCw, Settings, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { isNativeAndroid } from "../platform/platformInfo";
+import { isCatalogRefreshing, refreshCatalog } from "../services/catalogRefreshService";
 import { logoutSession } from "../services/logoutService";
 import {
   checkForAndroidUpdate,
@@ -11,6 +12,7 @@ import {
   type AndroidUpdateManifest
 } from "../services/updateService";
 import { diagnostics, type DiagEvent } from "../services/diagnosticsService";
+import { useLibraryStore } from "../stores/libraryStore";
 
 type UpdateStatus =
   | "idle"
@@ -33,6 +35,12 @@ export function OptionsMenu({ expanded = false }: { expanded?: boolean }) {
   const [update, setUpdate] = useState<AndroidUpdateManifest>();
   const [error, setError] = useState<string>();
   const [diagEvents, setDiagEvents] = useState<DiagEvent[]>([]);
+  const [listStatus, setListStatus] = useState<"idle" | "refreshing" | "done" | "error">(
+    () => (isCatalogRefreshing() ? "refreshing" : "idle")
+  );
+  const [listError, setListError] = useState<string>();
+  const catalogCachedAt = useLibraryStore((state) => state.catalogCachedAt);
+  const hasConnection = useLibraryStore((state) => Boolean(state.connection));
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -86,6 +94,19 @@ export function OptionsMenu({ expanded = false }: { expanded?: boolean }) {
           ? reason.message
           : "Não foi possível baixar a atualização. Confira a internet e tente novamente."
       );
+    }
+  }
+
+  async function handleRefreshList() {
+    if (listStatus === "refreshing") return;
+    setListStatus("refreshing");
+    setListError(undefined);
+    try {
+      await refreshCatalog();
+      setListStatus("done");
+    } catch (reason) {
+      setListStatus("error");
+      setListError(reason instanceof Error ? reason.message : "Não foi possível atualizar a lista.");
     }
   }
 
@@ -164,6 +185,37 @@ export function OptionsMenu({ expanded = false }: { expanded?: boolean }) {
 
               {error ? <p className="px-3 py-1 text-xs text-error">{error}</p> : null}
 
+              {hasConnection ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-focusable="true"
+                  disabled={listStatus === "refreshing"}
+                  onClick={() => void handleRefreshList()}
+                  className="focus-card flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold text-on-surface hover:bg-white/5 disabled:opacity-60"
+                >
+                  <ListRestart
+                    aria-hidden="true"
+                    size={18}
+                    className={`shrink-0 text-primary ${listStatus === "refreshing" ? "animate-pulse" : ""}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    {listStatus === "refreshing"
+                      ? "Atualizando lista…"
+                      : listStatus === "done"
+                        ? "Lista atualizada"
+                        : "Atualizar lista"}
+                    <span className="mt-0.5 block truncate text-xs font-normal text-on-surface-variant">
+                      {listStatus === "refreshing"
+                        ? "Pode continuar usando o app"
+                        : formatLastRefresh(catalogCachedAt)}
+                    </span>
+                  </span>
+                </button>
+              ) : null}
+
+              {listError ? <p className="px-3 py-1 text-xs text-error">{listError}</p> : null}
+
               <button
                 type="button"
                 role="menuitem"
@@ -212,6 +264,13 @@ export function OptionsMenu({ expanded = false }: { expanded?: boolean }) {
       ) : null}
     </div>
   );
+}
+
+function formatLastRefresh(cachedAt?: string): string {
+  const time = cachedAt ? new Date(cachedAt) : undefined;
+  if (!time || Number.isNaN(time.getTime())) return "Renovada automaticamente a cada 3 dias";
+  const label = time.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return `Última atualização: ${label}`;
 }
 
 // ---------------------------------------------------------------------------

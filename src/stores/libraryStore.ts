@@ -82,7 +82,7 @@ export function isCatalogSectionPending(status: CatalogSectionState["status"]): 
   return status === "idle" || status === "loading";
 }
 
-const CATALOG_TTL_MS = 6 * 60 * 60 * 1000; // 6 horas
+const CATALOG_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias (ver catalogRefreshService)
 
 function isCatalogCacheValid(cachedAt?: string): boolean {
   if (!cachedAt) return false;
@@ -169,7 +169,11 @@ export const useLibraryStore = create<LibraryState>()(
         // gravados antes (ex.: capa de outro título) nunca seriam substituídos.
         const unchanged = previousItems.length === items.length && previousItems.every((item, index) => sameListing(item, items[index]));
         const previousSection = current.catalogSections[section];
-        if (unchanged && previousSection.status === status && previousSection.error === error) return current;
+        if (unchanged && previousSection.status === status && previousSection.error === error) {
+          // Lista igual à do servidor: só marca quando foi conferida, para a
+          // renovação de 3 em 3 dias contar a partir de agora.
+          return status === "ready" ? { catalogCachedAt: new Date().toISOString() } : current;
+        }
         const catalog = [
           ...(section === "live" ? items : current.catalog.filter((item) => item.type === "channel")),
           ...(section === "vod" ? items : current.catalog.filter((item) => item.type === "movie")),
