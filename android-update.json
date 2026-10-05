@@ -1,7 +1,7 @@
 {
-    "versionCode":  23,
-    "versionName":  "1.5.3",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.5.3-release.apk",
-    "sha256":  "2F5F5132975B8617F5C0396620E9BE69E9984DDBB687DD9D82EB188A15ED6872",
-    "releaseNotes":  "Play TV 1.5.3: corrige capas e vídeos trocados na busca. O catálogo é recarregado do servidor uma vez após atualizar."
+    "versionCode":  24,
+    "versionName":  "1.5.4",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.5.4-release.apk",
+    "sha256":  "9E597CEAEF246D3A8A09C9B2E9E10C2313BAEB204186ECAE0E904BA1A6BADE2C",
+    "releaseNotes":  "Play TV 1.5.4: novo botão Atualizar lista no menu Opções e renovação automática da lista a cada 3 dias. Inclui a correção de capas e vídeos trocados na busca."
 }
