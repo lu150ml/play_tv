@@ -1,7 +1,7 @@
 {
-    "versionCode":  21,
-    "versionName":  "1.5.1",
-    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.5.1-release.apk",
-    "sha256":  "48EDDFCE758FD0DE9F11A5658A146FC533131090B6B27C968DD0719535178603",
-    "releaseNotes":  "Play TV 1.5.1: filmes e séries carregam por categoria e aparecem conforme chegam, sem travar quando o servidor está lento."
+    "versionCode":  22,
+    "versionName":  "1.5.2",
+    "apkUrl":  "https://raw.githubusercontent.com/lu150ml/play_tv/codex/android-details-v1.4.2/artifacts/play-tv-1.5.2-release.apk",
+    "sha256":  "16A46EAD4204C2B5E9BBE5586598F96BBAB614BD2F689683BA685564C11C1421",
+    "releaseNotes":  "Play TV 1.5.2: a busca abre o filme/série certo (capa, sinopse e vídeo) e apertar Enter na pesquisa não fecha mais o app."
 }
