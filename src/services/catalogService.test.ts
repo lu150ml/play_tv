@@ -10,6 +10,13 @@ describe("catalogService", () => {
     expect(results[0]?.title).toBe("Sports Grid");
   });
 
+  it("finds titles even when the search omits accents", () => {
+    const accentedItem = { ...getCatalog()[0], title: "Coração de Aço" };
+    const results = searchCatalog({ query: "coracao" }, new Set(), [accentedItem]);
+
+    expect(results[0]?.title).toBe("Coração de Aço");
+  });
+
   it("filters by favorites when requested", () => {
     const favorites = new Set(["machine-heart"]);
     const results = searchCatalog({ favoritesOnly: true }, favorites);

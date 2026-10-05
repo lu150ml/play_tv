@@ -23,7 +23,7 @@ export function SearchOverlay({ filters, catalog, onChange, onClose }: SearchOve
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <SlidersHorizontal aria-hidden="true" className="text-primary-container" size={22} />
-          <h2 className="font-display text-xl font-semibold">Catalog Search</h2>
+          <h2 className="font-display text-xl font-semibold">Buscar no catálogo</h2>
         </div>
         {onClose ? (
           <button
@@ -44,8 +44,8 @@ export function SearchOverlay({ filters, catalog, onChange, onClose }: SearchOve
           value={filters.query ?? ""}
           onChange={(event) => onChange({ ...filters, query: event.target.value })}
           className="focus-card rounded-lg border border-white/10 bg-surface-container px-4 py-3 text-on-surface placeholder:text-on-surface-variant md:col-span-2"
-          placeholder="Search titles, genres, channels..."
-          aria-label="Search catalog"
+          placeholder="Buscar títulos, gêneros ou canais..."
+          aria-label="Buscar no catálogo"
         />
         <SelectField
           label="Type"
