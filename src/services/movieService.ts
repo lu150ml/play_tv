@@ -1,6 +1,6 @@
 import type { ContentItem, Movie } from "../types/catalog";
 import type { XtreamCredentials } from "./xtreamService";
-import { loadXtreamMovieDetails } from "./xtreamService";
+import { loadXtreamMovieDetails, XtreamDetailsMismatchError } from "./xtreamService";
 
 export interface MovieDetailsResult {
   movie: Movie;
@@ -31,7 +31,7 @@ export async function loadMovieDetails(
     if (existing) return existing;
   }
 
-  const request = loadXtreamMovieDetails(connection, movie.providerId)
+  const request = loadXtreamMovieDetails(connection, movie.providerId, movie.title)
     .then((details): MovieDetailsResult => {
       const imageCandidates = details.imageCandidates.length > 0
         ? details.imageCandidates
@@ -57,8 +57,10 @@ export async function loadMovieDetails(
         }
       };
     })
-    .catch((error) => {
+    .catch((error): MovieDetailsResult => {
       movieRequests.delete(key);
+      // Detalhes de outro título: fica com capa e vídeo da lista, que estão certos.
+      if (error instanceof XtreamDetailsMismatchError) return { movie, loadedFromProvider: false };
       throw error;
     });
   movieRequests.set(key, request);

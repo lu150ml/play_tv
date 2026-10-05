@@ -108,6 +108,7 @@ interface XtreamSeriesInfoEpisode {
 
 interface XtreamSeriesInfoResponse {
   info?: {
+    name?: string;
     cover?: string;
     movie_image?: string;
     backdrop_path?: string[] | string;
@@ -378,16 +379,77 @@ export async function loadXtreamSeriesEpisodes(
   return (await loadXtreamSeriesDetails(credentials, seriesId)).episodes;
 }
 
+// O painel (ou uma CDN na frente dele que faz cache do player_api.php
+// ignorando a query string) às vezes devolve os detalhes de OUTRO título: o
+// nome vinha certo da lista, mas capa, sinopse, episódios e o vídeo eram de
+// outro conteúdo. Detalhes que não batem com o pedido são rejeitados.
+export class XtreamDetailsMismatchError extends Error {
+  constructor(message = "O servidor devolveu os dados de outro título.") {
+    super(message);
+    this.name = "XtreamDetailsMismatchError";
+  }
+}
+
+const TITLE_NOISE = new Set([
+  "the", "and", "dos", "das", "com", "fhd", "uhd", "hdr", "dual", "audio", "dub", "dublado",
+  "leg", "legendado", "nacional", "serie", "series", "filme", "temporada", "season"
+]);
+
+function titleTokens(value: string): Set<string> {
+  return new Set(
+    value
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter((token) => token.length >= 3 && !TITLE_NOISE.has(token) && !/^(19|20)\d\d$/.test(token))
+  );
+}
+
+// Tolerante de propósito (tags de qualidade, ano, idioma): só acusa diferença
+// quando os nomes não têm nenhuma palavra relevante em comum.
+export function titlesLookAlike(expected?: string, ...received: Array<string | undefined>): boolean {
+  const left = titleTokens(expected ?? "");
+  const candidates = received.map((value) => titleTokens(value ?? "")).filter((tokens) => tokens.size > 0);
+  if (left.size === 0 || candidates.length === 0) return true;
+  return candidates.some((tokens) => [...left].some((token) => tokens.has(token)));
+}
+
+// Pede de novo com um parâmetro único quando a primeira resposta é de outro
+// título (fura cache que considera a query string).
+async function requestValidatedDetails<T>(
+  credentials: XtreamCredentials,
+  action: string,
+  params: Record<string, string>,
+  isExpected: (response: T) => boolean
+): Promise<T> {
+  const first = await requestXtream<T>(credentials, action, params);
+  if (isExpected(first)) return first;
+  const second = await requestXtream<T>(credentials, action, { ...params, _: String(Date.now()) });
+  if (isExpected(second)) return second;
+  throw new XtreamDetailsMismatchError();
+}
+
 export async function loadXtreamSeriesDetails(
   credentials: XtreamCredentials,
-  seriesId: string
+  seriesId: string,
+  expectedTitle?: string
 ): Promise<XtreamSeriesDetails> {
   const normalizedCredentials = normalizeXtreamCredentials(credentials);
-  const response = await requestXtream<XtreamSeriesInfoResponse>(
+  const response = await requestValidatedDetails<XtreamSeriesInfoResponse>(
     normalizedCredentials,
     "get_series_info",
-    { series_id: seriesId }
-  );
+    { series_id: seriesId },
+    (value) => titlesLookAlike(expectedTitle, value?.info?.name)
+  ).catch((error: unknown) => {
+    if (error instanceof XtreamDetailsMismatchError) {
+      throw new XtreamDetailsMismatchError(
+        "O servidor devolveu os episódios de outra série. Tente novamente em alguns instantes."
+      );
+    }
+    throw error;
+  });
 
   const episodes = Object.entries(response.episodes ?? {}).flatMap(([seasonKey, episodes]) =>
     episodes.map((episode, index) => {
@@ -426,13 +488,21 @@ export async function loadXtreamSeriesDetails(
 
 export async function loadXtreamMovieDetails(
   credentials: XtreamCredentials,
-  movieId: string
+  movieId: string,
+  expectedTitle?: string
 ): Promise<XtreamMovieDetails> {
   const normalizedCredentials = normalizeXtreamCredentials(credentials);
-  const response = await requestXtream<XtreamVodInfoResponse>(
+  const response = await requestValidatedDetails<XtreamVodInfoResponse>(
     normalizedCredentials,
     "get_vod_info",
-    { vod_id: movieId }
+    { vod_id: movieId },
+    (value) => {
+      const streamId = value?.movie_data?.stream_id;
+      if (streamId !== undefined && streamId !== null && String(streamId) !== "") {
+        return String(streamId) === movieId;
+      }
+      return titlesLookAlike(expectedTitle, value?.info?.name, value?.info?.o_name);
+    }
   );
   const info = response.info ?? {};
   const movieData = response.movie_data ?? {};

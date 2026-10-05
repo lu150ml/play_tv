@@ -55,7 +55,7 @@ export function LoginPage() {
     setPassword(submittedPassword);
     setError(undefined);
     setIsConnecting(true);
-    beginCatalogLoad();
+    beginCatalogLoad({ reset: true });
 
     try {
       const session = await startServerSession(

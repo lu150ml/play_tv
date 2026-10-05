@@ -30,7 +30,7 @@ export async function loadSeriesDetails(series: Series, connection?: XtreamCrede
       const existing = episodeRequests.get(key);
       if (existing) return existing;
     }
-    const request = loadXtreamSeriesDetails(connection, series.providerId).catch((error) => {
+    const request = loadXtreamSeriesDetails(connection, series.providerId, series.title).catch((error) => {
       episodeRequests.delete(key);
       throw error;
     });

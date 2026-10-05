@@ -1,5 +1,6 @@
 package com.playtv.app;
 
+import android.app.Activity;
 import android.content.Context;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
@@ -14,20 +15,31 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class KeyboardControlPlugin extends Plugin {
     @PluginMethod
     public void hide(PluginCall call) {
-        View target = getActivity().getCurrentFocus();
-        if (target == null) {
-            target = getBridge().getWebView();
+        Activity activity = getActivity();
+        if (activity == null) {
+            JSObject result = new JSObject();
+            result.put("hidden", false);
+            call.resolve(result);
+            return;
         }
-
-        boolean hidden = false;
-        if (target != null) {
-            InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
-            hidden = imm != null && imm.hideSoftInputFromWindow(target.getWindowToken(), 0);
-            target.clearFocus();
-        }
-
-        JSObject result = new JSObject();
-        result.put("hidden", hidden);
-        call.resolve(result);
+        // Métodos de plugin rodam fora da thread de UI. Mexer na View
+        // (clearFocus) daqui lança CalledFromWrongThreadException e fecha o
+        // app — era o crash ao apertar Enter/OK na barra de busca.
+        activity.runOnUiThread(() -> {
+            boolean hidden = false;
+            try {
+                View target = activity.getCurrentFocus();
+                if (target == null) target = getBridge().getWebView();
+                if (target != null) {
+                    InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    hidden = imm != null && imm.hideSoftInputFromWindow(target.getWindowToken(), 0);
+                }
+            } catch (Exception ignored) {
+                hidden = false;
+            }
+            JSObject result = new JSObject();
+            result.put("hidden", hidden);
+            call.resolve(result);
+        });
     }
 }

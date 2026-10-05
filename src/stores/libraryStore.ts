@@ -32,7 +32,9 @@ interface LibraryState {
   isFavorite: (contentId: string) => boolean;
   saveProgress: (state: PlaybackState) => void;
   setCatalog: (catalog: ContentItem[], source: LibraryState["catalogSource"]) => void;
-  beginCatalogLoad: () => void;
+  // reset: login novo — descarta o catálogo de outra conta/servidor para a
+  // busca não misturar títulos antigos com detalhes do servidor novo.
+  beginCatalogLoad: (options?: { reset?: boolean }) => void;
   setCatalogSection: (section: XtreamCatalogSection, items: ContentItem[], status?: "ready" | "error" | "loading", error?: string) => void;
   setCatalogStatus: (status: LibraryState["catalogStatus"]) => void;
   setSeriesEpisodes: (seriesId: string, episodes: Episode[]) => void;
@@ -141,8 +143,8 @@ export const useLibraryStore = create<LibraryState>()(
         catalogSections: READY_SECTIONS,
         catalogCachedAt: source === "xtream" ? new Date().toISOString() : undefined
       }),
-      beginCatalogLoad: () => set((current) => ({
-        catalog: current.catalog,
+      beginCatalogLoad: (options) => set((current) => ({
+        catalog: options?.reset ? [] : current.catalog,
         catalogSource: "xtream",
         catalogStatus: "loading",
         catalogSections: { live: { status: "loading" }, vod: { status: "loading" }, series: { status: "loading" } }

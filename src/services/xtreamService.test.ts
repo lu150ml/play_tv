@@ -6,7 +6,11 @@ import {
   buildXtreamRequestUrl,
   isXtreamAuthenticated,
   loadXtreamCatalog,
-  normalizeXtreamCredentials
+  loadXtreamMovieDetails,
+  loadXtreamSeriesDetails,
+  normalizeXtreamCredentials,
+  titlesLookAlike,
+  XtreamDetailsMismatchError
 } from "./xtreamService";
 
 const credentials = {
@@ -288,5 +292,52 @@ describe("VOD loaded by category", () => {
     stubServer((categoryId) => (categoryId === "1" ? byCategory["1"] : new Error("x")));
     load = await beginXtreamCatalogLoad(credentials);
     expect(movieTitles(await load.completion)).toEqual(["A", "B"]);
+  });
+});
+
+describe("detalhes de outro titulo", () => {
+  function stubDetails(responses: unknown[]) {
+    const calls: URL[] = [];
+    vi.spyOn(httpClient, "get").mockImplementation((url) => {
+      calls.push(new URL(url, "http://localhost"));
+      return Promise.resolve({ data: responses[Math.min(calls.length - 1, responses.length - 1)], status: 200 });
+    });
+    return calls;
+  }
+
+  it("aceita o filme quando o stream_id confere", async () => {
+    stubDetails([{ info: { name: "Matrix", plot: "Neo" }, movie_data: { stream_id: 10, container_extension: "mkv" } }]);
+    const details = await loadXtreamMovieDetails(credentials, "10", "Matrix (1999)");
+    expect(details.description).toBe("Neo");
+    expect(details.streamCandidates?.[0]).toContain("/movie/");
+    expect(details.streamCandidates?.[0]).toContain("/10.mkv");
+  });
+
+  it("repete a requisicao e rejeita quando o painel devolve outro filme", async () => {
+    const calls = stubDetails([{ info: { name: "Shrek" }, movie_data: { stream_id: 99 } }]);
+    await expect(loadXtreamMovieDetails(credentials, "10", "Matrix")).rejects.toBeInstanceOf(XtreamDetailsMismatchError);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.searchParams.get("_")).toBeTruthy();
+  });
+
+  it("usa a segunda resposta quando ela confere", async () => {
+    stubDetails([
+      { info: { name: "Shrek" }, movie_data: { stream_id: 99 } },
+      { info: { name: "Matrix", plot: "Neo" }, movie_data: { stream_id: 10 } }
+    ]);
+    expect((await loadXtreamMovieDetails(credentials, "10", "Matrix")).description).toBe("Neo");
+  });
+
+  it("rejeita episodios de outra serie", async () => {
+    stubDetails([{ info: { name: "Friends" }, episodes: { "1": [{ id: 5, title: "Piloto" }] } }]);
+    await expect(loadXtreamSeriesDetails(credentials, "7", "Breaking Bad")).rejects.toBeInstanceOf(XtreamDetailsMismatchError);
+  });
+
+  it("compara titulos ignorando ano, qualidade e acentos", () => {
+    expect(titlesLookAlike("Coração Valente [4K] (1995)", "Coracao Valente")).toBe(true);
+    expect(titlesLookAlike("The Office", "Office, The (US)")).toBe(true);
+    expect(titlesLookAlike("Matrix", "Shrek")).toBe(false);
+    expect(titlesLookAlike("Up", "Shrek")).toBe(true);
+    expect(titlesLookAlike("Matrix", undefined)).toBe(true);
   });
 });

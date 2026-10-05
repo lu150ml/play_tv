@@ -43,7 +43,10 @@ export const httpClient: HttpClient = {
         url,
         headers: {
           Accept: "application/json, text/plain, */*",
-          "User-Agent": "PlayTV-Android/1.0"
+          "User-Agent": "PlayTV-Android/1.0",
+          // Respostas do player_api.php não podem vir de cache de proxy/CDN.
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache"
         },
         connectTimeout,
         readTimeout
