@@ -18,7 +18,8 @@ export default tseslint.config(
       "*.config.cjs",
       "eslint.config.js",
       "postcss.config.js",
-      "prettier.config.cjs"
+      "prettier.config.cjs",
+      "scripts/*.mjs"
     ]
   },
   js.configs.recommended,

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Bloqueia o push se tipos, lint ou testes falharem.
+# Ativado automaticamente pelo "npm install" (script prepare).
+# Emergência: git push --no-verify (não recomendado).
+echo "pre-push: rodando npm run verify..."
+if ! npm run verify; then
+  echo ""
+  echo "pre-push: verificação falhou. Corrija antes de subir a branch."
+  exit 1
+fi

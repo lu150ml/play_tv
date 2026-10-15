@@ -398,8 +398,9 @@ export async function loadXtreamSeriesEpisodes(
     episodes.map((episode, index) => {
       const providerId = String(episode.id ?? `${seriesId}-${seasonKey}-${index + 1}`);
       const episodeNumber = parseNumber(episode.episode_num) ?? index + 1;
-      const extensions = episode.container_extension
-        ? [episode.container_extension]
+      const episodeExtension = asText(episode.container_extension);
+      const extensions = episodeExtension
+        ? [episodeExtension]
         : ["mp4", "m3u8", "ts", "mkv"];
       const directSource = normalizeRemoteMediaUrl(episode.direct_source);
       const streamCandidates = Array.from(new Set([
@@ -410,11 +411,11 @@ export async function loadXtreamSeriesEpisodes(
       return {
         id: `xtream-episode-${providerId}`,
         providerId,
-        title: episode.title?.trim() || `Episode ${episodeNumber}`,
+        title: asText(episode.title) || `Episode ${episodeNumber}`,
         season: parseNumber(seasonKey) ?? 1,
         episode: episodeNumber,
         durationSeconds: parseNumber(episode.info?.duration_secs) ?? 0,
-        description: episode.info?.plot || "Episode from the connected IPTV server.",
+        description: asText(episode.info?.plot) || "Episode from the connected IPTV server.",
         streamUrl: streamCandidates[0],
         streamCandidates
       };
@@ -461,7 +462,7 @@ export async function loadXtreamMovieDetails(
   const info = response.info ?? {};
   const movieData = response.movie_data ?? {};
   const providerId = String(movieData.stream_id ?? movieId);
-  const extension = movieData.container_extension || "mp4";
+  const extension = asText(movieData.container_extension) ?? "mp4";
   const directSource = normalizeRemoteMediaUrl(movieData.direct_source);
   const imageCandidates = Array.from(new Set([
     normalizeImage(info.movie_image, credentials.serverUrl),
@@ -479,14 +480,14 @@ export async function loadXtreamMovieDetails(
   ]));
 
   return {
-    description: info.plot || info.description,
+    description: asText(info.plot) ?? asText(info.description),
     genres: splitList(info.genre),
     year: parseYear(info.year ?? info.releasedate),
     durationSeconds: parseDurationSeconds(info.duration_secs, info.duration),
-    director: info.director?.trim(),
+    director: asText(info.director),
     cast: splitList(info.cast),
-    rating: info.rating?.trim(),
-    releasedAt: info.releasedate?.trim(),
+    rating: asText(info.rating),
+    releasedAt: asText(info.releasedate),
     imageCandidates,
     streamCandidates
   };
@@ -557,11 +558,11 @@ function mapLiveStream(
   // proxy/antivirus interferindo na conexao, etc). Sem esses dois campos nao ha
   // como identificar o canal de verdade, entao descartamos em vez de mostrar um
   // titulo placeholder com UUID aleatorio.
-  if (stream.stream_id === undefined && !stream.name?.trim()) return undefined;
+  if (stream.stream_id === undefined && !asText(stream.name)) return undefined;
   const providerId = String(stream.stream_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Live TV";
   const categoryName = normalizeCategory(rawCategory);
-  const title = stream.name?.trim() || `Channel ${providerId}`;
+  const title = asText(stream.name) || `Channel ${providerId}`;
   const streamUrl = buildStreamUrl(credentials, "live", providerId, "m3u8");
   const streamCandidates = getChannelStreamCandidates(streamUrl, {
     preferTransportStream: isTwentyFourHourChannel(title, [rawCategory, categoryName])
@@ -597,11 +598,11 @@ function mapVodStream(
   categories: Map<string, string>,
   credentials: XtreamCredentials
 ): ContentItem | undefined {
-  if (stream.stream_id === undefined && !stream.name?.trim()) return undefined;
+  if (stream.stream_id === undefined && !asText(stream.name)) return undefined;
   const providerId = String(stream.stream_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Movies";
   const categoryName = normalizeCategory(rawCategory);
-  const title = stream.name?.trim() || `Movie ${providerId}`;
+  const title = asText(stream.name) || `Movie ${providerId}`;
   const extension = stream.container_extension || "mp4";
 
   return {
@@ -630,11 +631,11 @@ function mapVodStream(
 }
 
 function mapSeriesStream(stream: XtreamSeriesStream, categories: Map<string, string>, credentials: XtreamCredentials): ContentItem | undefined {
-  if (stream.series_id === undefined && !stream.name?.trim()) return undefined;
+  if (stream.series_id === undefined && !asText(stream.name)) return undefined;
   const providerId = String(stream.series_id ?? stream.name);
   const rawCategory = categories.get(String(stream.category_id ?? "")) ?? "Series";
   const categoryName = normalizeCategory(rawCategory);
-  const title = stream.name?.trim() || `Series ${providerId}`;
+  const title = asText(stream.name) || `Series ${providerId}`;
 
   return {
     id: `xtream-series-${providerId}`,
@@ -679,12 +680,13 @@ export function normalizeServerUrl(serverUrl: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-function normalizeImage(imageUrl?: string, serverUrl?: string): string | undefined {
-  if (!imageUrl || imageUrl.trim().length === 0) {
+function normalizeImage(imageUrl?: unknown, serverUrl?: string): string | undefined {
+  const raw = asText(imageUrl);
+  if (!raw) {
     return undefined;
   }
 
-  const normalized = imageUrl.trim().replace(/\\\//g, "/");
+  const normalized = raw.replace(/\\\//g, "/");
   try {
     if (normalized.startsWith("//")) return `${new URL(serverUrl ?? "https://localhost").protocol}${normalized}`;
     return new URL(normalized, serverUrl ? `${normalizeServerUrl(serverUrl)}/` : undefined).toString();
@@ -703,10 +705,11 @@ function slugIdPart(value: string): string {
     .slice(0, 48) || "item";
 }
 
-function normalizeRemoteMediaUrl(value?: string): string | undefined {
-  if (!value?.trim()) return undefined;
+function normalizeRemoteMediaUrl(value?: unknown): string | undefined {
+  const raw = asText(value);
+  if (!raw) return undefined;
   try {
-    const url = new URL(value.trim());
+    const url = new URL(raw);
     return new Set(["http:", "https:"]).has(url.protocol) ? url.toString() : undefined;
   } catch {
     return undefined;
@@ -736,9 +739,10 @@ function parseDurationSeconds(seconds?: string | number, duration?: string): num
   return undefined;
 }
 
-function splitList(value?: string): string[] {
+function splitList(value?: unknown): string[] {
+  const raw = Array.isArray(value) ? value.map(asText).filter(Boolean).join(",") : asText(value) ?? "";
   return Array.from(new Set(
-    String(value ?? "")
+    raw
       .split(/[,/]/)
       .map((entry) => entry.trim())
       .filter(Boolean)
@@ -786,4 +790,21 @@ function toneFor(seed: string): string {
     Array.from(seed).reduce((total, char) => total + char.charCodeAt(0), 0) % tones.length;
 
   return tones[index] ?? tones[0];
+}
+
+/**
+ * Campos de texto vindos do painel Xtream. Cada painel manda de um jeito:
+ * "7.5", 7.5, [] ou null. Nunca chamar .trim() direto num campo do servidor
+ * ("E.trim is not a function" quebrava a tela de detalhes de filmes/séries).
+ */
+export function asText(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const text = asText(entry);
+      if (text) return text;
+    }
+  }
+  return undefined;
 }

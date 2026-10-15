@@ -17,9 +17,12 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:electron-e2e": "node --test tests/electron/*.test.cjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm run test",
     "electron:dev": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
-    "release:win": "node scripts/publish-release.mjs"
+    "release:win": "npm run verify && node scripts/publish-release.mjs",
+    "prepare": "git config core.hooksPath .githooks || exit 0"
   },
   "build": {
     "appId": "com.serverxtreme.app",
