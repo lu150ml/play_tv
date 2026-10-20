@@ -45,7 +45,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ["electron/**/*.cjs", "tests/electron/**/*.cjs"],
+    files: ["electron/**/*.cjs", "tests/electron/**/*.cjs", "tools/**/*.cjs"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {
@@ -56,5 +56,16 @@ export default tseslint.config(
       ...tseslint.configs.disableTypeChecked.rules,
       "@typescript-eslint/no-require-imports": "off"
     }
+  },
+  {
+    files: ["tools/test-lab/renderer.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: globals.browser,
+      parserOptions: {
+        projectService: false
+      }
+    },
+    rules: tseslint.configs.disableTypeChecked.rules
   }
 );

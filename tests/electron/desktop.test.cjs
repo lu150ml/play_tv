@@ -7,8 +7,9 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const ffmpegPath = require("ffmpeg-static");
 const { _electron: electron } = require("playwright");
+const { attachDiagnostics } = require("./diagnostics.cjs");
 
-test("desktop probes HLS and transcodes an incompatible episode through Electron", { timeout: 90000 }, async () => {
+test("desktop probes HLS and transcodes an incompatible episode through Electron", { timeout: 90000 }, async (t) => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-electron-e2e-"));
   const episodePath = path.join(temporaryDirectory, "episode.mkv");
   execFileSync(ffmpegPath, [
@@ -38,6 +39,7 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
     args: [path.resolve(__dirname, "..", ".."), `--user-data-dir=${path.join(temporaryDirectory, "profile")}`],
     env: { ...process.env, NODE_ENV: "test", PLAY_TV_E2E: "1" }
   });
+  const diagnostics = attachDiagnostics(application);
   try {
     const window = await application.firstWindow();
     await window.waitForLoadState("domcontentloaded");
@@ -91,6 +93,9 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
     await window.evaluate(() => window.serverXtreme.media.preparePlayback());
     const releasedStatus = await window.evaluate(async (url) => (await fetch(url)).status, result.transcode.url);
     assert.equal(releasedStatus, 404);
+  } catch (error) {
+    await diagnostics.capture(t.name, error);
+    throw error;
   } finally {
     await application.close();
     server.closeAllConnections();
@@ -99,7 +104,7 @@ test("desktop probes HLS and transcodes an incompatible episode through Electron
   }
 });
 
-test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream", { timeout: 90000 }, async () => {
+test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream", { timeout: 90000 }, async (t) => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-electron-live-"));
   const transportPath = path.join(temporaryDirectory, "stream.ts");
   execFileSync(ffmpegPath, [
@@ -133,6 +138,7 @@ test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream
     args: [path.resolve(__dirname, "..", ".."), `--user-data-dir=${profile}`],
     env: { ...process.env, NODE_ENV: "test", PLAY_TV_E2E: "1" }
   });
+  const diagnostics = attachDiagnostics(application);
 
   try {
     const window = await application.firstWindow();
@@ -221,6 +227,9 @@ test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream
     assert.equal(await video.evaluate((element) => element.muted), false);
     const probeCalls = await window.evaluate(() => window.__probeCalls);
     assert.equal(probeCalls, 0);
+  } catch (error) {
+    await diagnostics.capture(t.name, error);
+    throw error;
   } finally {
     await application.close();
     server.closeAllConnections();
@@ -229,7 +238,7 @@ test("desktop plays a 24h channel whose m3u8 redirects to a continuous TS stream
   }
 });
 
-test("desktop opens movie details and plays a direct MP4 movie", { timeout: 90000 }, async () => {
+test("desktop opens movie details and plays a direct MP4 movie", { timeout: 90000 }, async (t) => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "play-tv-electron-movie-"));
   const moviePath = path.join(temporaryDirectory, "movie.mp4");
   execFileSync(ffmpegPath, [
@@ -257,6 +266,7 @@ test("desktop opens movie details and plays a direct MP4 movie", { timeout: 9000
     args: [path.resolve(__dirname, "..", ".."), `--user-data-dir=${path.join(temporaryDirectory, "profile")}`],
     env: { ...process.env, NODE_ENV: "test", PLAY_TV_E2E: "1" }
   });
+  const diagnostics = attachDiagnostics(application);
 
   try {
     const window = await application.firstWindow();
@@ -315,6 +325,9 @@ test("desktop opens movie details and plays a direct MP4 movie", { timeout: 9000
     const playback = await video.evaluate((element) => ({ currentTime: element.currentTime, muted: element.muted }));
     assert.ok(playback.currentTime > 0.25);
     assert.equal(playback.muted, false);
+  } catch (error) {
+    await diagnostics.capture(t.name, error);
+    throw error;
   } finally {
     await application.close();
     server.closeAllConnections();

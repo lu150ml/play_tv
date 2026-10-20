@@ -78,7 +78,21 @@ npm run build        # Build de produção (type-check + Vite)
 npm run lint         # ESLint
 npm run test         # Testes unitários (Vitest)
 npm run test:e2e     # Testes E2E (Playwright)
+npm run test:lab     # Test Lab: janela que roda todas as suítes da versão PC
+npm run test:lab:cli # Test Lab sem janela (aceita ids: typecheck lint unit backend flows media live)
 ```
+
+### Test Lab
+
+`npm run test:lab` abre uma janela para escolher e rodar as suítes, ver a saída ao vivo,
+repetir só as que falharam, abrir o relatório HTML (salvo em `test-reports/`) e consultar o
+histórico. "Rodar ao salvar" roda tipos, lint e unitários sempre que um arquivo muda.
+
+A suíte **Fluxos do app** abre o Play TV X real contra um servidor Xtream falso
+(`tests/electron/mock-xtream.cjs`) e cobre login, perfil, abas, busca, filme, série e canal.
+A **Aceitação com servidor real** precisa de servidor, usuário, senha e uma série; na janela a
+senha fica só em memória, e na CLI vem das variáveis `PLAY_TV_LIVE_SERVER`,
+`PLAY_TV_LIVE_USERNAME`, `PLAY_TV_LIVE_PASSWORD` e `PLAY_TV_LIVE_SERIES` (use `--all`).
 
 ---
 

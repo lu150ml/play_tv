@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Play TV X · Test Lab</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #161920; --panel-2: #1c2029; --line: #262a33;
+      --text: #e7e9ee; --muted: #9aa1ad; --accent: #e50914; --accent-2: #ff3b45;
+      --ok: #5fe39a; --ok-bg: #163d2a; --bad: #ff8a8a; --bad-bg: #4a1c1c; --warn: #f1c96b; --warn-bg: #3a3320;
+      --run: #7cb8ff; --run-bg: #1b2d47;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 14px/1.4 "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+    .logo { width: 30px; height: 30px; border-radius: 6px; background: var(--accent); display: grid; place-items: center; font-weight: 800; }
+    h1 { font-size: 16px; margin: 0; }
+    h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+    .spacer { flex: 1; }
+    button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: #3a404d; }
+    button:disabled { opacity: .45; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    button.primary:hover:not(:disabled) { background: var(--accent-2); }
+    button.ghost { background: transparent; }
+    label.opt { display: flex; align-items: center; gap: 6px; color: var(--muted); user-select: none; cursor: pointer; }
+    main { flex: 1; display: grid; grid-template-columns: 380px 1fr; min-height: 0; }
+    aside { border-right: 1px solid var(--line); overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+    .group-title { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 4px 6px; display: flex; justify-content: space-between; }
+    .group-title button { padding: 0 6px; font-size: 11px; border: 0; background: none; color: var(--muted); }
+    .suite { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; padding: 9px 10px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+    .suite:hover { background: var(--panel); }
+    .suite.selected { background: var(--panel); border-color: var(--line); }
+    .suite input { margin: 0; accent-color: var(--accent); }
+    .suite .name { font-weight: 600; }
+    .suite .desc { grid-column: 2 / 4; color: var(--muted); font-size: 12px; }
+    .status { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--panel-2); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .status.passed { background: var(--ok-bg); color: var(--ok); }
+    .status.failed { background: var(--bad-bg); color: var(--bad); }
+    .status.running { background: var(--run-bg); color: var(--run); }
+    .status.skipped, .status.cancelled { background: var(--warn-bg); color: var(--warn); }
+    .creds { display: none; grid-column: 1 / 4; gap: 6px; margin-top: 6px; }
+    .creds.show { display: grid; }
+    .creds input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 8px; font: inherit; }
+    .creds .hint { color: var(--muted); font-size: 11px; }
+    .history { border-top: 1px solid var(--line); padding-top: 12px; }
+    .run-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .run-item:hover, .run-item.active { background: var(--panel); }
+    .run-item .when { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+    .dot.passed { background: var(--ok); } .dot.failed { background: var(--bad); } .dot.cancelled, .dot.skipped { background: var(--warn); } .dot.running { background: var(--run); }
+    section.log { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .log-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .log-head .title { font-weight: 600; }
+    .log-head .meta { color: var(--muted); }
+    .tabs { display: flex; gap: 4px; padding: 8px 16px 0; overflow-x: auto; border-bottom: 1px solid var(--line); }
+    .tab { padding: 6px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; cursor: pointer; white-space: nowrap; font-size: 12px; display: flex; gap: 6px; align-items: center; color: var(--muted); }
+    .tab.active { background: var(--panel); border-color: var(--line); color: var(--text); }
+    pre { flex: 1; margin: 0; padding: 14px 16px; overflow: auto; font: 12px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; background: var(--panel); }
+    pre .fail { color: var(--bad); } pre .pass { color: var(--ok); }
+    .artifacts { display: none; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bad-bg); overflow-x: auto; align-items: flex-start; }
+    .artifacts.show { display: flex; }
+    .artifacts .label { color: var(--bad); font-weight: 600; font-size: 12px; white-space: nowrap; padding-top: 4px; }
+    .artifact { display: flex; flex-direction: column; gap: 6px; flex: none; }
+    .artifact img { height: 120px; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; background: var(--bg); }
+    .artifact span { font-size: 11px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .artifact button { font-size: 12px; padding: 4px 8px; }
+    .empty { color: var(--muted); padding: 40px; text-align: center; }
+    .progress { height: 3px; background: var(--line); }
+    .progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+    .banner { padding: 8px 16px; background: var(--run-bg); color: var(--run); font-size: 12px; display: none; }
+    .banner.show { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">X</div>
+    <h1>Play TV X <small>Test Lab · versão PC</small></h1>
+    <div class="spacer"></div>
+    <label class="opt"><input type="checkbox" id="opt-build" checked> Compilar antes dos E2E</label>
+    <label class="opt"><input type="checkbox" id="opt-bail"> Parar na 1ª falha</label>
+    <label class="opt" title="Roda tipos, lint e unitários sempre que um arquivo de src/, electron/ ou tests/ mudar"><input type="checkbox" id="opt-watch"> Rodar ao salvar</label>
+    <button id="btn-failed" disabled>Repetir falhos</button>
+    <button id="btn-all">Rodar tudo</button>
+    <button id="btn-run" class="primary">Rodar selecionados</button>
+    <button id="btn-stop" disabled>Parar</button>
+  </header>
+  <div class="progress"><div id="progress"></div></div>
+  <div class="banner" id="banner"></div>
+  <main>
+    <aside>
+      <div id="suites"></div>
+      <div class="history">
+        <div class="group-title"><span>Histórico</span><button id="btn-clear">limpar</button></div>
+        <div id="history"></div>
+      </div>
+    </aside>
+    <section class="log">
+      <div class="log-head">
+        <span class="title" id="run-title">Nenhuma execução ainda</span>
+        <span class="meta" id="run-meta"></span>
+        <div class="spacer"></div>
+        <button class="ghost" id="btn-copy" disabled>Copiar log</button>
+        <button class="ghost" id="btn-report" disabled>Abrir relatório</button>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="artifacts" id="artifacts"></div>
+      <pre id="output"><div class="empty">Marque as suítes à esquerda e clique em “Rodar selecionados”.</div></pre>
+    </section>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>
