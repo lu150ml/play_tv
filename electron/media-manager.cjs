@@ -205,6 +205,12 @@ class MediaManager {
     const child = this.spawn(this.ffmpegPath, args, { windowsHide: true });
     session.child = child;
     child.stderr?.on("data", (chunk) => { session.stderr = `${session.stderr}${chunk}`.slice(-4000); });
+    // Antivirus ou arquivo bloqueado: sem este listener o erro do spawn derrubava o processo principal.
+    child.on("error", (error) => {
+      session.exited = true;
+      session.stderr = `Nao foi possivel iniciar o conversor de video (${error?.code || "erro desconhecido"}).`;
+      if (session.status !== "stopped") session.status = "error";
+    });
     child.on("exit", (code) => {
       session.exited = true;
       if (session.status !== "stopped" && code !== 0) {
@@ -218,9 +224,10 @@ class MediaManager {
   async preflight(url, externalSignal) {
     const timeoutController = new AbortController();
     const timeout = setTimeout(() => timeoutController.abort(), this.preflightTimeoutMs);
-    const signal = externalSignal
-      ? AbortSignal.any([externalSignal, timeoutController.signal])
-      : timeoutController.signal;
+    // body.cancel() nao fecha o socket do net.fetch do Electron: a conexao seguia baixando
+    // o arquivo inteiro e disputava banda/limite de conexoes com o ffmpeg. So o abort fecha.
+    const requestController = new AbortController();
+    const signal = AbortSignal.any([externalSignal, timeoutController.signal, requestController.signal].filter(Boolean));
     let response;
     try { response = await this.net.fetch(url, { redirect: "follow", signal, headers: { "User-Agent": "Play-TV-X/0.4.6", Accept: "*/*" } }); }
     catch (error) {
@@ -249,6 +256,7 @@ class MediaManager {
       throw error;
     } finally {
       clearTimeout(timeout);
+      requestController.abort();
     }
   }
 

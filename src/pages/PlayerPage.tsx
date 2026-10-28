@@ -43,6 +43,9 @@ const INTRO_SKIP_TO_SECONDS = 30;
 // maior para não punir MP4s legítimos que demoram alguns segundos para abrir.
 const LIVE_NATIVE_STARTUP_TIMEOUT_MS = 5_000;
 const VOD_NATIVE_STARTUP_TIMEOUT_MS = 8_000;
+// Em conexoes lentas o MP4 ainda esta baixando o indice (moov pode ter varios MB)
+// quando os 8s acabam. Enquanto chegarem bytes, o prazo e renovado ate este teto.
+const VOD_NATIVE_STARTUP_MAX_MS = 60_000;
 
 export function PlayerPage() {
   const { contentId, episodeId, seriesId } = useParams();
@@ -119,6 +122,9 @@ export function PlayerPage() {
   const startCompatibilityTranscodeRef = useRef<() => Promise<void>>(async () => {});
   const handleStreamFailureRef = useRef<() => void>(() => {});
   const compatibilityRequestRef = useRef(false);
+  // Depois que o modo compativel falha, nao tenta de novo sozinho: sem isso o player
+  // voltava ao stream nativo, falhava e reiniciava o transcode em loop infinito.
+  const compatibilityFailedRef = useRef(false);
   const compatibilitySessionIdRef = useRef<string | undefined>(undefined);
   const transcodeSessionRef = useRef<{ id: string; url: string; ready: boolean } | undefined>(undefined);
   const hasActivatedAudioRef = useRef(false);
@@ -143,7 +149,10 @@ export function PlayerPage() {
     [item?.categories, item?.streamCandidates, item?.title, item?.type, originalStreamUrl, selectedEpisode?.streamCandidates]
   );
   const completedDownload = downloads.jobs.find((job) => job.contentId === (selectedEpisode?.id ?? item?.id) && job.status === "completed");
-  const activeStreamUrl = isReleasingPrevious || episodeUnavailableReason
+  // Enquanto o modo compativel prepara a fonte, o <video> nativo fica desligado para
+  // nao disputar banda/conexao com o preflight e o ffmpeg.
+  const isCompatibilityPending = isPreparingCompatibleFormat || (transcodeSession !== undefined && !transcodeSession.ready);
+  const activeStreamUrl = isReleasingPrevious || episodeUnavailableReason || isCompatibilityPending
     ? undefined
     : transcodeSession?.ready
       ? transcodeSession.url
@@ -431,6 +440,7 @@ export function PlayerPage() {
     transcodeSessionRef.current = undefined;
     compatibilitySessionIdRef.current = undefined;
     compatibilityRequestRef.current = false;
+    compatibilityFailedRef.current = false;
     setTranscodeSession(undefined);
     setIsPreparingCompatibleFormat(false);
     setCompatibilityStage(undefined);
@@ -490,6 +500,7 @@ export function PlayerPage() {
         return;
       }
       compatibilityRequestRef.current = false;
+      compatibilityFailedRef.current = true;
       compatibilitySessionIdRef.current = undefined;
       transcodeSessionRef.current = undefined;
       setTranscodeSession(undefined);
@@ -686,20 +697,39 @@ export function PlayerPage() {
       return undefined;
     }
 
-    const startupTimeout = window.setTimeout(() => {
+    const isChannel = item?.type === "channel";
+    const startedAt = Date.now();
+    let startupTimeout = 0;
+    const handleStartupTimeout = () => {
       const video = videoRef.current;
       if (!video || video.currentTime > 0.25 || video.readyState >= 2) {
         return;
       }
 
-      if (item?.type === "channel") {
+      if (isChannel) {
         void startCompatibilityTranscodeRef.current();
         return;
       }
 
       handleStreamFailureRef.current();
-    }, item?.type === "channel" ? LIVE_NATIVE_STARTUP_TIMEOUT_MS : VOD_NATIVE_STARTUP_TIMEOUT_MS);
-    return () => window.clearTimeout(startupTimeout);
+    };
+    const armStartupTimeout = () => {
+      window.clearTimeout(startupTimeout);
+      const remaining = VOD_NATIVE_STARTUP_MAX_MS - (Date.now() - startedAt);
+      startupTimeout = window.setTimeout(handleStartupTimeout, Math.max(0, Math.min(VOD_NATIVE_STARTUP_TIMEOUT_MS, remaining)));
+    };
+    const video = videoRef.current;
+    if (isChannel) {
+      startupTimeout = window.setTimeout(handleStartupTimeout, LIVE_NATIVE_STARTUP_TIMEOUT_MS);
+    } else {
+      armStartupTimeout();
+      // Bytes chegando = conexao lenta, nao stream quebrado: renova o prazo.
+      video?.addEventListener("progress", armStartupTimeout);
+    }
+    return () => {
+      window.clearTimeout(startupTimeout);
+      video?.removeEventListener("progress", armStartupTimeout);
+    };
   }, [activeStreamUrl, completedDownload, isPreparingCompatibleFormat, item?.type, transcodeSession]);
 
   useEffect(() => {
@@ -1111,6 +1141,11 @@ export function PlayerPage() {
       setMediaError("Nao foi possivel reproduzir o arquivo baixado. Tente reproduzir pelo stream ou baixar novamente.");
       return;
     }
+    if (compatibilityFailedRef.current) {
+      // O erro do modo compativel ja esta na tela; espera o usuario tocar em "Tentar novamente".
+      if (!mediaErrorRef.current) setMediaError("Nao foi possivel reproduzir este conteudo. Toque em Tentar novamente.");
+      return;
+    }
     if (content.type === "channel" && !transcodeSession && getDesktopBridge()?.media) {
       void startCompatibilityTranscode();
       return;
@@ -1132,7 +1167,7 @@ export function PlayerPage() {
   handleStreamFailureRef.current = handleStreamFailure;
 
   async function startCompatibilityTranscode() {
-    if (!originalStreamUrl || isReleasingPrevious || compatibilityRequestRef.current || transcodeSessionRef.current || completedDownload) return;
+    if (!originalStreamUrl || isReleasingPrevious || compatibilityRequestRef.current || compatibilityFailedRef.current || transcodeSessionRef.current || completedDownload) return;
     const bridge = getDesktopBridge();
     if (!bridge) {
       setMediaError("Este formato exige o modo de compatibilidade do aplicativo instalado.");
@@ -1152,6 +1187,7 @@ export function PlayerPage() {
       setTranscodeSession(pending);
     } catch (error) {
       compatibilityRequestRef.current = false;
+      compatibilityFailedRef.current = true;
       setPlaybackMode("fallback");
       const message = error instanceof Error ? error.message : "Nao foi possivel preparar um formato compativel.";
       const failure = selectedEpisode
@@ -1171,6 +1207,7 @@ export function PlayerPage() {
     transcodeSessionRef.current = undefined;
     compatibilitySessionIdRef.current = undefined;
     compatibilityRequestRef.current = false;
+    compatibilityFailedRef.current = false;
     setTranscodeSession(undefined);
     setIsPreparingCompatibleFormat(false);
     setCompatibilityStage(undefined);
@@ -1286,6 +1323,7 @@ export function PlayerPage() {
             poster={securePosterUrl}
             preload="auto"
             playsInline
+            onClick={() => setIsPlaying((current) => !current)}
             onCanPlay={handleBufferingEnd}
             onCanPlayThrough={handleBufferingEnd}
             onDurationChange={handleDurationChange}
@@ -1355,7 +1393,7 @@ export function PlayerPage() {
             Encerrando reproducao anterior...
           </div>
         ) : null}
-        {isPreparingCompatibleFormat ? (
+        {isPreparingCompatibleFormat && !mediaError ? (
           <div className="absolute left-4 right-4 top-16 rounded-xl border border-primary-container/30 bg-surface/90 p-4 font-mono text-xs uppercase tracking-wide text-primary-container backdrop-blur-xl">
             {compatibilityStage === "checking-source"
               ? "Localizando stream valido..."
