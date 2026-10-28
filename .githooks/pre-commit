@@ -1,0 +1,14 @@
+#!/bin/sh
+# Bloqueia o commit se algum valor de ~/.playtv-secrets/live.env aparecer no que
+# esta sendo commitado. As credenciais de teste ficam so nesta maquina.
+secrets="${USERPROFILE:-$HOME}/.playtv-secrets/live.env"
+[ -f "$secrets" ] || exit 0
+diff=$(git diff --cached -U0 --no-color)
+sed -n 's/^[A-Z_]*=//p' "$secrets" | while IFS= read -r value; do
+  value=$(printf '%s' "$value" | tr -d '\r')
+  [ ${#value} -ge 6 ] || continue
+  if printf '%s' "$diff" | grep -qF -- "$value"; then
+    echo "pre-commit: credencial de teste encontrada no commit. Remova antes de commitar." >&2
+    exit 1
+  fi
+done || exit 1

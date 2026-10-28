@@ -1,8 +1,9 @@
-import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, UserRound } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Link as LinkIcon, Lock, Trash2, UserRound } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { getDesktopBridge } from "../services/desktopService";
 import { connectServerSession } from "../services/sessionService";
 import { clearRememberedPassword, saveRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -25,6 +26,15 @@ export function LoginPage() {
     (location.state as { error?: string } | null)?.error
   );
   const [isConnecting, setIsConnecting] = useState(false);
+  const desktopBridge = getDesktopBridge();
+
+  async function handleResetEverything() {
+    try {
+      await desktopBridge?.app.resetEverything();
+    } catch {
+      setError("Nao foi possivel apagar os dados do aplicativo.");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -148,6 +158,18 @@ export function LoginPage() {
           {isConnecting ? "Conectando..." : "Entrar"}
           <ArrowRight aria-hidden="true" size={24} />
         </button>
+
+        {desktopBridge?.app.resetEverything ? (
+          <button
+            type="button"
+            data-focusable="true"
+            onClick={() => void handleResetEverything()}
+            className="focus-card mt-6 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm text-on-surface-variant hover:text-error"
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            Desinstalar e apagar tudo
+          </button>
+        ) : null}
       </form>
     </main>
   );

@@ -7,6 +7,7 @@ const {
   net,
   protocol,
   safeStorage,
+  session,
   shell
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
@@ -14,6 +15,7 @@ const { handleProtocolRequest } = require("./server.cjs");
 const { DownloadManager } = require("./download-manager.cjs");
 const { setupUpdater } = require("./updater.cjs");
 const { MediaManager } = require("./media-manager.cjs");
+const { planReset, runReset } = require("./app-reset.cjs");
 const bundledFfmpegPath = require("ffmpeg-static");
 const ffmpegPath = app?.isPackaged
   ? bundledFfmpegPath.replace("app.asar", "app.asar.unpacked")
@@ -122,6 +124,35 @@ app.whenReady().then(async () => {
   ipcMain.handle("app:relaunch", () => {
     app.relaunch();
     app.exit(0);
+  });
+  ipcMain.handle("app:reset-everything", async () => {
+    const plan = planReset({ app });
+    const uninstalling = plan.mode === "uninstall";
+    const answer = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Play TV X",
+      message: uninstalling ? "Desinstalar o Play TV X e apagar tudo?" : "Apagar tudo e recomecar do zero?",
+      detail: [
+        "Isto remove logins salvos, perfis, favoritos, historico, progresso dos filmes e series, downloads registrados e todos os caches.",
+        uninstalling ? "Depois o desinstalador do Windows abre para remover o aplicativo." : "Depois o aplicativo abre limpo, na tela de login.",
+        "Os arquivos de video ja baixados na sua pasta de downloads nao sao apagados.",
+        "Isto nao pode ser desfeito."
+      ].join("\n\n"),
+      buttons: ["Cancelar", uninstalling ? "Desinstalar e apagar tudo" : "Apagar tudo"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    });
+    if (answer.response !== 1) return false;
+    await runReset({
+      plan,
+      session: session.defaultSession,
+      stopWork: async () => {
+        await mediaManager.stopAll();
+      },
+      quit: () => app.exit(0)
+    });
+    return true;
   });
   ipcMain.handle("downloads:get-state", () => downloadManager.snapshot());
   ipcMain.handle("downloads:choose-directory", () => downloadManager.chooseDirectory(mainWindow));

@@ -1,5 +1,5 @@
 import type Hls from "hls.js";
-import { ArrowLeft, Download, Heart, RotateCcw, SkipForward } from "lucide-react";
+import { ArrowLeft, Download, Heart, Pause, RotateCcw, SkipForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
@@ -1398,6 +1398,13 @@ export function PlayerPage() {
             {compatibilityStage === "checking-source"
               ? "Localizando stream valido..."
               : "Preparando formato compativel... Isso pode levar alguns segundos."}
+          </div>
+        ) : null}
+        {activeStreamUrl && !isPlaying && !mediaError && !isPreparingCompatibleFormat ? (
+          <div data-testid="paused-indicator" aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm">
+              <Pause size={36} fill="currentColor" />
+            </div>
           </div>
         ) : null}
         {content.type !== "channel" && isBuffering && !mediaError ? (
