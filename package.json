@@ -29,6 +29,7 @@
   "build": {
     "appId": "com.serverxtreme.app",
     "productName": "Play TV X",
+    "electronDist": "node_modules/electron/dist",
     "publish": {
       "provider": "github",
       "owner": "lu150ml",
