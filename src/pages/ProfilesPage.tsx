@@ -6,6 +6,7 @@ import { useLibraryStore } from "../stores/libraryStore";
 import type { Profile } from "../types/catalog";
 import { SwitchAccountDialog } from "../components/SwitchAccountDialog";
 import { clearRememberedPassword } from "../services/credentialService";
+import { BrandLogo } from "../components/BrandLogo";
 
 const AVATAR_COLORS = [
   "bg-violet-500",
@@ -61,14 +62,7 @@ export function ProfilesPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12 text-on-surface">
       {/* Header */}
-      <div className="mb-2 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-on-primary">
-          <span className="font-display text-xl font-bold">X</span>
-        </div>
-        <p className="font-display text-xl font-bold text-on-surface">
-          PLAY TV <span className="text-primary">X</span>
-        </p>
-      </div>
+      <div className="mb-2"><BrandLogo compact /></div>
       <p className="mb-2 font-mono text-xs uppercase text-on-surface-variant">{sessionName}</p>
       <h1 className="mb-10 font-display text-3xl font-bold text-on-surface">Quem vai assistir?</h1>
       <button

@@ -26,6 +26,7 @@ import { SwitchAccountDialog } from "./SwitchAccountDialog";
 import { UpdateBanner } from "./UpdateBanner";
 import { DownloadStatusToast } from "./DownloadStatusToast";
 import { AppFooter } from "./AppFooter";
+import { BrandLogo } from "./BrandLogo";
 import { useUpdateState } from "../hooks/useDesktopState";
 import type { XtreamCatalogSection } from "../services/xtreamService";
 
@@ -244,13 +245,8 @@ export function AppShell() {
     <div className="min-h-screen bg-background text-on-surface">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-60 border-r border-white/5 bg-surface-dim px-4 py-7 lg:flex lg:flex-col">
         <div className="mb-9 flex items-center gap-3 px-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-on-primary">
-            <span className="font-display text-lg font-bold">X</span>
-          </div>
+          <BrandLogo compact />
           <div>
-            <p className="font-display text-lg font-bold tracking-tight text-on-surface">
-              PLAY TV <span className="text-primary">X</span>
-            </p>
             <p className="text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
               v{updateState.version}
             </p>
@@ -333,9 +329,7 @@ export function AppShell() {
       </aside>
 
       <header className="fixed left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/5 bg-surface/95 px-4 lg:left-60 lg:w-[calc(100%-15rem)] lg:px-10">
-        <p className="font-display text-xl font-bold tracking-tight text-on-surface lg:text-2xl">
-          PLAY TV <span className="text-primary">X</span>
-        </p>
+        <BrandLogo compact />
         <div className="flex items-center gap-2">
           {activeProfile ? (
             <button

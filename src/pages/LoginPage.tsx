@@ -7,6 +7,7 @@ import { getDesktopBridge } from "../services/desktopService";
 import { connectServerSession } from "../services/sessionService";
 import { clearRememberedPassword, saveRememberedPassword } from "../services/credentialService";
 import { useLibraryStore } from "../stores/libraryStore";
+import { BrandLogo } from "../components/BrandLogo";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -81,12 +82,9 @@ export function LoginPage() {
         className="glass-panel w-full max-w-md rounded-xl p-8 shadow-2xl"
       >
         <header className="mb-8 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg bg-primary text-on-primary">
-            <span className="font-display text-3xl font-bold">X</span>
+          <div className="mx-auto mb-5 flex justify-center">
+            <BrandLogo />
           </div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-on-surface">
-            PLAY TV <span className="text-primary">X</span>
-          </h1>
           <p className="mt-2 text-on-surface-variant">Sua programação começa aqui</p>
         </header>
 
