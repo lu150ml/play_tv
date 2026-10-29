@@ -6,6 +6,7 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { CatalogRail } from "../components/CatalogRail";
 import { PlayerControls } from "../components/PlayerControls";
 import { SecureImage } from "../components/SecureImage";
+import { usePlayerKeyboard } from "../hooks/usePlayerKeyboard";
 import { useSecureImageUrl } from "../hooks/useSecureImageUrl";
 import { getBufferedAheadSeconds, hasEnoughStartupBuffer } from "../services/bufferService";
 import { getContentById } from "../services/catalogService";
@@ -192,6 +193,23 @@ export function PlayerPage() {
     : seriesEpisodes;
   const minimumStartupBufferSeconds = item?.type === "channel" ? 3 : 5;
   const shouldShowControls = !isPlaying || Boolean(mediaError) || areControlsVisible;
+  // handleSeek e o ajuste de volume ficam depois dos returns antecipados; o hook os chama por refs.
+  const seekHandlerRef = useRef<(positionSeconds: number) => void>(() => undefined);
+  const volumeHandlerRef = useRef<(volume: number) => void>(() => undefined);
+  const keyboardNotice = usePlayerKeyboard({
+    videoRef,
+    enabled: Boolean(activeStreamUrl) && !isSubtitlePickerOpen,
+    canSeek,
+    durationSeconds,
+    volume: muted || autoplayMuted ? 0 : volume,
+    onSeek: (nextPosition) => seekHandlerRef.current(nextPosition),
+    onVolumeChange: (nextVolume) => volumeHandlerRef.current(nextVolume),
+    onTogglePlay: () => setIsPlaying((current) => !current),
+    onActivity: () => {
+      setAreControlsVisible(true);
+      setLastInteractionAt(Date.now());
+    }
+  });
   const remainingSeconds =
     durationSeconds > 0 ? Math.max(durationSeconds - positionSeconds, 0) : undefined;
   const shouldPromptNextEpisode =
@@ -936,6 +954,8 @@ export function PlayerPage() {
     resumeRestoreKeyRef.current = playbackSessionKey;
   }
 
+  seekHandlerRef.current = handleSeek;
+
   function handleLoadedMetadata() {
     handlePlayableMetadata();
   }
@@ -1093,6 +1113,19 @@ export function PlayerPage() {
 
     setIsPlaying(false);
   }
+
+  function handleVolumeChange(next: number) {
+    const normalized = Math.min(Math.max(next, 0), 1);
+    setVolume(normalized);
+    setMuted(normalized === 0);
+    if (normalized > 0) {
+      hasActivatedAudioRef.current = true;
+      setAutoplayMuted(false);
+      setAudioActivationRequired(undefined);
+    }
+    localStorage.setItem("server-xtreme-volume", String(normalized));
+  }
+  volumeHandlerRef.current = handleVolumeChange;
 
   function revealControls() {
     setAreControlsVisible(true);
@@ -1311,7 +1344,10 @@ export function PlayerPage() {
         onMouseMove={revealControls}
         onPointerMove={revealControls}
         onTouchStart={revealControls}
-        className="relative mb-8 aspect-video min-h-72 overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl"
+        className={[
+          "relative mb-8 aspect-video min-h-72 overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl",
+          shouldShowControls ? "" : "cursor-none"
+        ].join(" ")}
       >
         {!activeStreamUrl ? (
           <div className={["absolute inset-0 bg-gradient-to-br", content.backdropTone].join(" ")} />
@@ -1407,6 +1443,15 @@ export function PlayerPage() {
             </div>
           </div>
         ) : null}
+        {keyboardNotice ? (
+          <div
+            key={keyboardNotice.key}
+            data-testid="player-keyboard-notice"
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-surface-container/70 px-5 py-2 font-mono text-sm text-on-surface backdrop-blur-xl"
+          >
+            {keyboardNotice.text}
+          </div>
+        ) : null}
         {content.type !== "channel" && isBuffering && !mediaError ? (
           <div
             data-testid="buffering-indicator"
@@ -1480,17 +1525,7 @@ export function PlayerPage() {
             setAutoplayMuted(false);
             setAudioActivationRequired(undefined);
           }}
-          onVolumeChange={(next) => {
-            const normalized = Math.min(Math.max(next, 0), 1);
-            setVolume(normalized);
-            setMuted(normalized === 0);
-            if (normalized > 0) {
-              hasActivatedAudioRef.current = true;
-              setAutoplayMuted(false);
-              setAudioActivationRequired(undefined);
-            }
-            localStorage.setItem("server-xtreme-volume", String(normalized));
-          }}
+          onVolumeChange={handleVolumeChange}
         />
         {isSubtitlePickerOpen ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
