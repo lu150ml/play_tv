@@ -1,4 +1,4 @@
-import { SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 
 import { getCatalogCategories, getCatalogGenres } from "../services/catalogService";
 import type { CatalogFilter, ContentItem, ContentType, Quality, SortMode } from "../types/catalog";
@@ -7,6 +7,8 @@ interface SearchOverlayProps {
   filters: CatalogFilter;
   catalog: ContentItem[];
   onChange: (filters: CatalogFilter) => void;
+  onSubmit: () => void;
+  onClear: () => void;
   onClose?: () => void;
 }
 
@@ -14,7 +16,7 @@ const contentTypes: Array<ContentType | "all"> = ["all", "movie", "series", "cha
 const qualities: Array<Quality | "all"> = ["all", "HD", "Full HD", "4K", "HDR10"];
 const sortModes: SortMode[] = ["featured", "title", "recent"];
 
-export function SearchOverlay({ filters, catalog, onChange, onClose }: SearchOverlayProps) {
+export function SearchOverlay({ filters, catalog, onChange, onSubmit, onClear, onClose }: SearchOverlayProps) {
   const categories = getCatalogCategories(catalog);
   const genres = getCatalogGenres(catalog);
 
@@ -38,13 +40,20 @@ export function SearchOverlay({ filters, catalog, onChange, onClose }: SearchOve
         ) : null}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      {/* Form: Enter no campo de texto também busca. */}
+      <form
+        className="grid gap-3 md:grid-cols-2 xl:grid-cols-6"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
         <input
           data-focusable="true"
           value={filters.query ?? ""}
           onChange={(event) => onChange({ ...filters, query: event.target.value })}
           className="focus-card rounded-lg border border-white/10 bg-surface-container px-4 py-3 text-on-surface placeholder:text-on-surface-variant md:col-span-2"
-          placeholder="Search titles, genres, channels..."
+          placeholder="Buscar por título (opcional)"
           aria-label="Search catalog"
         />
         <SelectField
@@ -79,7 +88,25 @@ export function SearchOverlay({ filters, catalog, onChange, onClose }: SearchOve
           options={sortModes}
           onChange={(sort) => onChange({ ...filters, sort: sort as SortMode })}
         />
-      </div>
+        <div className="flex items-end gap-3 md:col-span-2 xl:col-span-6">
+          <button
+            type="submit"
+            data-focusable="true"
+            className="focus-card flex min-h-12 items-center gap-2 rounded-lg bg-primary px-6 py-3 font-bold text-on-primary"
+          >
+            <Search aria-hidden="true" size={18} />
+            Buscar
+          </button>
+          <button
+            type="button"
+            data-focusable="true"
+            onClick={onClear}
+            className="focus-card min-h-12 rounded-lg border border-white/10 bg-surface-container px-5 py-3 text-sm text-on-surface-variant"
+          >
+            Limpar
+          </button>
+        </div>
+      </form>
     </section>
   );
 }

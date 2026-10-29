@@ -18,9 +18,12 @@ interface PlayerKeyboardOptions {
   durationSeconds: number;
   // Volume efetivo (0 quando mudo); quem salva e aplica é o PlayerPage.
   volume: number;
+  muted: boolean;
   onSeek: (positionSeconds: number) => void;
   onVolumeChange: (volume: number) => void;
   onTogglePlay: () => void;
+  onToggleFullscreen: () => void;
+  onToggleMute: () => void;
   onActivity: () => void;
 }
 
@@ -78,6 +81,21 @@ export function usePlayerKeyboard(options: PlayerKeyboardOptions): PlayerKeyboar
         consume(event);
         current.onTogglePlay();
         current.onActivity();
+        return;
+      }
+
+      const letter = event.key.toLowerCase();
+      if (letter === "f") {
+        consume(event);
+        current.onToggleFullscreen();
+        current.onActivity();
+        return;
+      }
+
+      if (letter === "m") {
+        consume(event);
+        current.onToggleMute();
+        showNotice(current.muted ? "Som ativado" : "Mudo");
         return;
       }
 

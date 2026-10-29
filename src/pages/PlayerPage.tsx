@@ -196,6 +196,8 @@ export function PlayerPage() {
   // handleSeek e o ajuste de volume ficam depois dos returns antecipados; o hook os chama por refs.
   const seekHandlerRef = useRef<(positionSeconds: number) => void>(() => undefined);
   const volumeHandlerRef = useRef<(volume: number) => void>(() => undefined);
+  const fullscreenHandlerRef = useRef<() => void>(() => undefined);
+  const muteHandlerRef = useRef<() => void>(() => undefined);
   const keyboardNotice = usePlayerKeyboard({
     videoRef,
     enabled: Boolean(activeStreamUrl) && !isSubtitlePickerOpen,
@@ -203,7 +205,10 @@ export function PlayerPage() {
     durationSeconds,
     volume: muted || autoplayMuted ? 0 : volume,
     onSeek: (nextPosition) => seekHandlerRef.current(nextPosition),
+    muted: muted || autoplayMuted || volume === 0,
     onVolumeChange: (nextVolume) => volumeHandlerRef.current(nextVolume),
+    onToggleFullscreen: () => fullscreenHandlerRef.current(),
+    onToggleMute: () => muteHandlerRef.current(),
     onTogglePlay: () => setIsPlaying((current) => !current),
     onActivity: () => {
       setAreControlsVisible(true);
@@ -1127,6 +1132,18 @@ export function PlayerPage() {
   }
   volumeHandlerRef.current = handleVolumeChange;
 
+  function handleToggleMute() {
+    const willMute = !(muted || autoplayMuted || volume === 0);
+    if (!willMute) {
+      handleActivateAudio();
+      return;
+    }
+    setMuted(true);
+    setAutoplayMuted(false);
+    setAudioActivationRequired(undefined);
+  }
+  muteHandlerRef.current = handleToggleMute;
+
   function revealControls() {
     setAreControlsVisible(true);
     setLastInteractionAt(Date.now());
@@ -1299,6 +1316,10 @@ export function PlayerPage() {
       );
     }
   }
+
+  fullscreenHandlerRef.current = () => {
+    void handleFullscreen();
+  };
 
   async function handleFullscreen() {
     const element = playerShellRef.current;
@@ -1515,16 +1536,7 @@ export function PlayerPage() {
           }}
           volume={volume}
           muted={muted || autoplayMuted || volume === 0}
-          onToggleMute={() => {
-            const willMute = !(muted || autoplayMuted || volume === 0);
-            if (!willMute) {
-              handleActivateAudio();
-              return;
-            }
-            setMuted(true);
-            setAutoplayMuted(false);
-            setAudioActivationRequired(undefined);
-          }}
+          onToggleMute={handleToggleMute}
           onVolumeChange={handleVolumeChange}
         />
         {isSubtitlePickerOpen ? (

@@ -103,6 +103,9 @@ export function CatalogPage({
     sort: "featured"
   });
   const [visibleResults, setVisibleResults] = useState(SEARCH_PAGE_SIZE);
+  // Busca disparada pelo botão "Buscar": mostra resultados mesmo sem texto, só com filtros.
+  const [isSearchSubmitted, setIsSearchSubmitted] = useState(false);
+  const searchResultsRef = useRef<HTMLElement | null>(null);
   const navigationStateRef = useRef<{ filters: CatalogFilter }>({ filters });
   navigationStateRef.current = { filters };
   const catalog = useLibraryStore((state) => state.catalog);
@@ -196,6 +199,7 @@ export function CatalogPage({
       query: current.query,
       sort: current.sort ?? "featured"
     }));
+    setIsSearchSubmitted(false);
   }, [sectionType, selectedCategory?.providerCategoryId, selectedCategory?.title]);
 
   useEffect(() => {
@@ -245,7 +249,13 @@ export function CatalogPage({
       ? "Início"
       : sectionConfig.title;
   const showSearch = forceSearch || searchParams.get("search") === "open" || selectedCategory;
-  const isSearchResult = Boolean(filters.query?.trim());
+  const isSearchResult = Boolean(filters.query?.trim()) || isSearchSubmitted;
+  const searchFilterLabels = [
+    filters.query?.trim() ? `"${filters.query.trim()}"` : undefined,
+    filters.category && !selectedCategory ? filters.category : undefined,
+    filters.genre,
+    filters.quality && filters.quality !== "all" ? filters.quality : undefined
+  ].filter(Boolean);
 
   return (
     <div className="mx-auto max-w-canvas">
@@ -343,15 +353,37 @@ export function CatalogPage({
               providerCategoryId: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.providerCategoryId
             })
           }
+          onSubmit={() => {
+            setIsSearchSubmitted(true);
+            setVisibleResults(SEARCH_PAGE_SIZE);
+            window.setTimeout(() => {
+              searchResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 0);
+          }}
+          onClear={() => {
+            setIsSearchSubmitted(false);
+            setFilters({
+              type: sectionType,
+              sort: "featured",
+              category: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.title,
+              providerCategoryId: selectedCategory?.kind === "segment" ? undefined : selectedCategory?.providerCategoryId
+            });
+          }}
         />
       ) : null}
 
       {selectedCategory || isSearchResult ? (
-        <section>
+        <section ref={searchResultsRef} className="scroll-mt-24">
           {isSearchResult ? (
             <div className="mb-4 flex items-center gap-3">
               <Search aria-hidden="true" className="text-primary-container" size={22} />
-              <h2 className="font-display text-2xl font-bold">Resultados da busca</h2>
+              <h2 className="font-display text-2xl font-bold">
+                Resultados da busca
+                {searchFilterLabels.length > 0 ? ` · ${searchFilterLabels.join(" · ")}` : null}
+              </h2>
+              <span className="font-mono text-xs uppercase text-on-surface-variant">
+                {results.length} encontrados
+              </span>
             </div>
           ) : null}
           <CatalogGrid items={results.slice(0, visibleResults)} />

@@ -22,12 +22,14 @@ function press(key: string, target: EventTarget = document) {
 
 function setup(
   video: HTMLVideoElement,
-  overrides: { enabled?: boolean; canSeek?: boolean; volume?: number } = {}
+  overrides: { enabled?: boolean; canSeek?: boolean; volume?: number; muted?: boolean } = {}
 ) {
   const onSeek = vi.fn();
   const onVolumeChange = vi.fn();
   const onTogglePlay = vi.fn();
   const onActivity = vi.fn();
+  const onToggleFullscreen = vi.fn();
+  const onToggleMute = vi.fn();
   const hook = renderHook(() =>
     usePlayerKeyboard({
       videoRef: { current: video },
@@ -35,13 +37,16 @@ function setup(
       canSeek: overrides.canSeek ?? true,
       durationSeconds: 1000,
       volume: overrides.volume ?? 0.5,
+      muted: overrides.muted ?? false,
       onSeek,
       onVolumeChange,
       onTogglePlay,
+      onToggleFullscreen,
+      onToggleMute,
       onActivity
     })
   );
-  return { onSeek, onVolumeChange, onTogglePlay, onActivity, hook };
+  return { onSeek, onVolumeChange, onTogglePlay, onToggleFullscreen, onToggleMute, onActivity, hook };
 }
 
 describe("getSeekStep", () => {
@@ -122,6 +127,25 @@ describe("usePlayerKeyboard", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("toggles fullscreen with F", () => {
+    const { onToggleFullscreen } = setup(createVideo(), { canSeek: false });
+    press("f");
+    press("F");
+    expect(onToggleFullscreen).toHaveBeenCalledTimes(2);
+  });
+
+  it("toggles mute with M and shows the new state", () => {
+    const unmuted = setup(createVideo());
+    press("m");
+    expect(unmuted.onToggleMute).toHaveBeenCalledTimes(1);
+    expect(unmuted.hook.result.current?.text).toBe("Mudo");
+    unmuted.hook.unmount();
+
+    const muted = setup(createVideo(), { muted: true });
+    press("M");
+    expect(muted.hook.result.current?.text).toBe("Som ativado");
+  });
+
   it("keeps arrows away from the remote navigation listener", () => {
     setup(createVideo());
     const documentListener = vi.fn();
@@ -139,6 +163,8 @@ describe("usePlayerKeyboard", () => {
     document.body.appendChild(input);
     input.focus();
     press("ArrowRight", input);
+    press("f", input);
+    press("m", input);
     expect(onSeek).not.toHaveBeenCalled();
   });
 
