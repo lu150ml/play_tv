@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
+import { formatPlaybackTime } from "../utils/format";
+
 const SEEK_STEP_SECONDS = 5;
 const FAST_SEEK_STEP_SECONDS = 10;
 const FAST_SEEK_WINDOW_MS = 500;
+// Segurando a seta: um salto a cada HOLD_STEP_INTERVAL_MS, maior depois de um tempo.
+const HOLD_STEP_INTERVAL_MS = 150;
+const HOLD_STEP_SECONDS = 10;
+const HOLD_FAST_STEP_SECONDS = 30;
+const HOLD_FAST_AFTER_MS = 2000;
 const VOLUME_STEP = 0.1;
 const NOTICE_DURATION_MS = 1000;
 
@@ -27,12 +34,33 @@ interface PlayerKeyboardOptions {
   onActivity: () => void;
 }
 
+interface HoldState {
+  direction: number;
+  origin: number;
+  target: number;
+  committed: number;
+  startedAt: number;
+  lastStepAt: number;
+}
+
 // Um toque = 5s; toques seguidos rápidos na mesma direção = 10s cada.
 export function getSeekStep(now: number, lastPressAt: number | undefined, sameDirection: boolean): number {
   if (sameDirection && lastPressAt !== undefined && now - lastPressAt < FAST_SEEK_WINDOW_MS) {
     return FAST_SEEK_STEP_SECONDS;
   }
   return SEEK_STEP_SECONDS;
+}
+
+// Salto por repetição enquanto a seta está segurada.
+export function getHoldStep(heldForMs: number): number {
+  return heldForMs >= HOLD_FAST_AFTER_MS ? HOLD_FAST_STEP_SECONDS : HOLD_STEP_SECONDS;
+}
+
+function formatOffset(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return seconds === 0 ? `${minutes}min` : `${minutes}min ${seconds}s`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -53,6 +81,9 @@ export function usePlayerKeyboard(options: PlayerKeyboardOptions): PlayerKeyboar
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const lastSeekRef = useRef<{ at: number; direction: number } | undefined>(undefined);
+  // Seta segurada: acumula o destino e só busca no vídeo ao soltar, para não
+  // disparar uma busca (e um novo carregamento do stream) a cada repetição.
+  const holdRef = useRef<HoldState | undefined>(undefined);
   const [notice, setNotice] = useState<PlayerKeyboardNotice | undefined>();
   const { enabled } = options;
 
@@ -67,6 +98,14 @@ export function usePlayerKeyboard(options: PlayerKeyboardOptions): PlayerKeyboar
 
     function showNotice(text: string) {
       setNotice({ text, key: Date.now() });
+    }
+
+    function commitHold() {
+      const hold = holdRef.current;
+      holdRef.current = undefined;
+      if (hold && hold.target !== hold.committed) {
+        optionsRef.current.onSeek(hold.target);
+      }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -105,13 +144,41 @@ export function usePlayerKeyboard(options: PlayerKeyboardOptions): PlayerKeyboar
 
         const direction = event.key === "ArrowRight" ? 1 : -1;
         const now = Date.now();
+        const duration = current.durationSeconds || player.duration || 0;
+        const hold = holdRef.current;
+
+        if (event.repeat && hold?.direction === direction) {
+          current.onActivity();
+          if (now - hold.lastStepAt < HOLD_STEP_INTERVAL_MS) return;
+          hold.lastStepAt = now;
+          hold.target = Math.floor(
+            clamp(hold.target + direction * getHoldStep(now - hold.startedAt), 0, duration)
+          );
+          const offset = Math.abs(hold.target - hold.origin);
+          showNotice(
+            `${direction > 0 ? "+" : "-"}${formatOffset(offset)} · ${formatPlaybackTime(hold.target)}`
+          );
+          return;
+        }
+
+        // Troca de direção sem soltar a outra seta: aplica o que já foi acumulado.
+        commitHold();
+
         const last = lastSeekRef.current;
         const step = getSeekStep(now, last?.at, last?.direction === direction);
         lastSeekRef.current = { at: now, direction };
 
-        const duration = current.durationSeconds || player.duration || 0;
-        const nextPosition = clamp(player.currentTime + direction * step, 0, duration);
-        current.onSeek(Math.floor(nextPosition));
+        const origin = Math.floor(player.currentTime);
+        const nextPosition = Math.floor(clamp(player.currentTime + direction * step, 0, duration));
+        current.onSeek(nextPosition);
+        holdRef.current = {
+          direction,
+          origin,
+          target: nextPosition,
+          committed: nextPosition,
+          startedAt: now,
+          lastStepAt: now
+        };
         current.onActivity();
         showNotice(`${direction > 0 ? "+" : "-"}${step}s`);
         return;
@@ -127,10 +194,25 @@ export function usePlayerKeyboard(options: PlayerKeyboardOptions): PlayerKeyboar
       }
     }
 
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        if (holdRef.current?.direction === direction) commitHold();
+      }
+    }
+
     // Capture em window: roda antes do useRemoteNavigation (document) e do
     // comportamento padrão do botão/range focado.
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
+    // Sem keyup (ex.: Alt+Tab com a seta segurada): aplica ao perder o foco.
+    window.addEventListener("blur", commitHold);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("blur", commitHold);
+      commitHold();
+    };
   }, [enabled]);
 
   return notice;

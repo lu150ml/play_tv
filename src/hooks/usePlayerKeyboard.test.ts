@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSeekStep, usePlayerKeyboard } from "./usePlayerKeyboard";
+import { getHoldStep, getSeekStep, usePlayerKeyboard } from "./usePlayerKeyboard";
 
 function createVideo(currentTime = 100, volume = 0.5): HTMLVideoElement {
   const video = document.createElement("video");
@@ -12,8 +12,13 @@ function createVideo(currentTime = 100, volume = 0.5): HTMLVideoElement {
   return video;
 }
 
-function press(key: string, target: EventTarget = document) {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+function press(
+  key: string,
+  target: EventTarget = document,
+  init: KeyboardEventInit & { type?: string } = {}
+) {
+  const { type = "keydown", ...rest } = init;
+  const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...rest });
   act(() => {
     target.dispatchEvent(event);
   });
@@ -46,7 +51,15 @@ function setup(
       onActivity
     })
   );
-  return { onSeek, onVolumeChange, onTogglePlay, onToggleFullscreen, onToggleMute, onActivity, hook };
+  return {
+    onSeek,
+    onVolumeChange,
+    onTogglePlay,
+    onToggleFullscreen,
+    onToggleMute,
+    onActivity,
+    hook
+  };
 }
 
 describe("getSeekStep", () => {
@@ -55,6 +68,13 @@ describe("getSeekStep", () => {
     expect(getSeekStep(1300, 1000, true)).toBe(10);
     expect(getSeekStep(1300, 1000, false)).toBe(5);
     expect(getSeekStep(2000, 1000, true)).toBe(5);
+  });
+});
+
+describe("getHoldStep", () => {
+  it("speeds up after holding for a while", () => {
+    expect(getHoldStep(500)).toBe(10);
+    expect(getHoldStep(2500)).toBe(30);
   });
 });
 
@@ -88,6 +108,56 @@ describe("usePlayerKeyboard", () => {
     });
     press("ArrowLeft");
     expect(onSeek).toHaveBeenLastCalledWith(95);
+  });
+
+  it("keeps skipping while held and seeks once on release", () => {
+    const video = createVideo(100);
+    const { onSeek, hook } = setup(video);
+
+    press("ArrowRight");
+    expect(onSeek).toHaveBeenLastCalledWith(105);
+
+    for (let i = 0; i < 20; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      press("ArrowRight", document, { repeat: true });
+    }
+    // 1000ms segurando, um salto de 10s a cada 150ms = 6 saltos.
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(hook.result.current?.text).toBe("+1min 5s · 02:45");
+
+    press("ArrowRight", document, { type: "keyup" });
+    expect(onSeek).toHaveBeenCalledTimes(2);
+    expect(onSeek).toHaveBeenLastCalledWith(165);
+  });
+
+  it("stops at the end of the timeline while held", () => {
+    const video = createVideo(990);
+    const { onSeek } = setup(video);
+
+    press("ArrowRight");
+    for (let i = 0; i < 5; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      press("ArrowRight", document, { repeat: true });
+    }
+    press("ArrowRight", document, { type: "keyup" });
+    expect(onSeek).toHaveBeenLastCalledWith(1000);
+  });
+
+  it("applies the held skip when the window loses focus", () => {
+    const { onSeek } = setup(createVideo(100));
+    press("ArrowLeft");
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    press("ArrowLeft", document, { repeat: true });
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(onSeek).toHaveBeenLastCalledWith(85);
   });
 
   it("does not seek live channels", () => {
